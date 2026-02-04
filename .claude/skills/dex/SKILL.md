@@ -126,6 +126,15 @@ dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
 # Close MR
 dex gl mr close <project!iid>                   # Close a merge request
 dex gl mr close sre/helm!2903                   # Example
+
+# Create MR (auto-detects project and branch from git)
+dex gl mr create "<title>"                      # Create MR from current branch to main
+dex gl mr create "Fix bug" --target develop     # Specify target branch
+dex gl mr create "WIP" --draft                  # Create as draft
+dex gl mr create "Feature" -d "Description"     # With description
+dex gl mr create "Feature" --squash             # Squash on merge
+dex gl mr create "Feature" --remove-source-branch  # Delete branch after merge
+dex gl mr create "Feature" -p group/proj -s branch # Explicit project and source
 ```
 
 ## Jira (`dex jira`)

@@ -498,3 +498,55 @@ func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
 	_, _, err := c.gl.MergeRequests.UpdateMergeRequest(projectID, mrIID, opts)
 	return err
 }
+
+// CreateMergeRequestOptions contains options for creating a merge request
+type CreateMergeRequestOptions struct {
+	Title              string
+	Description        string
+	SourceBranch       string
+	TargetBranch       string
+	Draft              bool
+	RemoveSourceBranch bool
+	Squash             bool
+}
+
+// CreateMergeRequest creates a new merge request and returns its details
+func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOptions) (*models.MergeRequestDetail, error) {
+	createOpts := &gitlab.CreateMergeRequestOptions{
+		Title:              gitlab.Ptr(opts.Title),
+		SourceBranch:       gitlab.Ptr(opts.SourceBranch),
+		TargetBranch:       gitlab.Ptr(opts.TargetBranch),
+		RemoveSourceBranch: gitlab.Ptr(opts.RemoveSourceBranch),
+		Squash:             gitlab.Ptr(opts.Squash),
+	}
+
+	if opts.Description != "" {
+		createOpts.Description = gitlab.Ptr(opts.Description)
+	}
+
+	// Handle draft status by prefixing title
+	if opts.Draft {
+		createOpts.Title = gitlab.Ptr("Draft: " + opts.Title)
+	}
+
+	mr, _, err := c.gl.MergeRequests.CreateMergeRequest(projectID, createOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &models.MergeRequestDetail{
+		IID:          mr.IID,
+		Title:        mr.Title,
+		State:        mr.State,
+		WebURL:       mr.WebURL,
+		SourceBranch: mr.SourceBranch,
+		TargetBranch: mr.TargetBranch,
+		Draft:        mr.Draft,
+	}
+
+	if mr.Author != nil {
+		result.Author = mr.Author.Username
+	}
+
+	return result, nil
+}

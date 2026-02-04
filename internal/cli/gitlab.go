@@ -484,6 +484,84 @@ Examples:
 	},
 }
 
+var gitlabMRCreateCmd = &cobra.Command{
+	Use:   "create <title>",
+	Short: "Create a new merge request",
+	Long: `Create a new merge request from the current branch.
+
+By default, detects the current git branch as source and the project from
+the git remote. Target branch defaults to 'main'.
+
+Examples:
+  dex gl mr create "Add user authentication"
+  dex gl mr create "Fix login bug" --target develop
+  dex gl mr create "WIP: New feature" --draft
+  dex gl mr create "Refactor API" --description "Detailed description here"
+  dex gl mr create "Feature" --project group/project --source feature-branch`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		title := args[0]
+		target, _ := cmd.Flags().GetString("target")
+		source, _ := cmd.Flags().GetString("source")
+		project, _ := cmd.Flags().GetString("project")
+		description, _ := cmd.Flags().GetString("description")
+		draft, _ := cmd.Flags().GetBool("draft")
+		removeSource, _ := cmd.Flags().GetBool("remove-source-branch")
+		squash, _ := cmd.Flags().GetBool("squash")
+
+		// Auto-detect source branch if not provided
+		if source == "" {
+			branch, err := getCurrentGitBranch()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to detect current branch: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Use --source to specify the source branch\n")
+				os.Exit(1)
+			}
+			source = branch
+		}
+
+		// Auto-detect project if not provided
+		if project == "" {
+			proj, err := getGitLabProjectFromRemote()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to detect project from git remote: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Use --project to specify the project path\n")
+				os.Exit(1)
+			}
+			project = proj
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		mr, err := client.CreateMergeRequest(project, gitlab.CreateMergeRequestOptions{
+			Title:              title,
+			Description:        description,
+			SourceBranch:       source,
+			TargetBranch:       target,
+			Draft:              draft,
+			RemoveSourceBranch: removeSource,
+			Squash:             squash,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Created %s!%d: %s\n", project, mr.IID, mr.Title)
+		fmt.Printf("  %s\n", mr.WebURL)
+	},
+}
+
 var gitlabMRReactCmd = &cobra.Command{
 	Use:   "react <project!iid> <emoji>",
 	Short: "Add a reaction to a merge request or comment",
@@ -780,6 +858,51 @@ func openBrowser(url string) error {
 	return cmd.Start()
 }
 
+// getCurrentGitBranch returns the current git branch name
+func getCurrentGitBranch() (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getGitLabProjectFromRemote extracts the GitLab project path from the git remote
+func getGitLabProjectFromRemote() (string, error) {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	url := strings.TrimSpace(string(output))
+
+	// Handle SSH format: git@gitlab.example.com:group/project.git
+	if strings.HasPrefix(url, "git@") {
+		// Remove git@ prefix and find the : separator
+		url = strings.TrimPrefix(url, "git@")
+		colonIdx := strings.Index(url, ":")
+		if colonIdx == -1 {
+			return "", fmt.Errorf("invalid SSH remote format")
+		}
+		url = url[colonIdx+1:]
+	} else if strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://") {
+		// Handle HTTPS format: https://gitlab.example.com/group/project.git
+		// Remove the protocol and host
+		parts := strings.SplitN(url, "/", 4)
+		if len(parts) < 4 {
+			return "", fmt.Errorf("invalid HTTPS remote format")
+		}
+		url = parts[3]
+	}
+
+	// Remove .git suffix if present
+	url = strings.TrimSuffix(url, ".git")
+
+	return url, nil
+}
+
 // parseMRReference parses a merge request reference like "group/project!123"
 // Returns the project path and MR IID
 func parseMRReference(ref string) (string, int, error) {
@@ -822,6 +945,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
 	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCloseCmd)
+	gitlabMRCmd.AddCommand(gitlabMRCreateCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
@@ -845,6 +969,14 @@ func init() {
 	gitlabMRCommentCmd.Flags().Int("line", 0, "Line number for inline comment")
 
 	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
+
+	gitlabMRCreateCmd.Flags().StringP("target", "t", "main", "Target branch")
+	gitlabMRCreateCmd.Flags().StringP("source", "s", "", "Source branch (default: current branch)")
+	gitlabMRCreateCmd.Flags().StringP("project", "p", "", "Project path (default: from git remote)")
+	gitlabMRCreateCmd.Flags().StringP("description", "d", "", "MR description")
+	gitlabMRCreateCmd.Flags().Bool("draft", false, "Create as draft/WIP")
+	gitlabMRCreateCmd.Flags().Bool("remove-source-branch", false, "Remove source branch after merge")
+	gitlabMRCreateCmd.Flags().Bool("squash", false, "Squash commits on merge")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration
