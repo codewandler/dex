@@ -70,6 +70,8 @@ type MergeRequestDetail struct {
 	Reviewers    []string
 	Approvers    []string
 	Changes      MergeRequestChanges
+	Commits      []MRCommit // populated on detail view
+	Files        []MRFile   // populated on detail view
 }
 
 // MergeRequestChanges contains diff statistics
@@ -77,6 +79,26 @@ type MergeRequestChanges struct {
 	Additions int
 	Deletions int
 	Files     int
+}
+
+// MRCommit is a simplified commit structure for MR commit lists
+type MRCommit struct {
+	ShortID   string
+	Title     string
+	Author    string
+	CreatedAt time.Time
+}
+
+// MRFile represents a file changed in a merge request
+type MRFile struct {
+	OldPath     string
+	NewPath     string
+	IsNew       bool
+	IsDeleted   bool
+	IsRenamed   bool
+	Additions   int
+	Deletions   int
+	Diff        string // populated only with --show-diff
 }
 
 type Tag struct {

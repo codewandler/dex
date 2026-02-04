@@ -227,3 +227,67 @@ func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.Merg
 
 	return mr, nil
 }
+
+// GetMergeRequestCommits fetches commits associated with a merge request
+func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCommit, error) {
+	commits, _, err := c.gl.MergeRequests.GetMergeRequestCommits(projectID, mrIID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []models.MRCommit
+	for _, commit := range commits {
+		mc := models.MRCommit{
+			ShortID: commit.ShortID,
+			Title:   commit.Title,
+		}
+		if commit.AuthorName != "" {
+			mc.Author = commit.AuthorName
+		}
+		if commit.CreatedAt != nil {
+			mc.CreatedAt = *commit.CreatedAt
+		}
+		result = append(result, mc)
+	}
+
+	return result, nil
+}
+
+// GetMergeRequestChanges fetches the list of files changed in a merge request
+func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bool) ([]models.MRFile, error) {
+	opts := &gitlab.ListMergeRequestDiffsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+	}
+
+	var files []models.MRFile
+	for {
+		diffs, resp, err := c.gl.MergeRequests.ListMergeRequestDiffs(projectID, mrIID, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, diff := range diffs {
+			f := models.MRFile{
+				OldPath:   diff.OldPath,
+				NewPath:   diff.NewPath,
+				IsNew:     diff.NewFile,
+				IsDeleted: diff.DeletedFile,
+				IsRenamed: diff.RenamedFile,
+			}
+			if includeDiff {
+				f.Diff = diff.Diff
+			}
+			files = append(files, f)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return files, nil
+}

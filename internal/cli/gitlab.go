@@ -237,9 +237,12 @@ Use the canonical reference format: project!iid
 
 Examples:
   dex gl mr show sre/helmchart-prod-configs!2903
-  dex gl mr show group/project!456`,
+  dex gl mr show group/project!456
+  dex gl mr show group/project!456 --show-diff   # Include file diffs`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		showDiff, _ := cmd.Flags().GetBool("show-diff")
+
 		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
@@ -263,6 +266,18 @@ Examples:
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to get merge request: %v\n", err)
 			os.Exit(1)
+		}
+
+		// Fetch commits
+		commits, err := client.GetMergeRequestCommits(projectID, mrIID)
+		if err == nil {
+			mr.Commits = commits
+		}
+
+		// Fetch file changes (with diff if requested)
+		files, err := client.GetMergeRequestChanges(projectID, mrIID, showDiff)
+		if err == nil {
+			mr.Files = files
 		}
 
 		output.PrintMergeRequestDetails(mr)
@@ -604,6 +619,8 @@ func init() {
 	gitlabMRLsCmd.Flags().IntP("limit", "n", 20, "Number of MRs to list")
 	gitlabMRLsCmd.Flags().Bool("include-wip", false, "Include WIP/draft MRs (excluded by default)")
 	gitlabMRLsCmd.Flags().Bool("conflicts-only", false, "Only show MRs with merge conflicts")
+
+	gitlabMRShowCmd.Flags().Bool("show-diff", false, "Show file diffs")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration

@@ -465,7 +465,77 @@ func PrintMergeRequestDetails(mr *models.MergeRequestDetail) {
 		}
 	}
 
+	// Commits
+	if len(mr.Commits) > 0 {
+		fmt.Println()
+		sectionColor.Printf("  Commits (%d):\n", len(mr.Commits))
+		for _, c := range mr.Commits {
+			commitColor.Printf("    %s ", c.ShortID)
+			fmt.Printf("%s ", truncate(c.Title, 50))
+			dimColor.Printf("(%s)\n", c.Author)
+		}
+	}
+
+	// Files
+	if len(mr.Files) > 0 {
+		fmt.Println()
+		sectionColor.Printf("  Files Changed (%d):\n", len(mr.Files))
+		for _, f := range mr.Files {
+			printMRFile(f)
+		}
+	}
+
 	fmt.Println()
+}
+
+// printMRFile displays a single file change with optional diff
+func printMRFile(f models.MRFile) {
+	var prefix, path string
+	switch {
+	case f.IsNew:
+		prefix = color.GreenString("A")
+		path = f.NewPath
+	case f.IsDeleted:
+		prefix = color.RedString("D")
+		path = f.OldPath
+	case f.IsRenamed:
+		prefix = color.YellowString("R")
+		path = fmt.Sprintf("%s → %s", f.OldPath, f.NewPath)
+	default:
+		prefix = color.CyanString("M")
+		path = f.NewPath
+	}
+
+	fmt.Printf("    %s %s\n", prefix, path)
+
+	// Show diff if available
+	if f.Diff != "" {
+		printDiff(f.Diff)
+	}
+}
+
+// printDiff renders a unified diff with syntax highlighting
+func printDiff(diff string) {
+	lines := strings.Split(diff, "\n")
+	addColor := color.New(color.FgGreen)
+	delColor := color.New(color.FgRed)
+	hunkColor := color.New(color.FgCyan)
+
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			addColor.Printf("      %s\n", line)
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			delColor.Printf("      %s\n", line)
+		case strings.HasPrefix(line, "@@"):
+			hunkColor.Printf("      %s\n", line)
+		case strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++"):
+			// Skip file headers - we already show the path
+			continue
+		default:
+			fmt.Printf("      %s\n", line)
+		}
+	}
 }
 
 // PrintCommitDetails displays full commit information
