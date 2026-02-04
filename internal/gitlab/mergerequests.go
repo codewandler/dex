@@ -341,3 +341,150 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 
 	return notes, nil
 }
+
+// GetMergeRequestDiscussions fetches all discussions/threads on a merge request
+func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.MRDiscussion, error) {
+	opts := &gitlab.ListMergeRequestDiscussionsOptions{
+		PerPage: 100,
+		Page:    1,
+	}
+
+	var discussions []models.MRDiscussion
+	for {
+		apiDiscussions, resp, err := c.gl.Discussions.ListMergeRequestDiscussions(projectID, mrIID, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, d := range apiDiscussions {
+			disc := models.MRDiscussion{
+				ID:             d.ID,
+				IndividualNote: d.IndividualNote,
+			}
+			for _, n := range d.Notes {
+				note := models.MRNote{
+					ID:           n.ID,
+					DiscussionID: d.ID,
+					Body:         n.Body,
+					System:       n.System,
+					Resolvable:   n.Resolvable,
+					Resolved:     n.Resolved,
+					Author:       n.Author.Username,
+				}
+				if n.CreatedAt != nil {
+					note.CreatedAt = *n.CreatedAt
+				}
+				if n.Position != nil {
+					note.Position = &models.NotePosition{
+						NewPath: n.Position.NewPath,
+						OldPath: n.Position.OldPath,
+						NewLine: n.Position.NewLine,
+						OldLine: n.Position.OldLine,
+					}
+				}
+				disc.Notes = append(disc.Notes, note)
+			}
+			discussions = append(discussions, disc)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return discussions, nil
+}
+
+// AddMergeRequestDiscussionReply adds a reply to an existing discussion thread
+func (c *Client) AddMergeRequestDiscussionReply(projectID any, mrIID int, discussionID, body string) error {
+	opts := &gitlab.AddMergeRequestDiscussionNoteOptions{
+		Body: gitlab.Ptr(body),
+	}
+
+	_, _, err := c.gl.Discussions.AddMergeRequestDiscussionNote(projectID, mrIID, discussionID, opts)
+	return err
+}
+
+// InlineCommentOptions contains options for creating an inline/diff comment
+type InlineCommentOptions struct {
+	Body    string
+	NewPath string
+	OldPath string
+	NewLine int
+	OldLine int
+}
+
+// CreateMergeRequestInlineComment creates an inline comment on a specific file/line
+func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts InlineCommentOptions) error {
+	// Get the diff version info first
+	diffVersion, err := c.GetMergeRequestDiffVersions(projectID, mrIID)
+	if err != nil {
+		return fmt.Errorf("failed to get diff versions: %w", err)
+	}
+
+	position := &gitlab.PositionOptions{
+		BaseSHA:      gitlab.Ptr(diffVersion.BaseCommitSHA),
+		StartSHA:     gitlab.Ptr(diffVersion.StartCommitSHA),
+		HeadSHA:      gitlab.Ptr(diffVersion.HeadCommitSHA),
+		PositionType: gitlab.Ptr("text"),
+		NewPath:      gitlab.Ptr(opts.NewPath),
+		OldPath:      gitlab.Ptr(opts.OldPath),
+	}
+
+	// Set line numbers based on what was provided
+	if opts.NewLine > 0 {
+		position.NewLine = gitlab.Ptr(opts.NewLine)
+	}
+	if opts.OldLine > 0 {
+		position.OldLine = gitlab.Ptr(opts.OldLine)
+	}
+
+	createOpts := &gitlab.CreateMergeRequestDiscussionOptions{
+		Body:     gitlab.Ptr(opts.Body),
+		Position: position,
+	}
+
+	_, _, err = c.gl.Discussions.CreateMergeRequestDiscussion(projectID, mrIID, createOpts)
+	return err
+}
+
+// GetMergeRequestDiffVersions fetches the diff version info needed for inline comments
+func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.MRDiffVersion, error) {
+	versions, _, err := c.gl.MergeRequests.GetMergeRequestDiffVersions(projectID, mrIID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no diff versions found")
+	}
+
+	// Use the latest (first) version
+	v := versions[0]
+	return &models.MRDiffVersion{
+		HeadCommitSHA:  v.HeadCommitSHA,
+		BaseCommitSHA:  v.BaseCommitSHA,
+		StartCommitSHA: v.StartCommitSHA,
+	}, nil
+}
+
+// CreateMergeRequestReaction adds an emoji reaction to a merge request
+func (c *Client) CreateMergeRequestReaction(projectID any, mrIID int, emoji string) error {
+	opts := &gitlab.CreateAwardEmojiOptions{
+		Name: emoji,
+	}
+
+	_, _, err := c.gl.AwardEmoji.CreateMergeRequestAwardEmoji(projectID, mrIID, opts)
+	return err
+}
+
+// CreateMergeRequestNoteReaction adds an emoji reaction to a note/comment on a merge request
+func (c *Client) CreateMergeRequestNoteReaction(projectID any, mrIID int, noteID int, emoji string) error {
+	opts := &gitlab.CreateAwardEmojiOptions{
+		Name: emoji,
+	}
+
+	_, _, err := c.gl.AwardEmoji.CreateMergeRequestAwardEmojiOnNote(projectID, mrIID, noteID, opts)
+	return err
+}

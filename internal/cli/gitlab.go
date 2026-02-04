@@ -280,10 +280,10 @@ Examples:
 			mr.Files = files
 		}
 
-		// Fetch notes/comments
-		notes, err := client.GetMergeRequestNotes(projectID, mrIID)
+		// Fetch discussions (threaded comments)
+		discussions, err := client.GetMergeRequestDiscussions(projectID, mrIID)
 		if err == nil {
-			mr.Notes = notes
+			mr.Discussions = discussions
 		}
 
 		output.PrintMergeRequestDetails(mr)
@@ -345,12 +345,27 @@ Use the canonical reference format: project!iid
 
 The message can be provided as an argument or via stdin (use - as message).
 
+Comment types:
+  - Regular comment: just provide the message
+  - Reply to thread: use --reply-to <discussion-id>
+  - Inline comment: use --file and --line flags
+
 Examples:
   dex gl mr comment sre/helm!2903 "LGTM, approved!"
   dex gl mr comment group/project!456 "Please address the review comments"
-  echo "Comment from stdin" | dex gl mr comment group/project!456 -`,
+  echo "Comment from stdin" | dex gl mr comment group/project!456 -
+
+  # Reply to an existing discussion thread
+  dex gl mr comment project!123 "Done, fixed!" --reply-to abc12345
+
+  # Add inline comment on a file/line
+  dex gl mr comment project!123 "Use a constant here" --file src/main.go --line 42`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
+		replyTo, _ := cmd.Flags().GetString("reply-to")
+		filePath, _ := cmd.Flags().GetString("file")
+		lineNum, _ := cmd.Flags().GetInt("line")
+
 		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
@@ -375,6 +390,16 @@ Examples:
 			os.Exit(1)
 		}
 
+		// Validate flag combinations
+		if replyTo != "" && (filePath != "" || lineNum > 0) {
+			fmt.Fprintf(os.Stderr, "Cannot use --reply-to with --file/--line\n")
+			os.Exit(1)
+		}
+		if (filePath != "" && lineNum == 0) || (filePath == "" && lineNum > 0) {
+			fmt.Fprintf(os.Stderr, "Both --file and --line are required for inline comments\n")
+			os.Exit(1)
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
@@ -387,12 +412,96 @@ Examples:
 			os.Exit(1)
 		}
 
-		if err := client.CreateMergeRequestNote(projectID, mrIID, message); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to add comment: %v\n", err)
+		// Determine which type of comment to create
+		if replyTo != "" {
+			// Reply to existing discussion thread
+			if err := client.AddMergeRequestDiscussionReply(projectID, mrIID, replyTo, message); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add reply: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Reply added to discussion %s on %s!%d\n", replyTo, projectID, mrIID)
+		} else if filePath != "" && lineNum > 0 {
+			// Create inline comment
+			opts := gitlab.InlineCommentOptions{
+				Body:    message,
+				NewPath: filePath,
+				OldPath: filePath,
+				NewLine: lineNum,
+			}
+			if err := client.CreateMergeRequestInlineComment(projectID, mrIID, opts); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add inline comment: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Inline comment added to %s:%d on %s!%d\n", filePath, lineNum, projectID, mrIID)
+		} else {
+			// Regular comment
+			if err := client.CreateMergeRequestNote(projectID, mrIID, message); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add comment: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Comment added to %s!%d\n", projectID, mrIID)
+		}
+	},
+}
+
+var gitlabMRReactCmd = &cobra.Command{
+	Use:   "react <project!iid> <emoji>",
+	Short: "Add a reaction to a merge request or comment",
+	Long: `Add an emoji reaction to a merge request or a specific comment.
+
+Use the canonical reference format: project!iid
+
+By default, the reaction is added to the merge request itself.
+Use --note to react to a specific comment instead.
+
+Common emojis: thumbsup, thumbsdown, heart, tada, smile, rocket, eyes
+
+Examples:
+  dex gl mr react project!123 thumbsup
+  dex gl mr react project!123 heart
+  dex gl mr react project!123 thumbsup --note 456`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		noteID, _ := cmd.Flags().GetInt("note")
+
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
 			os.Exit(1)
 		}
 
-		fmt.Printf("Comment added to %s!%d\n", projectID, mrIID)
+		emoji := args[1]
+		// Remove colons if user included them (e.g., :thumbsup:)
+		emoji = strings.Trim(emoji, ":")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if noteID > 0 {
+			// React to a specific note/comment
+			if err := client.CreateMergeRequestNoteReaction(projectID, mrIID, noteID, emoji); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add reaction: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Added :%s: to note %d on %s!%d\n", emoji, noteID, projectID, mrIID)
+		} else {
+			// React to the MR itself
+			if err := client.CreateMergeRequestReaction(projectID, mrIID, emoji); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add reaction: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Added :%s: to %s!%d\n", emoji, projectID, mrIID)
+		}
 	},
 }
 
@@ -671,6 +780,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRShowCmd)
 	gitlabMRCmd.AddCommand(gitlabMROpenCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
+	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
@@ -688,6 +798,12 @@ func init() {
 	gitlabMRLsCmd.Flags().Bool("conflicts-only", false, "Only show MRs with merge conflicts")
 
 	gitlabMRShowCmd.Flags().Bool("show-diff", false, "Show file diffs")
+
+	gitlabMRCommentCmd.Flags().String("reply-to", "", "Reply to an existing discussion thread (discussion ID)")
+	gitlabMRCommentCmd.Flags().String("file", "", "File path for inline comment")
+	gitlabMRCommentCmd.Flags().Int("line", 0, "Line number for inline comment")
+
+	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration

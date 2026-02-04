@@ -96,7 +96,7 @@ dex gl mr ls --include-wip           # Include WIP/draft MRs
 dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
 
 # Show MR details (use project!iid format)
-dex gl mr show <project!iid>         # Show full MR details
+dex gl mr show <project!iid>         # Show full MR details with discussion IDs
 dex gl mr show sre/helm!2903         # Example
 dex gl mr show sre/helm!2903 --show-diff  # Include file diffs in output
 
@@ -108,6 +108,20 @@ dex gl mr open sbf/services!2483     # Example
 dex gl mr comment <project!iid> "message"  # Add a comment
 dex gl mr comment sbf/services!2483 "LGTM"  # Example
 echo "Long comment" | dex gl mr comment sbf/services!2483 -  # From stdin
+
+# Reply to discussion thread (use discussion ID from mr show output)
+dex gl mr comment <project!iid> "reply" --reply-to <discussion-id>
+dex gl mr comment proj!123 "Fixed!" --reply-to abc123def456...
+
+# Add inline comment on file/line
+dex gl mr comment <project!iid> "comment" --file <path> --line <n>
+dex gl mr comment proj!123 "Use a constant" --file src/main.go --line 42
+
+# Add emoji reaction to MR or comment
+dex gl mr react <project!iid> <emoji>           # React to MR
+dex gl mr react proj!123 thumbsup               # Example
+dex gl mr react proj!123 :heart:                # Colons optional
+dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
 ```
 
 ## Jira (`dex jira`)

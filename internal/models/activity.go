@@ -70,9 +70,10 @@ type MergeRequestDetail struct {
 	Reviewers    []string
 	Approvers    []string
 	Changes      MergeRequestChanges
-	Commits      []MRCommit // populated on detail view
-	Files        []MRFile   // populated on detail view
-	Notes        []MRNote   // populated on detail view
+	Commits     []MRCommit     // populated on detail view
+	Files       []MRFile       // populated on detail view
+	Notes       []MRNote       // populated on detail view (flat list for backwards compat)
+	Discussions []MRDiscussion // populated on detail view (threaded discussions)
 }
 
 // MergeRequestChanges contains diff statistics
@@ -104,11 +105,37 @@ type MRFile struct {
 
 // MRNote represents a comment/note on a merge request
 type MRNote struct {
-	ID        int
-	Body      string
-	Author    string
-	CreatedAt time.Time
-	System    bool // true for system-generated notes (e.g., "mentioned in commit")
+	ID           int
+	DiscussionID string // ID of the discussion thread this note belongs to
+	Body         string
+	Author       string
+	CreatedAt    time.Time
+	System       bool           // true for system-generated notes (e.g., "mentioned in commit")
+	Resolvable   bool           // true for notes that can be resolved (e.g., inline comments)
+	Resolved     bool           // true if the note has been resolved
+	Position     *NotePosition  // position info for inline comments (nil for regular comments)
+}
+
+// NotePosition contains position information for inline/diff comments
+type NotePosition struct {
+	NewPath string // file path in the new version
+	OldPath string // file path in the old version
+	NewLine int    // line number in new version (0 if not applicable)
+	OldLine int    // line number in old version (0 if not applicable)
+}
+
+// MRDiscussion represents a discussion thread on a merge request
+type MRDiscussion struct {
+	ID             string   // discussion ID (used for replies)
+	IndividualNote bool     // true if this is a single note, not a thread
+	Notes          []MRNote // notes in this discussion thread
+}
+
+// MRDiffVersion contains version info for creating inline comments
+type MRDiffVersion struct {
+	HeadCommitSHA  string
+	BaseCommitSHA  string
+	StartCommitSHA string
 }
 
 type Tag struct {

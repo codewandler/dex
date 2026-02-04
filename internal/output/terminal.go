@@ -504,30 +504,126 @@ func PrintMergeRequestDetails(mr *models.MergeRequestDetail) {
 		}
 	}
 
-	// Notes/Comments (filter out system notes)
-	var userNotes []models.MRNote
-	for _, n := range mr.Notes {
-		if !n.System {
-			userNotes = append(userNotes, n)
+	// Discussions/Comments (prefer threaded discussions if available)
+	if len(mr.Discussions) > 0 {
+		PrintMergeRequestDiscussions(mr.Discussions)
+	} else if len(mr.Notes) > 0 {
+		// Fall back to flat notes for backwards compatibility
+		var userNotes []models.MRNote
+		for _, n := range mr.Notes {
+			if !n.System {
+				userNotes = append(userNotes, n)
+			}
 		}
-	}
-	if len(userNotes) > 0 {
-		fmt.Println()
-		sectionColor.Printf("  Comments (%d):\n", len(userNotes))
-		for _, n := range userNotes {
+		if len(userNotes) > 0 {
 			fmt.Println()
-			labelColor.Printf("    %s ", n.Author)
-			dimColor.Printf("(%s):\n", timeAgo(n.CreatedAt))
-			// Render markdown
-			rendered := renderMarkdown(n.Body)
-			// Indent each line
-			for _, line := range strings.Split(rendered, "\n") {
-				fmt.Printf("    %s\n", line)
+			sectionColor.Printf("  Comments (%d):\n", len(userNotes))
+			for _, n := range userNotes {
+				fmt.Println()
+				labelColor.Printf("    %s ", n.Author)
+				dimColor.Printf("(%s):\n", timeAgo(n.CreatedAt))
+				// Render markdown
+				rendered := renderMarkdown(n.Body)
+				// Indent each line
+				for _, line := range strings.Split(rendered, "\n") {
+					fmt.Printf("    %s\n", line)
+				}
 			}
 		}
 	}
 
 	fmt.Println()
+}
+
+// PrintMergeRequestDiscussions displays discussion threads with IDs for easy reference
+func PrintMergeRequestDiscussions(discussions []models.MRDiscussion) {
+	// Count non-system discussions
+	var userDiscussions []models.MRDiscussion
+	for _, d := range discussions {
+		hasUserNotes := false
+		for _, n := range d.Notes {
+			if !n.System {
+				hasUserNotes = true
+				break
+			}
+		}
+		if hasUserNotes {
+			userDiscussions = append(userDiscussions, d)
+		}
+	}
+
+	if len(userDiscussions) == 0 {
+		return
+	}
+
+	fmt.Println()
+	sectionColor.Printf("  Comments (%d):\n", len(userDiscussions))
+
+	for _, d := range userDiscussions {
+		fmt.Println()
+		for i, n := range d.Notes {
+			if n.System {
+				continue
+			}
+
+			// Build the prefix showing discussion ID, note ID, and optional position
+			var prefix string
+			if i == 0 {
+				// First note in thread - show full discussion ID (needed for replies)
+				prefix = dimColor.Sprintf("[d:%s] ", d.ID)
+			} else {
+				// Reply - show thread indent
+				prefix = "    └─ "
+			}
+
+			// Note ID
+			noteIDStr := dimColor.Sprintf("[n:%d] ", n.ID)
+
+			// Position info for inline comments
+			posStr := ""
+			if n.Position != nil {
+				path := n.Position.NewPath
+				if path == "" {
+					path = n.Position.OldPath
+				}
+				line := n.Position.NewLine
+				if line == 0 {
+					line = n.Position.OldLine
+				}
+				if path != "" && line > 0 {
+					posStr = sectionColor.Sprintf("[%s:%d] ", path, line)
+				}
+			}
+
+			// Resolved indicator
+			resolvedStr := ""
+			if n.Resolvable && n.Resolved {
+				resolvedStr = mrMergedColor.Sprint("✓ ")
+			}
+
+			// Author and time
+			authorTime := fmt.Sprintf("%s (%s):", n.Author, timeAgo(n.CreatedAt))
+
+			// Print header line
+			if i == 0 {
+				fmt.Printf("    %s%s%s%s", prefix, noteIDStr, posStr, resolvedStr)
+				labelColor.Printf("%s\n", authorTime)
+			} else {
+				fmt.Printf("    %s%s%s", prefix, noteIDStr, resolvedStr)
+				labelColor.Printf("%s\n", authorTime)
+			}
+
+			// Render and print body
+			rendered := renderMarkdown(n.Body)
+			indent := "    "
+			if i > 0 {
+				indent = "       " // extra indent for replies
+			}
+			for _, line := range strings.Split(rendered, "\n") {
+				fmt.Printf("%s%s\n", indent, line)
+			}
+		}
+	}
 }
 
 // printMRFile displays a single file change with optional diff
