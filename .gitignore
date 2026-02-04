@@ -2,8 +2,13 @@
 *.iml
 .idea/
 
-# Binary
-dev-activity
+# Build output
+/bin/
+/dex
+/dev-activity
+
+# Task
+.task/
 
 # Environment
 .env
