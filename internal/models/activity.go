@@ -12,6 +12,31 @@ type Commit struct {
 	WebURL      string
 }
 
+// CommitDetail contains full commit information including the body/message
+type CommitDetail struct {
+	ID             string
+	ShortID        string
+	Title          string
+	Message        string // Full commit message including body
+	AuthorName     string
+	AuthorEmail    string
+	CommitterName  string
+	CommitterEmail string
+	CreatedAt      time.Time
+	CommittedAt    time.Time
+	WebURL         string
+	ProjectPath    string
+	Stats          CommitStats
+	ParentIDs      []string
+}
+
+// CommitStats contains addition/deletion statistics
+type CommitStats struct {
+	Additions int
+	Deletions int
+	Total     int
+}
+
 type MergeRequest struct {
 	IID       int
 	Title     string

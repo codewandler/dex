@@ -157,6 +157,51 @@ var gitlabProjCmd = &cobra.Command{
 	Long:  `Commands for listing and managing GitLab projects.`,
 }
 
+var gitlabCommitCmd = &cobra.Command{
+	Use:   "commit",
+	Short: "Commit commands",
+	Long:  `Commands for viewing GitLab commits.`,
+}
+
+var gitlabCommitShowCmd = &cobra.Command{
+	Use:   "show <project> <sha>",
+	Short: "Show commit details",
+	Long: `Display detailed information about a specific commit.
+
+The commit SHA can be a full or short hash.
+
+Examples:
+  dex gl commit show 742 95a1e625
+  dex gl commit show sre/mysql-mcp-wrapper 95a1e625
+  dex gl commit show mygroup/myproject abc123def`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		sha := args[1]
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		commit, err := client.GetCommit(projectID, sha)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get commit: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintCommitDetails(commit)
+	},
+}
+
 var gitlabProjLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List GitLab projects",
@@ -343,9 +388,12 @@ func init() {
 	gitlabCmd.AddCommand(gitlabActivityCmd)
 	gitlabCmd.AddCommand(gitlabIndexCmd)
 	gitlabCmd.AddCommand(gitlabProjCmd)
+	gitlabCmd.AddCommand(gitlabCommitCmd)
 
 	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
 	gitlabProjCmd.AddCommand(gitlabShowCmd)
+
+	gitlabCommitCmd.AddCommand(gitlabCommitShowCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")

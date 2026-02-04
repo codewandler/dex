@@ -344,3 +344,43 @@ func formatVisibility(visibility string) string {
 		return fmt.Sprintf("%-12s", visibility)
 	}
 }
+
+// PrintCommitDetails displays full commit information
+func PrintCommitDetails(c *models.CommitDetail) {
+	line := strings.Repeat("═", 60)
+	fmt.Println()
+	headerColor.Println(line)
+	commitColor.Printf("  Commit %s\n", c.ShortID)
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Basic info
+	printField("SHA", c.ID)
+	printField("Author", fmt.Sprintf("%s <%s>", c.AuthorName, c.AuthorEmail))
+	if c.CommitterName != c.AuthorName {
+		printField("Committer", fmt.Sprintf("%s <%s>", c.CommitterName, c.CommitterEmail))
+	}
+	printField("Date", formatTimestamp(c.CreatedAt))
+	if c.WebURL != "" {
+		printField("URL", c.WebURL)
+	}
+	fmt.Println()
+
+	// Stats
+	if c.Stats.Total > 0 {
+		statsStr := fmt.Sprintf("+%d/-%d (%d total)", c.Stats.Additions, c.Stats.Deletions, c.Stats.Total)
+		printField("Changes", statsStr)
+		fmt.Println()
+	}
+
+	// Title and message
+	sectionColor.Println("  Message:")
+	fmt.Println()
+
+	// Print the full message, indented
+	lines := strings.Split(strings.TrimSpace(c.Message), "\n")
+	for _, line := range lines {
+		fmt.Printf("    %s\n", line)
+	}
+	fmt.Println()
+}

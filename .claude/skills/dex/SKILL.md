@@ -1,3 +1,9 @@
+---
+name: dex
+description: Run dex CLI commands for Kubernetes, GitLab, and Jira operations
+user-invocable: true
+---
+
 # dex - Engineer's CLI Tool
 
 Use `dex` for Kubernetes, GitLab, and Jira operations. Run commands via Bash tool.
@@ -65,6 +71,13 @@ dex gl proj ls -n 50              # List 50 projects
 dex gl proj ls --sort name        # Sort by name (also: created, activity, path)
 dex gl proj ls --no-cache         # Fetch from API
 dex gl proj show <id|path>        # Show project details
+```
+
+### Commits
+```bash
+dex gl commit show <project> <sha>   # Show full commit details (message body, stats)
+dex gl commit show 742 95a1e625      # By project ID
+dex gl commit show group/proj abc123 # By project path
 ```
 
 ## Jira (`dex jira`)
