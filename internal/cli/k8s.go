@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,48 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 )
+
+// logsFilter holds compiled regex patterns for filtering log lines
+type logsFilter struct {
+	include *regexp.Regexp
+	exclude *regexp.Regexp
+}
+
+// parseK8sDuration parses human-readable durations like "1h", "30m", "1d", "2h30m"
+func parseK8sDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return 0, nil
+	}
+
+	// Handle days (not supported by time.ParseDuration)
+	if strings.Contains(s, "d") {
+		// Split by 'd' and handle days separately
+		parts := strings.SplitN(s, "d", 2)
+		days := 0
+		if parts[0] != "" {
+			d, err := strconv.Atoi(parts[0])
+			if err != nil {
+				return 0, fmt.Errorf("invalid duration: %s", s)
+			}
+			days = d
+		}
+		duration := time.Duration(days) * 24 * time.Hour
+
+		// Parse remaining part (e.g., "2h30m" from "1d2h30m")
+		if len(parts) > 1 && parts[1] != "" {
+			rest, err := time.ParseDuration(parts[1])
+			if err != nil {
+				return 0, fmt.Errorf("invalid duration: %s", s)
+			}
+			duration += rest
+		}
+		return duration, nil
+	}
+
+	// Try standard duration parsing (handles h, m, s)
+	return time.ParseDuration(s)
+}
 
 var (
 	k8sHeaderColor  = color.New(color.FgCyan, color.Bold)
@@ -361,8 +405,12 @@ Examples:
   dex k8s pod logs my-pod              # Stream logs (all containers)
   dex k8s pod logs my-pod -f           # Follow logs
   dex k8s pod logs my-pod --tail 100   # Last 100 lines
+  dex k8s pod logs my-pod --since 1h   # Logs from last hour
+  dex k8s pod logs my-pod --since 30m  # Logs from last 30 minutes
   dex k8s pod logs my-pod -c nginx     # Specific container
-  dex k8s pod logs my-pod -p           # Previous container`,
+  dex k8s pod logs my-pod -p           # Previous container
+  dex k8s pod logs my-pod -i "error"   # Only lines matching regex
+  dex k8s pod logs my-pod -e "debug"   # Exclude lines matching regex`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completePodNames,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -371,7 +419,40 @@ Examples:
 		follow, _ := cmd.Flags().GetBool("follow")
 		tail, _ := cmd.Flags().GetInt64("tail")
 		previous, _ := cmd.Flags().GetBool("previous")
+		sinceStr, _ := cmd.Flags().GetString("since")
+		includeStr, _ := cmd.Flags().GetString("include")
+		excludeStr, _ := cmd.Flags().GetString("exclude")
 		name := args[0]
+
+		// Parse since duration
+		var sinceSeconds int64
+		if sinceStr != "" {
+			duration, err := parseK8sDuration(sinceStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid since duration: %v\n", err)
+				os.Exit(1)
+			}
+			sinceSeconds = int64(duration.Seconds())
+		}
+
+		// Compile regex filters
+		var filter logsFilter
+		if includeStr != "" {
+			re, err := regexp.Compile(includeStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid include regex: %v\n", err)
+				os.Exit(1)
+			}
+			filter.include = re
+		}
+		if excludeStr != "" {
+			re, err := regexp.Compile(excludeStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid exclude regex: %v\n", err)
+				os.Exit(1)
+			}
+			filter.exclude = re
+		}
 
 		client, err := k8s.NewClient(namespace)
 		if err != nil {
@@ -409,7 +490,7 @@ Examples:
 
 		// Single container: stream directly without prefix
 		if len(containers) == 1 {
-			streamContainerLogs(client, streamCtx, name, containers[0], tail, follow, previous, "", nil)
+			streamContainerLogs(client, streamCtx, name, containers[0], tail, sinceSeconds, follow, previous, "", nil, filter)
 			return
 		}
 
@@ -430,19 +511,20 @@ Examples:
 			containerColor := colors[i%len(colors)]
 			go func(containerName string, clr *color.Color) {
 				defer wg.Done()
-				streamContainerLogs(client, streamCtx, name, containerName, tail, follow, previous, containerName, &mu)
+				streamContainerLogs(client, streamCtx, name, containerName, tail, sinceSeconds, follow, previous, containerName, &mu, filter)
 			}(c, containerColor)
 		}
 		wg.Wait()
 	},
 }
 
-func streamContainerLogs(client *k8s.Client, ctx context.Context, podName, containerName string, tail int64, follow, previous bool, prefix string, mu *sync.Mutex) {
+func streamContainerLogs(client *k8s.Client, ctx context.Context, podName, containerName string, tail, sinceSeconds int64, follow, previous bool, prefix string, mu *sync.Mutex, filter logsFilter) {
 	stream, err := client.GetPodLogs(ctx, podName, k8s.PodLogsOptions{
-		Container: containerName,
-		Follow:    follow,
-		TailLines: tail,
-		Previous:  previous,
+		Container:    containerName,
+		Follow:       follow,
+		TailLines:    tail,
+		SinceSeconds: sinceSeconds,
+		Previous:     previous,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting logs for %s: %v\n", containerName, err)
@@ -450,19 +532,15 @@ func streamContainerLogs(client *k8s.Client, ctx context.Context, podName, conta
 	}
 	defer stream.Close()
 
-	// No prefix: stream raw
-	if prefix == "" {
+	// No prefix and no filter: stream raw
+	if prefix == "" && filter.include == nil && filter.exclude == nil {
 		io.Copy(os.Stdout, stream)
 		return
 	}
 
-	// With prefix: read line by line
-	colors := map[string]*color.Color{
-		"container-0": color.New(color.FgCyan),
-	}
-	clr, ok := colors[prefix]
-	if !ok {
-		// Assign color based on hash of name
+	// Determine color for prefix
+	var clr *color.Color
+	if prefix != "" {
 		colorList := []*color.Color{
 			color.New(color.FgCyan),
 			color.New(color.FgYellow),
@@ -481,10 +559,21 @@ func streamContainerLogs(client *k8s.Client, ctx context.Context, podName, conta
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // Allow long lines
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// Apply filters
+		if filter.include != nil && !filter.include.MatchString(line) {
+			continue
+		}
+		if filter.exclude != nil && filter.exclude.MatchString(line) {
+			continue
+		}
+
 		if mu != nil {
 			mu.Lock()
 		}
-		clr.Printf("[%s] ", prefix)
+		if prefix != "" {
+			clr.Printf("[%s] ", prefix)
+		}
 		fmt.Println(line)
 		if mu != nil {
 			mu.Unlock()
@@ -854,7 +943,10 @@ func init() {
 	k8sPodLogsCmd.Flags().StringP("container", "c", "", "Container name (for multi-container pods)")
 	k8sPodLogsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	k8sPodLogsCmd.Flags().Int64("tail", 0, "Number of lines from end of logs (0 = all)")
+	k8sPodLogsCmd.Flags().StringP("since", "s", "", "Show logs since duration (e.g., 1h, 30m, 1d)")
 	k8sPodLogsCmd.Flags().BoolP("previous", "p", false, "Print logs from previous container instance")
+	k8sPodLogsCmd.Flags().StringP("include", "i", "", "Only show lines matching regex")
+	k8sPodLogsCmd.Flags().StringP("exclude", "e", "", "Exclude lines matching regex")
 	k8sPodLogsCmd.RegisterFlagCompletionFunc("container", completeContainerNames)
 
 	// Service commands

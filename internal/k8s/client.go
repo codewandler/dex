@@ -152,10 +152,11 @@ func (c *Client) GetService(ctx context.Context, name string) (*corev1.Service, 
 
 // PodLogsOptions configures the log stream
 type PodLogsOptions struct {
-	Container string
-	Follow    bool
-	TailLines int64
-	Previous  bool
+	Container    string
+	Follow       bool
+	TailLines    int64
+	Previous     bool
+	SinceSeconds int64
 }
 
 // GetPodLogs returns a stream of logs from a pod
@@ -168,6 +169,10 @@ func (c *Client) GetPodLogs(ctx context.Context, name string, opts PodLogsOption
 
 	if opts.TailLines > 0 {
 		podLogOpts.TailLines = &opts.TailLines
+	}
+
+	if opts.SinceSeconds > 0 {
+		podLogOpts.SinceSeconds = &opts.SinceSeconds
 	}
 
 	req := c.clientset.CoreV1().Pods(c.namespace).GetLogs(name, podLogOpts)
