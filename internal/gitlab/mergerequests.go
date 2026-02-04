@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"fmt"
 	"time"
 
 	"dev-activity/internal/models"
@@ -156,4 +157,73 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 	}
 
 	return allMRs, nil
+}
+
+// GetMergeRequest fetches a single merge request with full details
+func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.MergeRequestDetail, error) {
+	m, _, err := c.gl.MergeRequests.GetMergeRequest(projectID, mrIID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	mr := &models.MergeRequestDetail{
+		IID:          m.IID,
+		Title:        m.Title,
+		Description:  m.Description,
+		State:        m.State,
+		WebURL:       m.WebURL,
+		SourceBranch: m.SourceBranch,
+		TargetBranch: m.TargetBranch,
+		Draft:        m.Draft,
+		MergeStatus:  m.MergeStatus,
+		HasConflicts: m.HasConflicts,
+	}
+
+	if m.Author != nil {
+		mr.Author = m.Author.Username
+	}
+	if m.CreatedAt != nil {
+		mr.CreatedAt = *m.CreatedAt
+	}
+	if m.UpdatedAt != nil {
+		mr.UpdatedAt = *m.UpdatedAt
+	}
+	if m.MergedAt != nil {
+		mr.MergedAt = m.MergedAt
+	}
+	if m.MergedBy != nil {
+		mr.MergedBy = m.MergedBy.Username
+	}
+	if m.References != nil {
+		mr.ProjectPath = m.References.Full
+	}
+
+	// Labels
+	for _, label := range m.Labels {
+		mr.Labels = append(mr.Labels, label)
+	}
+
+	// Assignees
+	if m.Assignees != nil {
+		for _, a := range m.Assignees {
+			mr.Assignees = append(mr.Assignees, a.Username)
+		}
+	}
+
+	// Reviewers
+	if m.Reviewers != nil {
+		for _, r := range m.Reviewers {
+			mr.Reviewers = append(mr.Reviewers, r.Username)
+		}
+	}
+
+	// Changes stats - ChangesCount is a string in the API
+	if m.ChangesCount != "" {
+		// Parse changes count
+		var count int
+		fmt.Sscanf(m.ChangesCount, "%d", &count)
+		mr.Changes.Files = count
+	}
+
+	return mr, nil
 }

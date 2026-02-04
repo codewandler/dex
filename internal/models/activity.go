@@ -51,11 +51,13 @@ type MergeRequest struct {
 type MergeRequestDetail struct {
 	IID          int
 	Title        string
+	Description  string
 	State        string
 	Author       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	MergedAt     *time.Time
+	MergedBy     string
 	WebURL       string
 	SourceBranch string
 	TargetBranch string
@@ -63,6 +65,18 @@ type MergeRequestDetail struct {
 	Draft        bool
 	MergeStatus  string
 	HasConflicts bool
+	Labels       []string
+	Assignees    []string
+	Reviewers    []string
+	Approvers    []string
+	Changes      MergeRequestChanges
+}
+
+// MergeRequestChanges contains diff statistics
+type MergeRequestChanges struct {
+	Additions int
+	Deletions int
+	Files     int
 }
 
 type Tag struct {

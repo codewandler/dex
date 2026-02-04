@@ -384,6 +384,76 @@ func PrintMergeRequestList(mrs []models.MergeRequestDetail) {
 	}
 }
 
+// PrintMergeRequestDetails displays full MR information
+func PrintMergeRequestDetails(mr *models.MergeRequestDetail) {
+	line := strings.Repeat("═", 70)
+	fmt.Println()
+	headerColor.Println(line)
+
+	// Title with state
+	stateStr := formatMRState(mr.State)
+	if mr.Draft {
+		stateStr = dimColor.Sprint("[DRAFT]") + " " + stateStr
+	}
+	projectColor.Printf("  %s %s\n", stateStr, mr.Title)
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Basic info
+	printField("Reference", mr.ProjectPath)
+	printField("URL", mr.WebURL)
+	printField("Author", mr.Author)
+	printField("Branches", fmt.Sprintf("%s → %s", mr.SourceBranch, mr.TargetBranch))
+	printField("Created", formatTimestamp(mr.CreatedAt))
+	printField("Updated", formatTimestamp(mr.UpdatedAt))
+
+	if mr.MergedAt != nil {
+		printField("Merged", formatTimestamp(*mr.MergedAt))
+		if mr.MergedBy != "" {
+			printField("Merged By", mr.MergedBy)
+		}
+	}
+
+	// Assignees
+	if len(mr.Assignees) > 0 {
+		printField("Assignees", strings.Join(mr.Assignees, ", "))
+	}
+
+	// Reviewers
+	if len(mr.Reviewers) > 0 {
+		printField("Reviewers", strings.Join(mr.Reviewers, ", "))
+	}
+
+	// Labels
+	if len(mr.Labels) > 0 {
+		printField("Labels", strings.Join(mr.Labels, ", "))
+	}
+
+	// Changes
+	if mr.Changes.Files > 0 {
+		printField("Changes", fmt.Sprintf("%d files", mr.Changes.Files))
+	}
+
+	// Conflicts warning
+	if mr.HasConflicts {
+		fmt.Println()
+		mrClosedColor.Printf("  ⚠ This merge request has conflicts that must be resolved\n")
+	}
+
+	// Description
+	if mr.Description != "" {
+		fmt.Println()
+		sectionColor.Println("  Description:")
+		fmt.Println()
+		lines := strings.Split(strings.TrimSpace(mr.Description), "\n")
+		for _, line := range lines {
+			fmt.Printf("    %s\n", line)
+		}
+	}
+
+	fmt.Println()
+}
+
 // PrintCommitDetails displays full commit information
 func PrintCommitDetails(c *models.CommitDetail) {
 	line := strings.Repeat("═", 60)

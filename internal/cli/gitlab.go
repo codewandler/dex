@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -223,6 +225,93 @@ Examples:
 		}
 
 		output.PrintMergeRequestList(mrs)
+	},
+}
+
+var gitlabMRShowCmd = &cobra.Command{
+	Use:   "show <project> <iid>",
+	Short: "Show merge request details",
+	Long: `Display detailed information about a specific merge request.
+
+Examples:
+  dex gl mr show 742 123
+  dex gl mr show sre/helmchart-prod-configs 2903
+  dex gl mr show group/project 456`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		mrIID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR IID: %v\n", err)
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		mr, err := client.GetMergeRequest(projectID, mrIID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintMergeRequestDetails(mr)
+	},
+}
+
+var gitlabMROpenCmd = &cobra.Command{
+	Use:   "open <project> <iid>",
+	Short: "Open merge request in browser",
+	Long: `Open a merge request in the default web browser.
+
+Examples:
+  dex gl mr open 742 123
+  dex gl mr open sre/helmchart-prod-configs 2903
+  dex gl mr open group/project 456`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		mrIID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR IID: %v\n", err)
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		mr, err := client.GetMergeRequest(projectID, mrIID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := openBrowser(mr.WebURL); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open browser: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Opening %s\n", mr.WebURL)
 	},
 }
 
@@ -447,6 +536,20 @@ func formatIndexAge(d time.Duration) string {
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
+// openBrowser opens the specified URL in the default browser
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default: // linux, freebsd, etc.
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
+}
+
 func init() {
 	gitlabCmd.AddCommand(gitlabActivityCmd)
 	gitlabCmd.AddCommand(gitlabIndexCmd)
@@ -460,6 +563,8 @@ func init() {
 	gitlabCommitCmd.AddCommand(gitlabCommitShowCmd)
 
 	gitlabMRCmd.AddCommand(gitlabMRLsCmd)
+	gitlabMRCmd.AddCommand(gitlabMRShowCmd)
+	gitlabMRCmd.AddCommand(gitlabMROpenCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")

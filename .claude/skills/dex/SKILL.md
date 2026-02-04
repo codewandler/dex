@@ -82,6 +82,7 @@ dex gl commit show group/proj abc123 # By project path
 
 ### Merge Requests
 ```bash
+# List MRs
 dex gl mr ls                         # List open MRs (excludes WIP/drafts)
 dex gl mr ls -n 50                   # List 50 MRs
 dex gl mr ls --state merged          # List merged MRs
@@ -91,6 +92,14 @@ dex gl mr ls --scope created_by_me   # MRs you created
 dex gl mr ls --scope assigned_to_me  # MRs assigned to you
 dex gl mr ls --include-wip           # Include WIP/draft MRs
 dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
+
+# Show MR details
+dex gl mr show <project> <iid>       # Show full MR details
+dex gl mr show sre/helm 2903         # Example with project path
+dex gl mr show 742 123               # Example with project ID
+
+# Open in browser
+dex gl mr open <project> <iid>       # Open MR in default browser
 ```
 
 ## Jira (`dex jira`)
