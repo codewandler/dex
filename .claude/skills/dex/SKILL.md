@@ -122,6 +122,10 @@ dex gl mr react <project!iid> <emoji>           # React to MR
 dex gl mr react proj!123 thumbsup               # Example
 dex gl mr react proj!123 :heart:                # Colons optional
 dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
+
+# Close MR
+dex gl mr close <project!iid>                   # Close a merge request
+dex gl mr close sre/helm!2903                   # Example
 ```
 
 ## Jira (`dex jira`)

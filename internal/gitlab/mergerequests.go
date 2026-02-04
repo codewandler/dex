@@ -488,3 +488,13 @@ func (c *Client) CreateMergeRequestNoteReaction(projectID any, mrIID int, noteID
 	_, _, err := c.gl.AwardEmoji.CreateMergeRequestAwardEmojiOnNote(projectID, mrIID, noteID, opts)
 	return err
 }
+
+// CloseMergeRequest closes a merge request
+func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
+	opts := &gitlab.UpdateMergeRequestOptions{
+		StateEvent: gitlab.Ptr("close"),
+	}
+
+	_, _, err := c.gl.MergeRequests.UpdateMergeRequest(projectID, mrIID, opts)
+	return err
+}

@@ -444,6 +444,46 @@ Examples:
 	},
 }
 
+var gitlabMRCloseCmd = &cobra.Command{
+	Use:   "close <project!iid>",
+	Short: "Close a merge request",
+	Long: `Close an open merge request.
+
+Use the canonical reference format: project!iid
+
+Examples:
+  dex gl mr close sre/helmchart-prod-configs!2903
+  dex gl mr close group/project!456`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.CloseMergeRequest(projectID, mrIID); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to close merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Closed %s!%d\n", projectID, mrIID)
+	},
+}
+
 var gitlabMRReactCmd = &cobra.Command{
 	Use:   "react <project!iid> <emoji>",
 	Short: "Add a reaction to a merge request or comment",
@@ -781,6 +821,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMROpenCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
 	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
+	gitlabMRCmd.AddCommand(gitlabMRCloseCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
