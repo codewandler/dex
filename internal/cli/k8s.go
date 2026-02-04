@@ -230,6 +230,152 @@ Examples:
 	},
 }
 
+var k8sPodShowCmd = &cobra.Command{
+	Use:   "show <name>",
+	Short: "Show pod details",
+	Long: `Display detailed information about a pod.
+
+Examples:
+  dex k8s pod show my-pod
+  dex k8s pod show my-pod -n kube-system`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completePodNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace, _ := cmd.Flags().GetString("namespace")
+		name := args[0]
+
+		client, err := k8s.NewClient(namespace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		pod, err := client.GetPod(ctx, name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		printPodDetails(pod)
+	},
+}
+
+func printPodDetails(pod *corev1.Pod) {
+	line := strings.Repeat("─", 80)
+	fmt.Println()
+	k8sHeaderColor.Printf("  Pod: %s\n", pod.Name)
+	fmt.Println("  " + line)
+	fmt.Println()
+
+	printK8sField("Namespace", pod.Namespace)
+	printK8sField("Status", string(pod.Status.Phase))
+	printK8sField("Node", pod.Spec.NodeName)
+	printK8sField("IP", pod.Status.PodIP)
+	printK8sField("Age", formatAge(pod.CreationTimestamp.Time))
+
+	if pod.Status.StartTime != nil {
+		printK8sField("Started", formatAge(pod.Status.StartTime.Time))
+	}
+
+	// Labels
+	if len(pod.Labels) > 0 {
+		fmt.Println()
+		k8sHeaderColor.Println("  Labels:")
+		for k, v := range pod.Labels {
+			fmt.Printf("    %s: %s\n", k, v)
+		}
+	}
+
+	// Containers
+	fmt.Println()
+	k8sHeaderColor.Printf("  Containers (%d):\n", len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		k8sNameColor.Printf("    %s\n", c.Name)
+		fmt.Printf("      Image: %s\n", c.Image)
+
+		// Find status for this container
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Name == c.Name {
+				ready := "No"
+				if cs.Ready {
+					ready = "Yes"
+				}
+				fmt.Printf("      Ready: %s, Restarts: %d\n", ready, cs.RestartCount)
+
+				if cs.State.Running != nil {
+					k8sStatusColor.Printf("      State: Running (since %s)\n", formatAge(cs.State.Running.StartedAt.Time))
+				} else if cs.State.Waiting != nil {
+					k8sErrorColor.Printf("      State: Waiting (%s)\n", cs.State.Waiting.Reason)
+				} else if cs.State.Terminated != nil {
+					k8sDimColor.Printf("      State: Terminated (%s)\n", cs.State.Terminated.Reason)
+				}
+				break
+			}
+		}
+
+		// Ports
+		if len(c.Ports) > 0 {
+			var ports []string
+			for _, p := range c.Ports {
+				ports = append(ports, fmt.Sprintf("%d/%s", p.ContainerPort, p.Protocol))
+			}
+			fmt.Printf("      Ports: %s\n", strings.Join(ports, ", "))
+		}
+	}
+
+	// Conditions
+	if len(pod.Status.Conditions) > 0 {
+		fmt.Println()
+		k8sHeaderColor.Println("  Conditions:")
+		for _, cond := range pod.Status.Conditions {
+			status := string(cond.Status)
+			statusColor := k8sDimColor
+			if status == "True" {
+				statusColor = k8sStatusColor
+			} else if status == "False" {
+				statusColor = k8sErrorColor
+			}
+			fmt.Printf("    %-20s ", cond.Type)
+			statusColor.Printf("%s\n", status)
+		}
+	}
+
+	fmt.Println()
+}
+
+func completePodNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	namespace, _ := cmd.Flags().GetString("namespace")
+	client, err := k8s.NewClient(namespace)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pods, err := client.ListPods(ctx, false)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+	for _, pod := range pods {
+		if strings.Contains(strings.ToLower(pod.Name), toCompleteLower) {
+			completions = append(completions, pod.Name+"\t"+string(pod.Status.Phase))
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 // Service commands
 var k8sSvcCmd = &cobra.Command{
 	Use:     "svc",
@@ -310,6 +456,145 @@ Examples:
 	},
 }
 
+var k8sSvcShowCmd = &cobra.Command{
+	Use:   "show <name>",
+	Short: "Show service details",
+	Long: `Display detailed information about a service.
+
+Examples:
+  dex k8s svc show my-service
+  dex k8s svc show my-service -n kube-system`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeServiceNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace, _ := cmd.Flags().GetString("namespace")
+		name := args[0]
+
+		client, err := k8s.NewClient(namespace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		svc, err := client.GetService(ctx, name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		printServiceDetails(svc)
+	},
+}
+
+func printServiceDetails(svc *corev1.Service) {
+	line := strings.Repeat("─", 80)
+	fmt.Println()
+	k8sHeaderColor.Printf("  Service: %s\n", svc.Name)
+	fmt.Println("  " + line)
+	fmt.Println()
+
+	printK8sField("Namespace", svc.Namespace)
+	printK8sField("Type", string(svc.Spec.Type))
+	printK8sField("Cluster IP", svc.Spec.ClusterIP)
+
+	if len(svc.Spec.ExternalIPs) > 0 {
+		printK8sField("External IPs", strings.Join(svc.Spec.ExternalIPs, ", "))
+	}
+
+	if svc.Spec.LoadBalancerIP != "" {
+		printK8sField("LoadBalancer IP", svc.Spec.LoadBalancerIP)
+	}
+
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		var ingresses []string
+		for _, ing := range svc.Status.LoadBalancer.Ingress {
+			if ing.Hostname != "" {
+				ingresses = append(ingresses, ing.Hostname)
+			} else if ing.IP != "" {
+				ingresses = append(ingresses, ing.IP)
+			}
+		}
+		if len(ingresses) > 0 {
+			printK8sField("Ingress", strings.Join(ingresses, ", "))
+		}
+	}
+
+	printK8sField("Age", formatAge(svc.CreationTimestamp.Time))
+
+	// Selector
+	if len(svc.Spec.Selector) > 0 {
+		fmt.Println()
+		k8sHeaderColor.Println("  Selector:")
+		for k, v := range svc.Spec.Selector {
+			fmt.Printf("    %s: %s\n", k, v)
+		}
+	}
+
+	// Ports
+	if len(svc.Spec.Ports) > 0 {
+		fmt.Println()
+		k8sHeaderColor.Printf("  Ports (%d):\n", len(svc.Spec.Ports))
+		for _, p := range svc.Spec.Ports {
+			k8sNameColor.Printf("    %s\n", p.Name)
+			fmt.Printf("      Port: %d\n", p.Port)
+			fmt.Printf("      Target: %s\n", p.TargetPort.String())
+			if p.NodePort > 0 {
+				fmt.Printf("      NodePort: %d\n", p.NodePort)
+			}
+			fmt.Printf("      Protocol: %s\n", p.Protocol)
+		}
+	}
+
+	// Labels
+	if len(svc.Labels) > 0 {
+		fmt.Println()
+		k8sHeaderColor.Println("  Labels:")
+		for k, v := range svc.Labels {
+			fmt.Printf("    %s: %s\n", k, v)
+		}
+	}
+
+	fmt.Println()
+}
+
+func completeServiceNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	namespace, _ := cmd.Flags().GetString("namespace")
+	client, err := k8s.NewClient(namespace)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	services, err := client.ListServices(ctx, false)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+	for _, svc := range services {
+		if strings.Contains(strings.ToLower(svc.Name), toCompleteLower) {
+			completions = append(completions, svc.Name+"\t"+string(svc.Spec.Type))
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+func printK8sField(label, value string) {
+	color.New(color.FgCyan).Printf("  %-16s ", label+":")
+	fmt.Println(value)
+}
+
 func formatPorts(ports []corev1.ServicePort) string {
 	if len(ports) == 0 {
 		return "<none>"
@@ -381,12 +666,16 @@ func init() {
 	// Pod commands
 	k8sCmd.AddCommand(k8sPodCmd)
 	k8sPodCmd.AddCommand(k8sPodLsCmd)
+	k8sPodCmd.AddCommand(k8sPodShowCmd)
 	k8sPodLsCmd.Flags().StringP("namespace", "n", "", "Namespace to list pods from")
 	k8sPodLsCmd.Flags().BoolP("all-namespaces", "A", false, "List pods from all namespaces")
+	k8sPodShowCmd.Flags().StringP("namespace", "n", "", "Namespace of the pod")
 
 	// Service commands
 	k8sCmd.AddCommand(k8sSvcCmd)
 	k8sSvcCmd.AddCommand(k8sSvcLsCmd)
+	k8sSvcCmd.AddCommand(k8sSvcShowCmd)
 	k8sSvcLsCmd.Flags().StringP("namespace", "n", "", "Namespace to list services from")
 	k8sSvcLsCmd.Flags().BoolP("all-namespaces", "A", false, "List services from all namespaces")
+	k8sSvcShowCmd.Flags().StringP("namespace", "n", "", "Namespace of the service")
 }

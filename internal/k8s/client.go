@@ -130,3 +130,21 @@ func (c *Client) ListServices(ctx context.Context, allNamespaces bool) ([]corev1
 func (c *Client) Namespace() string {
 	return c.namespace
 }
+
+// GetPod returns a single pod by name
+func (c *Client) GetPod(ctx context.Context, name string) (*corev1.Pod, error) {
+	pod, err := c.clientset.CoreV1().Pods(c.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod %s: %w", name, err)
+	}
+	return pod, nil
+}
+
+// GetService returns a single service by name
+func (c *Client) GetService(ctx context.Context, name string) (*corev1.Service, error) {
+	svc, err := c.clientset.CoreV1().Services(c.namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service %s: %w", name, err)
+	}
+	return svc, nil
+}
