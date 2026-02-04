@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/fatih/color"
 	gitlab "github.com/xanzy/go-gitlab"
+	"golang.org/x/term"
 )
 
 var (
@@ -21,11 +23,18 @@ var (
 	mrClosedColor = color.New(color.FgRed)
 	tagColor      = color.New(color.FgMagenta)
 	dimColor      = color.New(color.FgHiBlack)
+	linkColor     = color.New(color.FgCyan, color.Underline)
 )
 
 // hyperlink creates a clickable terminal hyperlink using OSC 8 escape sequence
+// Uses BEL (\a) as string terminator for wider terminal compatibility
+// Styled with underline and cyan color to indicate it's clickable
 func hyperlink(url, text string) string {
-	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+	styledText := linkColor.Sprint(text)
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return styledText
+	}
+	return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, styledText)
 }
 
 func PrintHeader(days int) {
