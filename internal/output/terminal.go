@@ -8,6 +8,7 @@ import (
 	"dev-activity/internal/models"
 
 	"github.com/fatih/color"
+	gitlab "github.com/xanzy/go-gitlab"
 )
 
 var (
@@ -259,4 +260,87 @@ func formatTimestamp(t time.Time) string {
 		return "unknown"
 	}
 	return fmt.Sprintf("%s (%s)", t.Format("2006-01-02 15:04"), timeAgo(t))
+}
+
+// PrintProjectListFromIndex prints projects from the local index
+func PrintProjectListFromIndex(projects []models.ProjectMetadata, indexedAt time.Time) {
+	if len(projects) == 0 {
+		dimColor.Println("No projects in index. Run 'dex gitlab index' first.")
+		return
+	}
+
+	line := strings.Repeat("═", 80)
+	fmt.Println()
+	headerColor.Println(line)
+	headerColor.Printf("  GitLab Projects (%d)", len(projects))
+	dimColor.Printf("  [indexed %s]\n", timeAgo(indexedAt))
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Print header row
+	fmt.Printf("  %-6s  %-40s  %-12s  %s\n",
+		"ID", "PATH", "VISIBILITY", "LAST ACTIVITY")
+	fmt.Printf("  %s\n", strings.Repeat("─", 76))
+
+	for _, p := range projects {
+		path := truncate(p.PathWithNS, 40)
+		visStr := formatVisibility(p.Visibility)
+
+		projectColor.Printf("  %-6d  ", p.ID)
+		fmt.Printf("%-40s  %s  ", path, visStr)
+		dimColor.Printf("%s\n", timeAgo(p.LastActivityAt))
+	}
+
+	fmt.Println()
+}
+
+// PrintProjectList prints a list of GitLab projects from the API
+func PrintProjectList(projects []*gitlab.Project) {
+	if len(projects) == 0 {
+		dimColor.Println("No projects found.")
+		return
+	}
+
+	line := strings.Repeat("═", 80)
+	fmt.Println()
+	headerColor.Println(line)
+	headerColor.Printf("  GitLab Projects (%d)\n", len(projects))
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Print header row
+	fmt.Printf("  %-6s  %-40s  %-12s  %s\n",
+		"ID", "PATH", "VISIBILITY", "LAST ACTIVITY")
+	fmt.Printf("  %s\n", strings.Repeat("─", 76))
+
+	for _, p := range projects {
+		path := truncate(p.PathWithNamespace, 40)
+		visStr := formatVisibility(string(p.Visibility))
+
+		var lastActivity string
+		if p.LastActivityAt != nil {
+			lastActivity = timeAgo(*p.LastActivityAt)
+		} else {
+			lastActivity = "unknown"
+		}
+
+		projectColor.Printf("  %-6d  ", p.ID)
+		fmt.Printf("%-40s  %s  ", path, visStr)
+		dimColor.Printf("%s\n", lastActivity)
+	}
+
+	fmt.Println()
+}
+
+func formatVisibility(visibility string) string {
+	switch visibility {
+	case "public":
+		return color.GreenString("%-12s", "public")
+	case "internal":
+		return color.YellowString("%-12s", "internal")
+	case "private":
+		return color.RedString("%-12s", "private")
+	default:
+		return fmt.Sprintf("%-12s", visibility)
+	}
 }

@@ -20,9 +20,10 @@ import (
 const maxConcurrentProjects = 10
 
 var gitlabCmd = &cobra.Command{
-	Use:   "gitlab",
-	Short: "GitLab activity and management",
-	Long:  `Commands for interacting with GitLab repositories and activity.`,
+	Use:     "gl",
+	Aliases: []string{"gitlab"},
+	Short:   "GitLab activity and management",
+	Long:    `Commands for interacting with GitLab repositories and activity.`,
 }
 
 var gitlabActivityCmd = &cobra.Command{
@@ -150,6 +151,96 @@ Examples:
 	},
 }
 
+var gitlabProjCmd = &cobra.Command{
+	Use:   "proj",
+	Short: "Project management commands",
+	Long:  `Commands for listing and managing GitLab projects.`,
+}
+
+var gitlabProjLsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "List GitLab projects",
+	Long: `List GitLab projects with configurable sorting and limits.
+
+Uses the local index for instant results. Run 'dex gl index' first to populate.
+
+Sort options:
+  created    - Sort by creation date
+  activity   - Sort by last activity (default)
+  name       - Sort by project name
+  path       - Sort by project path
+
+Examples:
+  dex gl proj ls                      # List 20 projects by last activity
+  dex gl proj ls -n 50                # List 50 projects
+  dex gl proj ls --sort name          # Sort by name ascending
+  dex gl proj ls --sort created -d    # Sort by creation date descending
+  dex gl proj ls --no-cache           # Fetch from API instead of index`,
+	Run: func(cmd *cobra.Command, args []string) {
+		limit, _ := cmd.Flags().GetInt("limit")
+		sortField, _ := cmd.Flags().GetString("sort")
+		desc, _ := cmd.Flags().GetBool("desc")
+		noCache, _ := cmd.Flags().GetBool("no-cache")
+
+		// Map sort field names to API values
+		orderBy := "last_activity_at"
+		switch sortField {
+		case "created":
+			orderBy = "created_at"
+		case "activity":
+			orderBy = "last_activity_at"
+		case "name":
+			orderBy = "name"
+		case "path":
+			orderBy = "path"
+		}
+
+		// Default sort direction based on field
+		sortDir := "asc"
+		if sortField == "created" || sortField == "activity" || sortField == "" {
+			sortDir = "desc" // Dates default to descending (newest first)
+		}
+		if desc {
+			sortDir = "desc"
+		}
+
+		// Try index first unless --no-cache
+		if !noCache {
+			idx, err := gitlab.LoadIndex()
+			if err == nil && len(idx.Projects) > 0 {
+				projects := idx.ListProjects(orderBy, sortDir, limit)
+				output.PrintProjectListFromIndex(projects, idx.LastFullIndexAt)
+				return
+			}
+		}
+
+		// Fall back to API
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		projects, err := client.ListProjects(gitlab.ListProjectsOptions{
+			Limit:   limit,
+			OrderBy: orderBy,
+			Sort:    sortDir,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list projects: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintProjectList(projects)
+	},
+}
+
 var gitlabShowCmd = &cobra.Command{
 	Use:   "show <id|path>",
 	Short: "Show project details",
@@ -159,11 +250,12 @@ Looks up in local cache first, falls back to API if not found.
 When fetched from API, the project is added to the cache.
 
 Examples:
-  dex gitlab show 123                    # By project ID
-  dex gitlab show group/project          # By path
-  dex gitlab show group/sub/project      # Nested groups
-  dex gitlab show myproject --no-cache   # Always fetch from API`,
-	Args: cobra.ExactArgs(1),
+  dex gl proj show 123                    # By project ID
+  dex gl proj show group/project          # By path
+  dex gl proj show group/sub/project      # Nested groups
+  dex gl proj show myproject --no-cache   # Always fetch from API`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectNames,
 	Run: func(cmd *cobra.Command, args []string) {
 		noCache, _ := cmd.Flags().GetBool("no-cache")
 		idOrPath := args[0]
@@ -212,6 +304,31 @@ Examples:
 	},
 }
 
+// completeProjectNames provides shell completion for project names from the index
+func completeProjectNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Only complete first argument
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	idx, err := gitlab.LoadIndex()
+	if err != nil || len(idx.Projects) == 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+
+	for _, p := range idx.Projects {
+		// Match against path (most common use case)
+		if strings.Contains(strings.ToLower(p.PathWithNS), toCompleteLower) {
+			completions = append(completions, p.PathWithNS+"\t"+p.Name)
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 func formatIndexAge(d time.Duration) string {
 	if d < time.Hour {
 		return fmt.Sprintf("%dm", int(d.Minutes()))
@@ -225,11 +342,19 @@ func formatIndexAge(d time.Duration) string {
 func init() {
 	gitlabCmd.AddCommand(gitlabActivityCmd)
 	gitlabCmd.AddCommand(gitlabIndexCmd)
-	gitlabCmd.AddCommand(gitlabShowCmd)
+	gitlabCmd.AddCommand(gitlabProjCmd)
+
+	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
+	gitlabProjCmd.AddCommand(gitlabShowCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	gitlabShowCmd.Flags().Bool("no-cache", false, "Always fetch from API, don't use cache")
+
+	gitlabProjLsCmd.Flags().IntP("limit", "n", 20, "Number of projects to list (0 = all)")
+	gitlabProjLsCmd.Flags().StringP("sort", "s", "activity", "Sort by: created, activity, name, path")
+	gitlabProjLsCmd.Flags().BoolP("desc", "d", false, "Sort descending (default for dates, ascending for names)")
+	gitlabProjLsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration

@@ -94,3 +94,58 @@ func (idx *GitLabIndex) UpsertProject(p ProjectMetadata) {
 		idx.ProjectsByPath[p.PathWithNS] = i
 	}
 }
+
+// ListProjects returns projects sorted by the given field with optional limit
+func (idx *GitLabIndex) ListProjects(orderBy, sortDir string, limit int) []ProjectMetadata {
+	if len(idx.Projects) == 0 {
+		return nil
+	}
+
+	// Make a copy to sort
+	projects := make([]ProjectMetadata, len(idx.Projects))
+	copy(projects, idx.Projects)
+
+	// Sort based on field
+	switch orderBy {
+	case "name":
+		if sortDir == "desc" {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.Name > b.Name })
+		} else {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.Name < b.Name })
+		}
+	case "path":
+		if sortDir == "desc" {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.PathWithNS > b.PathWithNS })
+		} else {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.PathWithNS < b.PathWithNS })
+		}
+	case "created_at":
+		// Index doesn't store created_at, fall back to last_activity
+		fallthrough
+	case "last_activity_at":
+		fallthrough
+	default:
+		if sortDir == "asc" {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.LastActivityAt.Before(b.LastActivityAt) })
+		} else {
+			sortBy(projects, func(a, b ProjectMetadata) bool { return a.LastActivityAt.After(b.LastActivityAt) })
+		}
+	}
+
+	// Apply limit
+	if limit > 0 && limit < len(projects) {
+		projects = projects[:limit]
+	}
+
+	return projects
+}
+
+func sortBy(projects []ProjectMetadata, less func(a, b ProjectMetadata) bool) {
+	for i := 0; i < len(projects)-1; i++ {
+		for j := i + 1; j < len(projects); j++ {
+			if less(projects[j], projects[i]) {
+				projects[i], projects[j] = projects[j], projects[i]
+			}
+		}
+	}
+}
