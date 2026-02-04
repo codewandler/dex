@@ -345,6 +345,45 @@ func formatVisibility(visibility string) string {
 	}
 }
 
+// PrintMergeRequestList prints a list of merge requests
+func PrintMergeRequestList(mrs []models.MergeRequestDetail) {
+	if len(mrs) == 0 {
+		dimColor.Println("No merge requests found.")
+		return
+	}
+
+	line := strings.Repeat("═", 90)
+	fmt.Println()
+	headerColor.Println(line)
+	headerColor.Printf("  Merge Requests (%d)\n", len(mrs))
+	headerColor.Println(line)
+	fmt.Println()
+
+	for _, mr := range mrs {
+		// First line: state + project path + MR IID + title
+		stateStr := formatMRState(mr.State)
+		if mr.Draft {
+			stateStr = dimColor.Sprint("[DRAFT]") + " " + stateStr
+		}
+
+		// Extract just the key part (e.g., "group/project!123")
+		projectColor.Printf("  %s ", stateStr)
+		fmt.Printf("%s\n", truncate(mr.Title, 70))
+
+		// Second line: project, branches, author, time
+		dimColor.Printf("    %s  ", mr.ProjectPath)
+		sectionColor.Printf("%s → %s", mr.SourceBranch, mr.TargetBranch)
+		dimColor.Printf("  by %s  %s\n", mr.Author, timeAgo(mr.UpdatedAt))
+
+		// Third line: conflicts or merge status if relevant
+		if mr.HasConflicts {
+			mrClosedColor.Printf("    ⚠ Has conflicts\n")
+		}
+
+		fmt.Println()
+	}
+}
+
 // PrintCommitDetails displays full commit information
 func PrintCommitDetails(c *models.CommitDetail) {
 	line := strings.Repeat("═", 60)

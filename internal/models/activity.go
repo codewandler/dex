@@ -47,6 +47,24 @@ type MergeRequest struct {
 	WebURL    string
 }
 
+// MergeRequestDetail contains full MR information for detailed views
+type MergeRequestDetail struct {
+	IID          int
+	Title        string
+	State        string
+	Author       string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	MergedAt     *time.Time
+	WebURL       string
+	SourceBranch string
+	TargetBranch string
+	ProjectPath  string
+	Draft        bool
+	MergeStatus  string
+	HasConflicts bool
+}
+
 type Tag struct {
 	Name      string
 	Message   string

@@ -163,6 +163,65 @@ var gitlabCommitCmd = &cobra.Command{
 	Long:  `Commands for viewing GitLab commits.`,
 }
 
+var gitlabMRCmd = &cobra.Command{
+	Use:     "mr",
+	Aliases: []string{"merge-request"},
+	Short:   "Merge request commands",
+	Long:    `Commands for listing and managing GitLab merge requests.`,
+}
+
+var gitlabMRLsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "List merge requests",
+	Long: `List merge requests with configurable filters.
+
+State options:
+  opened  - Open merge requests (default)
+  merged  - Merged merge requests
+  closed  - Closed merge requests
+  all     - All merge requests
+
+Scope options:
+  all            - All visible MRs (default)
+  created_by_me  - MRs you created
+  assigned_to_me - MRs assigned to you
+
+Examples:
+  dex gl mr ls                          # List open MRs
+  dex gl mr ls --state merged           # List merged MRs
+  dex gl mr ls --scope created_by_me    # MRs you created
+  dex gl mr ls --state all -n 50        # All MRs, limit 50`,
+	Run: func(cmd *cobra.Command, args []string) {
+		state, _ := cmd.Flags().GetString("state")
+		scope, _ := cmd.Flags().GetString("scope")
+		limit, _ := cmd.Flags().GetInt("limit")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		mrs, err := client.ListMergeRequests(gitlab.ListMergeRequestsOptions{
+			State: state,
+			Scope: scope,
+			Limit: limit,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list merge requests: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintMergeRequestList(mrs)
+	},
+}
+
 var gitlabCommitShowCmd = &cobra.Command{
 	Use:   "show <project> <sha>",
 	Short: "Show commit details",
@@ -389,11 +448,14 @@ func init() {
 	gitlabCmd.AddCommand(gitlabIndexCmd)
 	gitlabCmd.AddCommand(gitlabProjCmd)
 	gitlabCmd.AddCommand(gitlabCommitCmd)
+	gitlabCmd.AddCommand(gitlabMRCmd)
 
 	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
 	gitlabProjCmd.AddCommand(gitlabShowCmd)
 
 	gitlabCommitCmd.AddCommand(gitlabCommitShowCmd)
+
+	gitlabMRCmd.AddCommand(gitlabMRLsCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
@@ -403,6 +465,10 @@ func init() {
 	gitlabProjLsCmd.Flags().StringP("sort", "s", "activity", "Sort by: created, activity, name, path")
 	gitlabProjLsCmd.Flags().BoolP("desc", "d", false, "Sort descending (default for dates, ascending for names)")
 	gitlabProjLsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
+
+	gitlabMRLsCmd.Flags().StringP("state", "s", "opened", "MR state: opened, merged, closed, all")
+	gitlabMRLsCmd.Flags().String("scope", "all", "Scope: all, created_by_me, assigned_to_me")
+	gitlabMRLsCmd.Flags().IntP("limit", "n", 20, "Number of MRs to list")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration
