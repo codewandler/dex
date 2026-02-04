@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"dev-activity/internal/k8s"
@@ -346,6 +349,149 @@ func printPodDetails(pod *corev1.Pod) {
 	fmt.Println()
 }
 
+var k8sPodLogsCmd = &cobra.Command{
+	Use:   "logs <name>",
+	Short: "Stream pod logs",
+	Long: `Stream logs from a pod's containers.
+
+For multi-container pods, streams from all containers with prefixed output.
+Use -c to stream from a specific container only.
+
+Examples:
+  dex k8s pod logs my-pod              # Stream logs (all containers)
+  dex k8s pod logs my-pod -f           # Follow logs
+  dex k8s pod logs my-pod --tail 100   # Last 100 lines
+  dex k8s pod logs my-pod -c nginx     # Specific container
+  dex k8s pod logs my-pod -p           # Previous container`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completePodNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace, _ := cmd.Flags().GetString("namespace")
+		container, _ := cmd.Flags().GetString("container")
+		follow, _ := cmd.Flags().GetBool("follow")
+		tail, _ := cmd.Flags().GetInt64("tail")
+		previous, _ := cmd.Flags().GetBool("previous")
+		name := args[0]
+
+		client, err := k8s.NewClient(namespace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Get pod to determine containers
+		ctx := context.Background()
+		podCtx, podCancel := context.WithTimeout(ctx, 10*time.Second)
+		pod, err := client.GetPod(podCtx, name)
+		podCancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Determine which containers to stream
+		var containers []string
+		if container != "" {
+			containers = []string{container}
+		} else {
+			for _, c := range pod.Spec.Containers {
+				containers = append(containers, c.Name)
+			}
+		}
+
+		// Use background context for streaming (no timeout for follow)
+		streamCtx := ctx
+		var streamCancel context.CancelFunc
+		if !follow {
+			streamCtx, streamCancel = context.WithTimeout(ctx, 30*time.Second)
+			defer streamCancel()
+		}
+
+		// Single container: stream directly without prefix
+		if len(containers) == 1 {
+			streamContainerLogs(client, streamCtx, name, containers[0], tail, follow, previous, "", nil)
+			return
+		}
+
+		// Multiple containers: stream in parallel with prefixes
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		colors := []*color.Color{
+			color.New(color.FgCyan),
+			color.New(color.FgYellow),
+			color.New(color.FgGreen),
+			color.New(color.FgMagenta),
+			color.New(color.FgBlue),
+			color.New(color.FgRed),
+		}
+
+		for i, c := range containers {
+			wg.Add(1)
+			containerColor := colors[i%len(colors)]
+			go func(containerName string, clr *color.Color) {
+				defer wg.Done()
+				streamContainerLogs(client, streamCtx, name, containerName, tail, follow, previous, containerName, &mu)
+			}(c, containerColor)
+		}
+		wg.Wait()
+	},
+}
+
+func streamContainerLogs(client *k8s.Client, ctx context.Context, podName, containerName string, tail int64, follow, previous bool, prefix string, mu *sync.Mutex) {
+	stream, err := client.GetPodLogs(ctx, podName, k8s.PodLogsOptions{
+		Container: containerName,
+		Follow:    follow,
+		TailLines: tail,
+		Previous:  previous,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting logs for %s: %v\n", containerName, err)
+		return
+	}
+	defer stream.Close()
+
+	// No prefix: stream raw
+	if prefix == "" {
+		io.Copy(os.Stdout, stream)
+		return
+	}
+
+	// With prefix: read line by line
+	colors := map[string]*color.Color{
+		"container-0": color.New(color.FgCyan),
+	}
+	clr, ok := colors[prefix]
+	if !ok {
+		// Assign color based on hash of name
+		colorList := []*color.Color{
+			color.New(color.FgCyan),
+			color.New(color.FgYellow),
+			color.New(color.FgGreen),
+			color.New(color.FgMagenta),
+			color.New(color.FgBlue),
+		}
+		hash := 0
+		for _, c := range prefix {
+			hash += int(c)
+		}
+		clr = colorList[hash%len(colorList)]
+	}
+
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // Allow long lines
+	for scanner.Scan() {
+		line := scanner.Text()
+		if mu != nil {
+			mu.Lock()
+		}
+		clr.Printf("[%s] ", prefix)
+		fmt.Println(line)
+		if mu != nil {
+			mu.Unlock()
+		}
+	}
+}
+
 func completePodNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -370,6 +516,39 @@ func completePodNames(cmd *cobra.Command, args []string, toComplete string) ([]s
 	for _, pod := range pods {
 		if strings.Contains(strings.ToLower(pod.Name), toCompleteLower) {
 			completions = append(completions, pod.Name+"\t"+string(pod.Status.Phase))
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeContainerNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Need pod name as first argument
+	if len(args) == 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	podName := args[0]
+	namespace, _ := cmd.Flags().GetString("namespace")
+
+	client, err := k8s.NewClient(namespace)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pod, err := client.GetPod(ctx, podName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+	for _, c := range pod.Spec.Containers {
+		if strings.Contains(strings.ToLower(c.Name), toCompleteLower) {
+			completions = append(completions, c.Name+"\t"+c.Image)
 		}
 	}
 
@@ -667,9 +846,16 @@ func init() {
 	k8sCmd.AddCommand(k8sPodCmd)
 	k8sPodCmd.AddCommand(k8sPodLsCmd)
 	k8sPodCmd.AddCommand(k8sPodShowCmd)
+	k8sPodCmd.AddCommand(k8sPodLogsCmd)
 	k8sPodLsCmd.Flags().StringP("namespace", "n", "", "Namespace to list pods from")
 	k8sPodLsCmd.Flags().BoolP("all-namespaces", "A", false, "List pods from all namespaces")
 	k8sPodShowCmd.Flags().StringP("namespace", "n", "", "Namespace of the pod")
+	k8sPodLogsCmd.Flags().StringP("namespace", "n", "", "Namespace of the pod")
+	k8sPodLogsCmd.Flags().StringP("container", "c", "", "Container name (for multi-container pods)")
+	k8sPodLogsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
+	k8sPodLogsCmd.Flags().Int64("tail", 0, "Number of lines from end of logs (0 = all)")
+	k8sPodLogsCmd.Flags().BoolP("previous", "p", false, "Print logs from previous container instance")
+	k8sPodLogsCmd.RegisterFlagCompletionFunc("container", completeContainerNames)
 
 	// Service commands
 	k8sCmd.AddCommand(k8sSvcCmd)

@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"io"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -147,4 +148,33 @@ func (c *Client) GetService(ctx context.Context, name string) (*corev1.Service, 
 		return nil, fmt.Errorf("failed to get service %s: %w", name, err)
 	}
 	return svc, nil
+}
+
+// PodLogsOptions configures the log stream
+type PodLogsOptions struct {
+	Container string
+	Follow    bool
+	TailLines int64
+	Previous  bool
+}
+
+// GetPodLogs returns a stream of logs from a pod
+func (c *Client) GetPodLogs(ctx context.Context, name string, opts PodLogsOptions) (io.ReadCloser, error) {
+	podLogOpts := &corev1.PodLogOptions{
+		Container: opts.Container,
+		Follow:    opts.Follow,
+		Previous:  opts.Previous,
+	}
+
+	if opts.TailLines > 0 {
+		podLogOpts.TailLines = &opts.TailLines
+	}
+
+	req := c.clientset.CoreV1().Pods(c.namespace).GetLogs(name, podLogOpts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get logs for pod %s: %w", name, err)
+	}
+
+	return stream, nil
 }
