@@ -1,0 +1,4 @@
+- claude tool: show info about claude from settings file, etc
+- kubernetes
+- loki
+- grafana

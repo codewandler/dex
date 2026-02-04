@@ -87,12 +87,61 @@ dex gl commit show group/proj abc123 # By project path
 dex jira auth                     # Authenticate via OAuth (opens browser)
 ```
 
-### Issues
+### View Issue (Full Details)
 ```bash
-dex jira view <KEY>               # View single issue (e.g., TEL-117)
-dex jira my                       # Show issues assigned to me
+dex jira view <KEY>               # View issue with description, comments, links, subtasks
+dex jira view TEL-112             # Example: full ticket details
+```
+
+The view command shows:
+- Basic info (type, status, priority, assignee, reporter, labels, dates)
+- Parent issue (for subtasks)
+- Subtasks list (for parent tickets)
+- Linked issues (blocks, is blocked by, relates to, etc.)
+- Full description (parsed from Atlassian Document Format)
+- All comments with authors and timestamps
+
+### Search Issues
+```bash
+dex jira my                       # Issues assigned to me
+dex jira my -l 50                 # Increase limit (default 20)
 dex jira search "<JQL>"           # Search with JQL query
-dex jira lookup KEY1 KEY2 KEY3    # Look up multiple issues
+dex jira lookup KEY1 KEY2 KEY3    # Quick lookup of multiple issues
+```
+
+### Useful JQL Search Examples
+```bash
+# Recent activity
+dex jira search "updated >= -7d ORDER BY updated DESC"
+dex jira search "updated >= -30d ORDER BY updated DESC" -l 20
+
+# By status
+dex jira search "status = 'In Progress' ORDER BY updated DESC"
+dex jira search "status = 'Review' ORDER BY updated DESC"
+dex jira search "status != Done ORDER BY priority DESC"
+
+# By type
+dex jira search "type = Epic ORDER BY updated DESC"
+dex jira search "type = Sub-task ORDER BY updated DESC"
+dex jira search "type = Bug AND status != Done"
+
+# By project
+dex jira search "project = DEV ORDER BY updated DESC"
+dex jira search "project = SRE AND status = 'In Progress'"
+dex jira search "project in (DEV, SRE) AND updated >= -7d"
+
+# By assignee
+dex jira search "assignee = currentUser() AND status != Done"
+dex jira search "assignee WAS currentUser() AND status = Done AND updated >= -30d"
+
+# Combined filters
+dex jira search "project = DEV AND type = Epic AND status != Done"
+dex jira search "priority = High AND status != Done ORDER BY created ASC"
+dex jira search "labels = urgent AND status != Done"
+
+# Text search
+dex jira search "summary ~ 'performance' ORDER BY updated DESC"
+dex jira search "text ~ 'database index' ORDER BY updated DESC"
 ```
 
 ## Tips

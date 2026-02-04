@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
 
 type Client struct {
@@ -38,10 +40,52 @@ type Issue struct {
 			DisplayName  string `json:"displayName"`
 			EmailAddress string `json:"emailAddress"`
 		} `json:"reporter"`
-		Created string `json:"created"`
-		Updated string `json:"updated"`
-		Labels  []string `json:"labels"`
+		Created    string   `json:"created"`
+		Updated    string   `json:"updated"`
+		Labels     []string `json:"labels"`
+		Parent     *Issue   `json:"parent"`
+		Subtasks   []Issue  `json:"subtasks"`
+		IssueLinks []struct {
+			ID   string `json:"id"`
+			Type struct {
+				Name    string `json:"name"`
+				Inward  string `json:"inward"`
+				Outward string `json:"outward"`
+			} `json:"type"`
+			InwardIssue *struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"inwardIssue"`
+			OutwardIssue *struct {
+				Key    string `json:"key"`
+				Fields struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"outwardIssue"`
+		} `json:"issuelinks"`
+		Comment *struct {
+			Comments []Comment `json:"comments"`
+			Total    int       `json:"total"`
+		} `json:"comment"`
 	} `json:"fields"`
+}
+
+type Comment struct {
+	ID      string `json:"id"`
+	Author  *struct {
+		DisplayName string `json:"displayName"`
+	} `json:"author"`
+	Body    any    `json:"body"`
+	Created string `json:"created"`
+	Updated string `json:"updated"`
 }
 
 type SearchResult struct {
@@ -127,7 +171,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 
 // GetIssue fetches a single issue by key (e.g., "TEL-117")
 func (c *Client) GetIssue(ctx context.Context, issueKey string) (*Issue, error) {
-	resp, err := c.doRequest(ctx, "GET", "/issue/"+issueKey, nil)
+	query := url.Values{
+		"expand": {"renderedFields"},
+	}
+	resp, err := c.doRequest(ctx, "GET", "/issue/"+issueKey, query)
 	if err != nil {
 		return nil, err
 	}
@@ -191,27 +238,305 @@ func (c *Client) GetRecentIssues(ctx context.Context, maxResults int) (*SearchRe
 
 // FormatIssue returns a formatted string representation of an issue
 func FormatIssue(issue *Issue) string {
+	var result strings.Builder
+
 	assignee := "Unassigned"
 	if issue.Fields.Assignee != nil {
 		assignee = issue.Fields.Assignee.DisplayName
 	}
 
-	return fmt.Sprintf(`%s: %s
-  Type:     %s
-  Status:   %s
-  Priority: %s
-  Assignee: %s
-  Labels:   %v
-  Created:  %s
-  Updated:  %s`,
-		issue.Key,
-		issue.Fields.Summary,
-		issue.Fields.IssueType.Name,
-		issue.Fields.Status.Name,
-		issue.Fields.Priority.Name,
-		assignee,
-		issue.Fields.Labels,
-		issue.Fields.Created,
-		issue.Fields.Updated,
-	)
+	reporter := "Unknown"
+	if issue.Fields.Reporter != nil {
+		reporter = issue.Fields.Reporter.DisplayName
+	}
+
+	description := parseADF(issue.Fields.Description)
+	if description == "" {
+		description = "(no description)"
+	}
+
+	// Basic info
+	result.WriteString(fmt.Sprintf("%s: %s\n", issue.Key, issue.Fields.Summary))
+	result.WriteString(fmt.Sprintf("  Type:     %s\n", issue.Fields.IssueType.Name))
+	result.WriteString(fmt.Sprintf("  Status:   %s\n", issue.Fields.Status.Name))
+	result.WriteString(fmt.Sprintf("  Priority: %s\n", issue.Fields.Priority.Name))
+	result.WriteString(fmt.Sprintf("  Assignee: %s\n", assignee))
+	result.WriteString(fmt.Sprintf("  Reporter: %s\n", reporter))
+	result.WriteString(fmt.Sprintf("  Labels:   %v\n", issue.Fields.Labels))
+	result.WriteString(fmt.Sprintf("  Created:  %s\n", issue.Fields.Created))
+	result.WriteString(fmt.Sprintf("  Updated:  %s\n", issue.Fields.Updated))
+
+	// Parent issue
+	if issue.Fields.Parent != nil {
+		result.WriteString(fmt.Sprintf("  Parent:   %s - %s\n", issue.Fields.Parent.Key, issue.Fields.Parent.Fields.Summary))
+	}
+
+	// Subtasks
+	if len(issue.Fields.Subtasks) > 0 {
+		result.WriteString("\nSubtasks:\n")
+		for _, subtask := range issue.Fields.Subtasks {
+			result.WriteString(fmt.Sprintf("  • %s [%s] %s\n",
+				subtask.Key,
+				subtask.Fields.Status.Name,
+				subtask.Fields.Summary,
+			))
+		}
+	}
+
+	// Linked issues
+	if len(issue.Fields.IssueLinks) > 0 {
+		result.WriteString("\nLinked Issues:\n")
+		for _, link := range issue.Fields.IssueLinks {
+			if link.OutwardIssue != nil {
+				result.WriteString(fmt.Sprintf("  • %s %s [%s] %s\n",
+					link.Type.Outward,
+					link.OutwardIssue.Key,
+					link.OutwardIssue.Fields.Status.Name,
+					link.OutwardIssue.Fields.Summary,
+				))
+			}
+			if link.InwardIssue != nil {
+				result.WriteString(fmt.Sprintf("  • %s %s [%s] %s\n",
+					link.Type.Inward,
+					link.InwardIssue.Key,
+					link.InwardIssue.Fields.Status.Name,
+					link.InwardIssue.Fields.Summary,
+				))
+			}
+		}
+	}
+
+	// Description
+	result.WriteString("\nDescription:\n")
+	result.WriteString(indentText(description, "  "))
+
+	// Comments
+	if issue.Fields.Comment != nil && len(issue.Fields.Comment.Comments) > 0 {
+		result.WriteString(fmt.Sprintf("\n\nComments (%d):\n", issue.Fields.Comment.Total))
+		for _, comment := range issue.Fields.Comment.Comments {
+			author := "Unknown"
+			if comment.Author != nil {
+				author = comment.Author.DisplayName
+			}
+			commentBody := parseADF(comment.Body)
+			result.WriteString(fmt.Sprintf("\n  ── %s (%s) ──\n", author, formatJiraTime(comment.Created)))
+			result.WriteString(indentText(commentBody, "  "))
+			result.WriteString("\n")
+		}
+	}
+
+	return result.String()
+}
+
+// formatJiraTime formats a Jira timestamp to a more readable format
+func formatJiraTime(timestamp string) string {
+	// Jira format: 2025-11-11T11:03:29.626+0100
+	t, err := parseJiraTime(timestamp)
+	if err != nil {
+		return timestamp
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
+// parseJiraTime parses a Jira timestamp
+func parseJiraTime(timestamp string) (time.Time, error) {
+	// Try different formats Jira might use
+	formats := []string{
+		"2006-01-02T15:04:05.000-0700",
+		"2006-01-02T15:04:05.000Z",
+		"2006-01-02T15:04:05-0700",
+		"2006-01-02T15:04:05Z",
+	}
+	for _, format := range formats {
+		if t, err := time.Parse(format, timestamp); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unable to parse time: %s", timestamp)
+}
+
+// parseADF converts Atlassian Document Format to plain text
+func parseADF(doc any) string {
+	if doc == nil {
+		return ""
+	}
+
+	docMap, ok := doc.(map[string]any)
+	if !ok {
+		// Maybe it's already a string (old format)
+		if s, ok := doc.(string); ok {
+			return s
+		}
+		return ""
+	}
+
+	content, ok := docMap["content"].([]any)
+	if !ok {
+		return ""
+	}
+
+	var result strings.Builder
+	for i, node := range content {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		result.WriteString(parseADFNode(node))
+	}
+	return strings.TrimSpace(result.String())
+}
+
+// parseADFNode recursively parses an ADF node
+func parseADFNode(node any) string {
+	nodeMap, ok := node.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	nodeType, _ := nodeMap["type"].(string)
+
+	switch nodeType {
+	case "text":
+		text, _ := nodeMap["text"].(string)
+		return text
+
+	case "paragraph":
+		return parseADFContent(nodeMap) + "\n"
+
+	case "heading":
+		level, _ := nodeMap["attrs"].(map[string]any)["level"].(float64)
+		prefix := strings.Repeat("#", int(level)) + " "
+		return prefix + parseADFContent(nodeMap) + "\n"
+
+	case "bulletList":
+		return parseADFList(nodeMap, "• ")
+
+	case "orderedList":
+		return parseADFOrderedList(nodeMap)
+
+	case "listItem":
+		return parseADFContent(nodeMap)
+
+	case "codeBlock":
+		return "```\n" + parseADFContent(nodeMap) + "\n```\n"
+
+	case "blockquote":
+		lines := strings.Split(parseADFContent(nodeMap), "\n")
+		var quoted []string
+		for _, line := range lines {
+			quoted = append(quoted, "> "+line)
+		}
+		return strings.Join(quoted, "\n") + "\n"
+
+	case "hardBreak":
+		return "\n"
+
+	case "mention":
+		if attrs, ok := nodeMap["attrs"].(map[string]any); ok {
+			if text, ok := attrs["text"].(string); ok {
+				return text
+			}
+		}
+		return "@mention"
+
+	case "inlineCard", "link":
+		if attrs, ok := nodeMap["attrs"].(map[string]any); ok {
+			if url, ok := attrs["url"].(string); ok {
+				return url
+			}
+		}
+		return parseADFContent(nodeMap)
+
+	case "mediaSingle", "media":
+		return "[media]"
+
+	case "table":
+		return parseADFTable(nodeMap)
+
+	case "tableRow", "tableCell", "tableHeader":
+		return parseADFContent(nodeMap)
+
+	default:
+		// For unknown types, try to extract content
+		return parseADFContent(nodeMap)
+	}
+}
+
+// parseADFContent extracts text from a node's content array
+func parseADFContent(nodeMap map[string]any) string {
+	content, ok := nodeMap["content"].([]any)
+	if !ok {
+		return ""
+	}
+
+	var result strings.Builder
+	for _, child := range content {
+		result.WriteString(parseADFNode(child))
+	}
+	return result.String()
+}
+
+// parseADFList parses a bullet list
+func parseADFList(nodeMap map[string]any, bullet string) string {
+	content, ok := nodeMap["content"].([]any)
+	if !ok {
+		return ""
+	}
+
+	var result strings.Builder
+	for _, item := range content {
+		itemText := strings.TrimSpace(parseADFNode(item))
+		result.WriteString(bullet + itemText + "\n")
+	}
+	return result.String()
+}
+
+// parseADFOrderedList parses a numbered list
+func parseADFOrderedList(nodeMap map[string]any) string {
+	content, ok := nodeMap["content"].([]any)
+	if !ok {
+		return ""
+	}
+
+	var result strings.Builder
+	for i, item := range content {
+		itemText := strings.TrimSpace(parseADFNode(item))
+		result.WriteString(fmt.Sprintf("%d. %s\n", i+1, itemText))
+	}
+	return result.String()
+}
+
+// parseADFTable parses a table into simple text format
+func parseADFTable(nodeMap map[string]any) string {
+	content, ok := nodeMap["content"].([]any)
+	if !ok {
+		return ""
+	}
+
+	var result strings.Builder
+	for _, row := range content {
+		rowMap, ok := row.(map[string]any)
+		if !ok {
+			continue
+		}
+		cells, ok := rowMap["content"].([]any)
+		if !ok {
+			continue
+		}
+		var cellTexts []string
+		for _, cell := range cells {
+			cellText := strings.TrimSpace(parseADFNode(cell))
+			cellTexts = append(cellTexts, cellText)
+		}
+		result.WriteString("| " + strings.Join(cellTexts, " | ") + " |\n")
+	}
+	return result.String()
+}
+
+// indentText adds a prefix to each line of text
+func indentText(text, prefix string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n")
 }
