@@ -103,6 +103,11 @@ dex gl mr show sre/helm!2903 --show-diff  # Include file diffs in output
 # Open in browser
 dex gl mr open <project!iid>         # Open MR in default browser
 dex gl mr open sbf/services!2483     # Example
+
+# Add comment to MR
+dex gl mr comment <project!iid> "message"  # Add a comment
+dex gl mr comment sbf/services!2483 "LGTM"  # Example
+echo "Long comment" | dex gl mr comment sbf/services!2483 -  # From stdin
 ```
 
 ## Jira (`dex jira`)

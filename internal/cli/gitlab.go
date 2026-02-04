@@ -280,6 +280,12 @@ Examples:
 			mr.Files = files
 		}
 
+		// Fetch notes/comments
+		notes, err := client.GetMergeRequestNotes(projectID, mrIID)
+		if err == nil {
+			mr.Notes = notes
+		}
+
 		output.PrintMergeRequestDetails(mr)
 	},
 }
@@ -327,6 +333,66 @@ Examples:
 		}
 
 		fmt.Printf("Opening %s\n", mr.WebURL)
+	},
+}
+
+var gitlabMRCommentCmd = &cobra.Command{
+	Use:   "comment <project!iid> <message>",
+	Short: "Add a comment to a merge request",
+	Long: `Add a comment/note to a merge request.
+
+Use the canonical reference format: project!iid
+
+The message can be provided as an argument or via stdin (use - as message).
+
+Examples:
+  dex gl mr comment sre/helm!2903 "LGTM, approved!"
+  dex gl mr comment group/project!456 "Please address the review comments"
+  echo "Comment from stdin" | dex gl mr comment group/project!456 -`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		message := args[1]
+
+		// Read from stdin if message is "-"
+		if message == "-" {
+			data, err := os.ReadFile("/dev/stdin")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to read from stdin: %v\n", err)
+				os.Exit(1)
+			}
+			message = strings.TrimSpace(string(data))
+		}
+
+		if message == "" {
+			fmt.Fprintf(os.Stderr, "Comment message cannot be empty\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.CreateMergeRequestNote(projectID, mrIID, message); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to add comment: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Comment added to %s!%d\n", projectID, mrIID)
 	},
 }
 
@@ -604,6 +670,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRLsCmd)
 	gitlabMRCmd.AddCommand(gitlabMRShowCmd)
 	gitlabMRCmd.AddCommand(gitlabMROpenCmd)
+	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")

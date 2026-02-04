@@ -8,6 +8,7 @@ import (
 
 	"dev-activity/internal/models"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/fatih/color"
 	gitlab "github.com/xanzy/go-gitlab"
 	"golang.org/x/term"
@@ -24,6 +25,12 @@ var (
 	tagColor      = color.New(color.FgMagenta)
 	dimColor      = color.New(color.FgHiBlack)
 	linkColor     = color.New(color.FgCyan, color.Underline)
+
+	// Markdown renderer for comments
+	mdRenderer, _ = glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(80),
+	)
 )
 
 // hyperlink creates a clickable terminal hyperlink using OSC 8 escape sequence
@@ -276,6 +283,18 @@ func formatTimestamp(t time.Time) string {
 	return fmt.Sprintf("%s (%s)", t.Format("2006-01-02 15:04"), timeAgo(t))
 }
 
+// renderMarkdown renders markdown text for terminal display
+func renderMarkdown(text string) string {
+	if mdRenderer == nil {
+		return text
+	}
+	rendered, err := mdRenderer.Render(text)
+	if err != nil {
+		return text
+	}
+	return strings.TrimSpace(rendered)
+}
+
 // PrintProjectListFromIndex prints projects from the local index
 func PrintProjectListFromIndex(projects []models.ProjectMetadata, indexedAt time.Time) {
 	if len(projects) == 0 {
@@ -459,8 +478,8 @@ func PrintMergeRequestDetails(mr *models.MergeRequestDetail) {
 		fmt.Println()
 		sectionColor.Println("  Description:")
 		fmt.Println()
-		lines := strings.Split(strings.TrimSpace(mr.Description), "\n")
-		for _, line := range lines {
+		rendered := renderMarkdown(mr.Description)
+		for _, line := range strings.Split(rendered, "\n") {
 			fmt.Printf("    %s\n", line)
 		}
 	}
@@ -482,6 +501,29 @@ func PrintMergeRequestDetails(mr *models.MergeRequestDetail) {
 		sectionColor.Printf("  Files Changed (%d):\n", len(mr.Files))
 		for _, f := range mr.Files {
 			printMRFile(f)
+		}
+	}
+
+	// Notes/Comments (filter out system notes)
+	var userNotes []models.MRNote
+	for _, n := range mr.Notes {
+		if !n.System {
+			userNotes = append(userNotes, n)
+		}
+	}
+	if len(userNotes) > 0 {
+		fmt.Println()
+		sectionColor.Printf("  Comments (%d):\n", len(userNotes))
+		for _, n := range userNotes {
+			fmt.Println()
+			labelColor.Printf("    %s ", n.Author)
+			dimColor.Printf("(%s):\n", timeAgo(n.CreatedAt))
+			// Render markdown
+			rendered := renderMarkdown(n.Body)
+			// Indent each line
+			for _, line := range strings.Split(rendered, "\n") {
+				fmt.Printf("    %s\n", line)
+			}
 		}
 	}
 

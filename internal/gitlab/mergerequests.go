@@ -291,3 +291,53 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 
 	return files, nil
 }
+
+// CreateMergeRequestNote adds a comment/note to a merge request
+func (c *Client) CreateMergeRequestNote(projectID any, mrIID int, body string) error {
+	opts := &gitlab.CreateMergeRequestNoteOptions{
+		Body: gitlab.Ptr(body),
+	}
+
+	_, _, err := c.gl.Notes.CreateMergeRequestNote(projectID, mrIID, opts)
+	return err
+}
+
+// GetMergeRequestNotes fetches all notes/comments on a merge request
+func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote, error) {
+	opts := &gitlab.ListMergeRequestNotesOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+		Sort:    gitlab.Ptr("asc"),
+		OrderBy: gitlab.Ptr("created_at"),
+	}
+
+	var notes []models.MRNote
+	for {
+		apiNotes, resp, err := c.gl.Notes.ListMergeRequestNotes(projectID, mrIID, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, n := range apiNotes {
+			note := models.MRNote{
+				ID:     n.ID,
+				Body:   n.Body,
+				System: n.System,
+				Author: n.Author.Username,
+			}
+			if n.CreatedAt != nil {
+				note.CreatedAt = *n.CreatedAt
+			}
+			notes = append(notes, note)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return notes, nil
+}

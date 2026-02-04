@@ -72,6 +72,7 @@ type MergeRequestDetail struct {
 	Changes      MergeRequestChanges
 	Commits      []MRCommit // populated on detail view
 	Files        []MRFile   // populated on detail view
+	Notes        []MRNote   // populated on detail view
 }
 
 // MergeRequestChanges contains diff statistics
@@ -99,6 +100,15 @@ type MRFile struct {
 	Additions   int
 	Deletions   int
 	Diff        string // populated only with --show-diff
+}
+
+// MRNote represents a comment/note on a merge request
+type MRNote struct {
+	ID        int
+	Body      string
+	Author    string
+	CreatedAt time.Time
+	System    bool // true for system-generated notes (e.g., "mentioned in commit")
 }
 
 type Tag struct {
