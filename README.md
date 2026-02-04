@@ -1,6 +1,11 @@
-# dex
+<p align="center">
+  <img src="dex-avatar.svg" alt="dex logo" width="128" height="128">
+</p>
 
-Engineer's CLI for Kubernetes, GitLab, and Jira.
+<h3 align="center"><b>dex</b> — a new developer experience</h3>
+<p align="center">Swiss army knife for engineers and AI agents</p>
+
+---
 
 ## For Humans
 
