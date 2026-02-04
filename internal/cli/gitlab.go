@@ -484,6 +484,102 @@ Examples:
 	},
 }
 
+var gitlabMRApproveCmd = &cobra.Command{
+	Use:   "approve <project!iid>",
+	Short: "Approve a merge request",
+	Long: `Approve a merge request.
+
+Use the canonical reference format: project!iid
+
+Examples:
+  dex gl mr approve sre/helmchart-prod-configs!2903
+  dex gl mr approve group/project!456`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.ApproveMergeRequest(projectID, mrIID); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to approve merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Approved %s!%d\n", projectID, mrIID)
+	},
+}
+
+var gitlabMRMergeCmd = &cobra.Command{
+	Use:   "merge <project!iid>",
+	Short: "Merge a merge request",
+	Long: `Merge (accept) a merge request.
+
+Use the canonical reference format: project!iid
+
+Examples:
+  dex gl mr merge sre/helmchart-prod-configs!2903
+  dex gl mr merge group/project!456 --squash
+  dex gl mr merge group/project!456 --when-pipeline-succeeds
+  dex gl mr merge group/project!456 --remove-source-branch`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		squash, _ := cmd.Flags().GetBool("squash")
+		removeSource, _ := cmd.Flags().GetBool("remove-source-branch")
+		whenPipeline, _ := cmd.Flags().GetBool("when-pipeline-succeeds")
+		message, _ := cmd.Flags().GetString("message")
+
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.MergeMergeRequest(projectID, mrIID, gitlab.MergeMergeRequestOptions{
+			Squash:                    squash,
+			RemoveSourceBranch:        removeSource,
+			MergeWhenPipelineSucceeds: whenPipeline,
+			MergeCommitMessage:        message,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to merge: %v\n", err)
+			os.Exit(1)
+		}
+
+		if whenPipeline {
+			fmt.Printf("Set %s!%d to merge when pipeline succeeds\n", projectID, mrIID)
+		} else {
+			fmt.Printf("Merged %s!%d\n", projectID, mrIID)
+		}
+	},
+}
+
 var gitlabMRCreateCmd = &cobra.Command{
 	Use:   "create <title>",
 	Short: "Create a new merge request",
@@ -945,6 +1041,8 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
 	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCloseCmd)
+	gitlabMRCmd.AddCommand(gitlabMRApproveCmd)
+	gitlabMRCmd.AddCommand(gitlabMRMergeCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCreateCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
@@ -969,6 +1067,11 @@ func init() {
 	gitlabMRCommentCmd.Flags().Int("line", 0, "Line number for inline comment")
 
 	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
+
+	gitlabMRMergeCmd.Flags().Bool("squash", false, "Squash commits on merge")
+	gitlabMRMergeCmd.Flags().Bool("remove-source-branch", false, "Remove source branch after merge")
+	gitlabMRMergeCmd.Flags().Bool("when-pipeline-succeeds", false, "Merge when pipeline succeeds")
+	gitlabMRMergeCmd.Flags().StringP("message", "m", "", "Custom merge commit message")
 
 	gitlabMRCreateCmd.Flags().StringP("target", "t", "main", "Target branch")
 	gitlabMRCreateCmd.Flags().StringP("source", "s", "", "Source branch (default: current branch)")

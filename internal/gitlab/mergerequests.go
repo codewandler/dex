@@ -499,6 +499,45 @@ func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
 	return err
 }
 
+// ApproveMergeRequest approves a merge request
+func (c *Client) ApproveMergeRequest(projectID any, mrIID int) error {
+	_, _, err := c.gl.MergeRequestApprovals.ApproveMergeRequest(projectID, mrIID, nil)
+	return err
+}
+
+// MergeMergeRequestOptions contains options for merging a merge request
+type MergeMergeRequestOptions struct {
+	Squash                    bool
+	RemoveSourceBranch        bool
+	MergeWhenPipelineSucceeds bool
+	MergeCommitMessage        string
+	SquashCommitMessage       string
+}
+
+// MergeMergeRequest merges (accepts) a merge request
+func (c *Client) MergeMergeRequest(projectID any, mrIID int, opts MergeMergeRequestOptions) error {
+	acceptOpts := &gitlab.AcceptMergeRequestOptions{}
+
+	if opts.Squash {
+		acceptOpts.Squash = gitlab.Ptr(true)
+	}
+	if opts.RemoveSourceBranch {
+		acceptOpts.ShouldRemoveSourceBranch = gitlab.Ptr(true)
+	}
+	if opts.MergeWhenPipelineSucceeds {
+		acceptOpts.MergeWhenPipelineSucceeds = gitlab.Ptr(true)
+	}
+	if opts.MergeCommitMessage != "" {
+		acceptOpts.MergeCommitMessage = gitlab.Ptr(opts.MergeCommitMessage)
+	}
+	if opts.SquashCommitMessage != "" {
+		acceptOpts.SquashCommitMessage = gitlab.Ptr(opts.SquashCommitMessage)
+	}
+
+	_, _, err := c.gl.MergeRequests.AcceptMergeRequest(projectID, mrIID, acceptOpts)
+	return err
+}
+
 // CreateMergeRequestOptions contains options for creating a merge request
 type CreateMergeRequestOptions struct {
 	Title              string

@@ -127,6 +127,17 @@ dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
 dex gl mr close <project!iid>                   # Close a merge request
 dex gl mr close sre/helm!2903                   # Example
 
+# Approve MR
+dex gl mr approve <project!iid>                 # Approve a merge request
+dex gl mr approve sre/helm!2903                 # Example
+
+# Merge MR
+dex gl mr merge <project!iid>                   # Merge a merge request
+dex gl mr merge proj!123 --squash               # Squash commits
+dex gl mr merge proj!123 --remove-source-branch # Delete branch after merge
+dex gl mr merge proj!123 --when-pipeline-succeeds  # Merge when CI passes
+dex gl mr merge proj!123 -m "Custom message"    # Custom merge commit message
+
 # Create MR (auto-detects project and branch from git)
 dex gl mr create "<title>"                      # Create MR from current branch to main
 dex gl mr create "Fix bug" --target develop     # Specify target branch
