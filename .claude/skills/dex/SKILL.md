@@ -69,8 +69,10 @@ dex gl index --force              # Force re-index
 dex gl proj ls                    # List projects (from index)
 dex gl proj ls -n 50              # List 50 projects
 dex gl proj ls --sort name        # Sort by name (also: created, activity, path)
-dex gl proj ls --no-cache         # Fetch from API
+dex gl proj ls --sort created -d  # Sort descending (default for dates, ascending for names)
+dex gl proj ls --no-cache         # Fetch from API instead of index
 dex gl proj show <id|path>        # Show project details
+dex gl proj show <id> --no-cache  # Always fetch from API, bypass cache
 ```
 
 ### Commits
@@ -96,6 +98,7 @@ dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
 # Show MR details (use project!iid format)
 dex gl mr show <project!iid>         # Show full MR details
 dex gl mr show sre/helm!2903         # Example
+dex gl mr show sre/helm!2903 --show-diff  # Include file diffs in output
 
 # Open in browser
 dex gl mr open <project!iid>         # Open MR in default browser
@@ -172,3 +175,5 @@ dex jira search "text ~ 'database index' ORDER BY updated DESC"
 - Pod logs `-c` flag autocompletes container names
 - GitLab project names autocomplete from local index
 - Use `-n` for namespace, `-A` for all namespaces in k8s commands
+- Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `mr`=`merge-request`
+- Generate shell completions: `dex completion bash|zsh|fish|powershell`
