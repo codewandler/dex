@@ -31,6 +31,37 @@ func PrintHeader(days int) {
 	fmt.Println()
 }
 
+func PrintHeaderDuration(d time.Duration) {
+	line := strings.Repeat("═", 60)
+	fmt.Println()
+	headerColor.Println(line)
+	headerColor.Printf("  GitLab Activity Report (%s)\n", formatDuration(d))
+	headerColor.Println(line)
+	fmt.Println()
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Hour {
+		m := int(d.Minutes())
+		if m == 1 {
+			return "Last 1 minute"
+		}
+		return fmt.Sprintf("Last %d minutes", m)
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		if h == 1 {
+			return "Last 1 hour"
+		}
+		return fmt.Sprintf("Last %d hours", h)
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "Last 1 day"
+	}
+	return fmt.Sprintf("Last %d days", days)
+}
+
 func PrintProject(activity models.ProjectActivity) {
 	projectColor.Printf("📁 %s\n", activity.ProjectPath)
 
@@ -127,4 +158,105 @@ func timeAgo(t time.Time) string {
 		return "1 day ago"
 	}
 	return fmt.Sprintf("%d days ago", days)
+}
+
+var (
+	labelColor = color.New(color.FgCyan)
+	valueColor = color.New(color.FgWhite)
+	langColor  = color.New(color.FgYellow)
+)
+
+func PrintProjectDetails(p *models.ProjectMetadata) {
+	line := strings.Repeat("═", 60)
+	fmt.Println()
+	headerColor.Println(line)
+	projectColor.Printf("  %s\n", p.PathWithNS)
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Basic info
+	printField("ID", fmt.Sprintf("%d", p.ID))
+	printField("Name", p.Name)
+	printField("URL", p.WebURL)
+	if p.Description != "" {
+		printField("Description", truncate(p.Description, 60))
+	}
+	printField("Default Branch", p.DefaultBranch)
+	printField("Visibility", p.Visibility)
+
+	if len(p.Topics) > 0 {
+		printField("Topics", strings.Join(p.Topics, ", "))
+	}
+
+	printField("Stars", fmt.Sprintf("%d", p.StarCount))
+	printField("Forks", fmt.Sprintf("%d", p.ForksCount))
+	fmt.Println()
+
+	// Languages
+	if len(p.Languages) > 0 {
+		sectionColor.Println("  Languages:")
+		printLanguages(p.Languages)
+		fmt.Println()
+	}
+
+	// Contributors
+	if len(p.TopContributors) > 0 {
+		sectionColor.Println("  Top Contributors:")
+		for _, c := range p.TopContributors {
+			fmt.Printf("    • %-25s ", truncate(c.Name, 25))
+			dimColor.Printf("%4d commits", c.Commits)
+			if c.Additions > 0 || c.Deletions > 0 {
+				dimColor.Printf(" (+%d/-%d)", c.Additions, c.Deletions)
+			}
+			fmt.Println()
+		}
+		fmt.Println()
+	}
+
+	// Timestamps
+	printField("Last Activity", formatTimestamp(p.LastActivityAt))
+	printField("Indexed At", formatTimestamp(p.IndexedAt))
+	fmt.Println()
+}
+
+func printField(label, value string) {
+	labelColor.Printf("  %-16s ", label+":")
+	valueColor.Println(value)
+}
+
+func printLanguages(langs map[string]float32) {
+	// Sort languages by percentage
+	type langPct struct {
+		name string
+		pct  float32
+	}
+	var sorted []langPct
+	for name, pct := range langs {
+		sorted = append(sorted, langPct{name, pct})
+	}
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j].pct > sorted[i].pct {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	for _, l := range sorted {
+		barLen := int(l.pct / 5) // 20 chars for 100%
+		if barLen < 1 && l.pct > 0 {
+			barLen = 1
+		}
+		bar := strings.Repeat("█", barLen)
+		langColor.Printf("    %-12s ", l.name)
+		sectionColor.Printf("%-20s", bar)
+		dimColor.Printf(" %5.1f%%\n", l.pct)
+	}
+}
+
+func formatTimestamp(t time.Time) string {
+	if t.IsZero() {
+		return "unknown"
+	}
+	return fmt.Sprintf("%s (%s)", t.Format("2006-01-02 15:04"), timeAgo(t))
 }
