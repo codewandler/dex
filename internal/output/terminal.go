@@ -12,16 +12,21 @@ import (
 )
 
 var (
-	headerColor  = color.New(color.FgCyan, color.Bold)
-	projectColor = color.New(color.FgYellow, color.Bold)
-	sectionColor = color.New(color.FgGreen)
-	commitColor  = color.New(color.FgWhite)
-	mrOpenColor  = color.New(color.FgBlue)
+	headerColor   = color.New(color.FgCyan, color.Bold)
+	projectColor  = color.New(color.FgYellow, color.Bold)
+	sectionColor  = color.New(color.FgGreen)
+	commitColor   = color.New(color.FgWhite)
+	mrOpenColor   = color.New(color.FgBlue)
 	mrMergedColor = color.New(color.FgGreen)
 	mrClosedColor = color.New(color.FgRed)
-	tagColor     = color.New(color.FgMagenta)
-	dimColor     = color.New(color.FgHiBlack)
+	tagColor      = color.New(color.FgMagenta)
+	dimColor      = color.New(color.FgHiBlack)
 )
+
+// hyperlink creates a clickable terminal hyperlink using OSC 8 escape sequence
+func hyperlink(url, text string) string {
+	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+}
 
 func PrintHeader(days int) {
 	line := strings.Repeat("═", 60)
@@ -360,18 +365,18 @@ func PrintMergeRequestList(mrs []models.MergeRequestDetail) {
 	fmt.Println()
 
 	for _, mr := range mrs {
-		// First line: state + project path + MR IID + title
+		// First line: state + title
 		stateStr := formatMRState(mr.State)
 		if mr.Draft {
 			stateStr = dimColor.Sprint("[DRAFT]") + " " + stateStr
 		}
 
-		// Extract just the key part (e.g., "group/project!123")
 		projectColor.Printf("  %s ", stateStr)
 		fmt.Printf("%s\n", truncate(mr.Title, 70))
 
-		// Second line: project, branches, author, time
-		dimColor.Printf("    %s  ", mr.ProjectPath)
+		// Second line: clickable project reference, branches, author, time
+		refLink := hyperlink(mr.WebURL, mr.ProjectPath)
+		fmt.Printf("    %s  ", refLink)
 		sectionColor.Printf("%s → %s", mr.SourceBranch, mr.TargetBranch)
 		dimColor.Printf("  by %s  %s\n", mr.Author, timeAgo(mr.UpdatedAt))
 

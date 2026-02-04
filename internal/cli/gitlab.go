@@ -229,21 +229,21 @@ Examples:
 }
 
 var gitlabMRShowCmd = &cobra.Command{
-	Use:   "show <project> <iid>",
+	Use:   "show <project!iid>",
 	Short: "Show merge request details",
 	Long: `Display detailed information about a specific merge request.
 
+Use the canonical reference format: project!iid
+
 Examples:
-  dex gl mr show 742 123
-  dex gl mr show sre/helmchart-prod-configs 2903
-  dex gl mr show group/project 456`,
-	Args:              cobra.ExactArgs(2),
-	ValidArgsFunction: completeProjectNames,
+  dex gl mr show sre/helmchart-prod-configs!2903
+  dex gl mr show group/project!456`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		projectID := args[0]
-		mrIID, err := strconv.Atoi(args[1])
+		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid MR IID: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
 			os.Exit(1)
 		}
 
@@ -270,21 +270,21 @@ Examples:
 }
 
 var gitlabMROpenCmd = &cobra.Command{
-	Use:   "open <project> <iid>",
+	Use:   "open <project!iid>",
 	Short: "Open merge request in browser",
 	Long: `Open a merge request in the default web browser.
 
+Use the canonical reference format: project!iid
+
 Examples:
-  dex gl mr open 742 123
-  dex gl mr open sre/helmchart-prod-configs 2903
-  dex gl mr open group/project 456`,
-	Args:              cobra.ExactArgs(2),
-	ValidArgsFunction: completeProjectNames,
+  dex gl mr open sre/helmchart-prod-configs!2903
+  dex gl mr open group/project!456`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		projectID := args[0]
-		mrIID, err := strconv.Atoi(args[1])
+		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid MR IID: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
 			os.Exit(1)
 		}
 
@@ -548,6 +548,30 @@ func openBrowser(url string) error {
 		cmd = exec.Command("xdg-open", url)
 	}
 	return cmd.Start()
+}
+
+// parseMRReference parses a merge request reference like "group/project!123"
+// Returns the project path and MR IID
+func parseMRReference(ref string) (string, int, error) {
+	// Find the last ! which separates project from IID
+	idx := strings.LastIndex(ref, "!")
+	if idx == -1 {
+		return "", 0, fmt.Errorf("missing '!' separator")
+	}
+
+	project := ref[:idx]
+	iidStr := ref[idx+1:]
+
+	if project == "" {
+		return "", 0, fmt.Errorf("empty project path")
+	}
+
+	iid, err := strconv.Atoi(iidStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid IID: %s", iidStr)
+	}
+
+	return project, iid, nil
 }
 
 func init() {

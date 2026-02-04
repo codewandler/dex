@@ -93,13 +93,13 @@ dex gl mr ls --scope assigned_to_me  # MRs assigned to you
 dex gl mr ls --include-wip           # Include WIP/draft MRs
 dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
 
-# Show MR details
-dex gl mr show <project> <iid>       # Show full MR details
-dex gl mr show sre/helm 2903         # Example with project path
-dex gl mr show 742 123               # Example with project ID
+# Show MR details (use project!iid format)
+dex gl mr show <project!iid>         # Show full MR details
+dex gl mr show sre/helm!2903         # Example
 
 # Open in browser
-dex gl mr open <project> <iid>       # Open MR in default browser
+dex gl mr open <project!iid>         # Open MR in default browser
+dex gl mr open sbf/services!2483     # Example
 ```
 
 ## Jira (`dex jira`)
