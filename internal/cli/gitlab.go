@@ -195,6 +195,8 @@ Examples:
 		state, _ := cmd.Flags().GetString("state")
 		scope, _ := cmd.Flags().GetString("scope")
 		limit, _ := cmd.Flags().GetInt("limit")
+		includeWIP, _ := cmd.Flags().GetBool("include-wip")
+		conflictsOnly, _ := cmd.Flags().GetBool("conflicts-only")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -209,9 +211,11 @@ Examples:
 		}
 
 		mrs, err := client.ListMergeRequests(gitlab.ListMergeRequestsOptions{
-			State: state,
-			Scope: scope,
-			Limit: limit,
+			State:         state,
+			Scope:         scope,
+			Limit:         limit,
+			IncludeWIP:    includeWIP,
+			ConflictsOnly: conflictsOnly,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to list merge requests: %v\n", err)
@@ -469,6 +473,8 @@ func init() {
 	gitlabMRLsCmd.Flags().StringP("state", "s", "opened", "MR state: opened, merged, closed, all")
 	gitlabMRLsCmd.Flags().String("scope", "all", "Scope: all, created_by_me, assigned_to_me")
 	gitlabMRLsCmd.Flags().IntP("limit", "n", 20, "Number of MRs to list")
+	gitlabMRLsCmd.Flags().Bool("include-wip", false, "Include WIP/draft MRs (excluded by default)")
+	gitlabMRLsCmd.Flags().Bool("conflicts-only", false, "Only show MRs with merge conflicts")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration

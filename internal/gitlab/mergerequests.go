@@ -10,12 +10,14 @@ import (
 
 // ListMergeRequestsOptions configures the MR list query
 type ListMergeRequestsOptions struct {
-	State     string // opened, closed, merged, all
-	Scope     string // created_by_me, assigned_to_me, all
-	Limit     int
-	OrderBy   string // created_at, updated_at
-	Sort      string // asc, desc
-	ProjectID string // optional - filter to specific project
+	State         string // opened, closed, merged, all
+	Scope         string // created_by_me, assigned_to_me, all
+	Limit         int
+	OrderBy       string // created_at, updated_at
+	Sort          string // asc, desc
+	ProjectID     string // optional - filter to specific project
+	IncludeWIP    bool   // include WIP/draft MRs (excluded by default)
+	ConflictsOnly bool   // only show MRs with conflicts
 }
 
 func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]models.MergeRequest, error) {
@@ -96,6 +98,11 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 		Sort:    gitlab.Ptr(opts.Sort),
 	}
 
+	// Exclude WIP/drafts by default
+	if !opts.IncludeWIP {
+		listOpts.WIP = gitlab.Ptr("no")
+	}
+
 	for {
 		mrs, resp, err := c.gl.MergeRequests.ListMergeRequests(listOpts)
 		if err != nil {
@@ -103,6 +110,11 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 		}
 
 		for _, m := range mrs {
+			// Skip non-conflicting MRs if conflicts-only filter is set
+			if opts.ConflictsOnly && !m.HasConflicts {
+				continue
+			}
+
 			mr := models.MergeRequestDetail{
 				IID:           m.IID,
 				Title:         m.Title,
