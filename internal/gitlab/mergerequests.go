@@ -161,7 +161,12 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 
 // GetMergeRequest fetches a single merge request with full details
 func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.MergeRequestDetail, error) {
-	m, _, err := c.gl.MergeRequests.GetMergeRequest(projectID, mrIID, nil)
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	m, _, err := c.gl.MergeRequests.GetMergeRequest(pid, mrIID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +235,12 @@ func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.Merg
 
 // GetMergeRequestCommits fetches commits associated with a merge request
 func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCommit, error) {
-	commits, _, err := c.gl.MergeRequests.GetMergeRequestCommits(projectID, mrIID, nil)
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	commits, _, err := c.gl.MergeRequests.GetMergeRequestCommits(pid, mrIID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +265,11 @@ func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCo
 
 // GetMergeRequestChanges fetches the list of files changed in a merge request
 func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bool) ([]models.MRFile, error) {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &gitlab.ListMergeRequestDiffsOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 100,
@@ -264,7 +279,7 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 
 	var files []models.MRFile
 	for {
-		diffs, resp, err := c.gl.MergeRequests.ListMergeRequestDiffs(projectID, mrIID, opts)
+		diffs, resp, err := c.gl.MergeRequests.ListMergeRequestDiffs(pid, mrIID, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -294,16 +309,26 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 
 // CreateMergeRequestNote adds a comment/note to a merge request
 func (c *Client) CreateMergeRequestNote(projectID any, mrIID int, body string) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	opts := &gitlab.CreateMergeRequestNoteOptions{
 		Body: gitlab.Ptr(body),
 	}
 
-	_, _, err := c.gl.Notes.CreateMergeRequestNote(projectID, mrIID, opts)
+	_, _, err = c.gl.Notes.CreateMergeRequestNote(pid, mrIID, opts)
 	return err
 }
 
 // GetMergeRequestNotes fetches all notes/comments on a merge request
 func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote, error) {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &gitlab.ListMergeRequestNotesOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 100,
@@ -315,7 +340,7 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 
 	var notes []models.MRNote
 	for {
-		apiNotes, resp, err := c.gl.Notes.ListMergeRequestNotes(projectID, mrIID, opts)
+		apiNotes, resp, err := c.gl.Notes.ListMergeRequestNotes(pid, mrIID, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -344,6 +369,11 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 
 // GetMergeRequestDiscussions fetches all discussions/threads on a merge request
 func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.MRDiscussion, error) {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &gitlab.ListMergeRequestDiscussionsOptions{
 		PerPage: 100,
 		Page:    1,
@@ -351,7 +381,7 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.
 
 	var discussions []models.MRDiscussion
 	for {
-		apiDiscussions, resp, err := c.gl.Discussions.ListMergeRequestDiscussions(projectID, mrIID, opts)
+		apiDiscussions, resp, err := c.gl.Discussions.ListMergeRequestDiscussions(pid, mrIID, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -398,11 +428,16 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.
 
 // AddMergeRequestDiscussionReply adds a reply to an existing discussion thread
 func (c *Client) AddMergeRequestDiscussionReply(projectID any, mrIID int, discussionID, body string) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	opts := &gitlab.AddMergeRequestDiscussionNoteOptions{
 		Body: gitlab.Ptr(body),
 	}
 
-	_, _, err := c.gl.Discussions.AddMergeRequestDiscussionNote(projectID, mrIID, discussionID, opts)
+	_, _, err = c.gl.Discussions.AddMergeRequestDiscussionNote(pid, mrIID, discussionID, opts)
 	return err
 }
 
@@ -417,8 +452,13 @@ type InlineCommentOptions struct {
 
 // CreateMergeRequestInlineComment creates an inline comment on a specific file/line
 func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts InlineCommentOptions) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	// Get the diff version info first
-	diffVersion, err := c.GetMergeRequestDiffVersions(projectID, mrIID)
+	diffVersion, err := c.GetMergeRequestDiffVersions(pid, mrIID)
 	if err != nil {
 		return fmt.Errorf("failed to get diff versions: %w", err)
 	}
@@ -445,13 +485,18 @@ func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts 
 		Position: position,
 	}
 
-	_, _, err = c.gl.Discussions.CreateMergeRequestDiscussion(projectID, mrIID, createOpts)
+	_, _, err = c.gl.Discussions.CreateMergeRequestDiscussion(pid, mrIID, createOpts)
 	return err
 }
 
 // GetMergeRequestDiffVersions fetches the diff version info needed for inline comments
 func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.MRDiffVersion, error) {
-	versions, _, err := c.gl.MergeRequests.GetMergeRequestDiffVersions(projectID, mrIID, nil)
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	versions, _, err := c.gl.MergeRequests.GetMergeRequestDiffVersions(pid, mrIID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -471,37 +516,57 @@ func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.
 
 // CreateMergeRequestReaction adds an emoji reaction to a merge request
 func (c *Client) CreateMergeRequestReaction(projectID any, mrIID int, emoji string) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	opts := &gitlab.CreateAwardEmojiOptions{
 		Name: emoji,
 	}
 
-	_, _, err := c.gl.AwardEmoji.CreateMergeRequestAwardEmoji(projectID, mrIID, opts)
+	_, _, err = c.gl.AwardEmoji.CreateMergeRequestAwardEmoji(pid, mrIID, opts)
 	return err
 }
 
 // CreateMergeRequestNoteReaction adds an emoji reaction to a note/comment on a merge request
 func (c *Client) CreateMergeRequestNoteReaction(projectID any, mrIID int, noteID int, emoji string) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	opts := &gitlab.CreateAwardEmojiOptions{
 		Name: emoji,
 	}
 
-	_, _, err := c.gl.AwardEmoji.CreateMergeRequestAwardEmojiOnNote(projectID, mrIID, noteID, opts)
+	_, _, err = c.gl.AwardEmoji.CreateMergeRequestAwardEmojiOnNote(pid, mrIID, noteID, opts)
 	return err
 }
 
 // CloseMergeRequest closes a merge request
 func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	opts := &gitlab.UpdateMergeRequestOptions{
 		StateEvent: gitlab.Ptr("close"),
 	}
 
-	_, _, err := c.gl.MergeRequests.UpdateMergeRequest(projectID, mrIID, opts)
+	_, _, err = c.gl.MergeRequests.UpdateMergeRequest(pid, mrIID, opts)
 	return err
 }
 
 // ApproveMergeRequest approves a merge request
 func (c *Client) ApproveMergeRequest(projectID any, mrIID int) error {
-	_, _, err := c.gl.MergeRequestApprovals.ApproveMergeRequest(projectID, mrIID, nil)
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = c.gl.MergeRequestApprovals.ApproveMergeRequest(pid, mrIID, nil)
 	return err
 }
 
@@ -516,6 +581,11 @@ type MergeMergeRequestOptions struct {
 
 // MergeMergeRequest merges (accepts) a merge request
 func (c *Client) MergeMergeRequest(projectID any, mrIID int, opts MergeMergeRequestOptions) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
 	acceptOpts := &gitlab.AcceptMergeRequestOptions{}
 
 	if opts.Squash {
@@ -534,7 +604,7 @@ func (c *Client) MergeMergeRequest(projectID any, mrIID int, opts MergeMergeRequ
 		acceptOpts.SquashCommitMessage = gitlab.Ptr(opts.SquashCommitMessage)
 	}
 
-	_, _, err := c.gl.MergeRequests.AcceptMergeRequest(projectID, mrIID, acceptOpts)
+	_, _, err = c.gl.MergeRequests.AcceptMergeRequest(pid, mrIID, acceptOpts)
 	return err
 }
 
@@ -551,6 +621,11 @@ type CreateMergeRequestOptions struct {
 
 // CreateMergeRequest creates a new merge request and returns its details
 func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOptions) (*models.MergeRequestDetail, error) {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
 	createOpts := &gitlab.CreateMergeRequestOptions{
 		Title:              gitlab.Ptr(opts.Title),
 		SourceBranch:       gitlab.Ptr(opts.SourceBranch),
@@ -568,7 +643,7 @@ func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOption
 		createOpts.Title = gitlab.Ptr("Draft: " + opts.Title)
 	}
 
-	mr, _, err := c.gl.MergeRequests.CreateMergeRequest(projectID, createOpts)
+	mr, _, err := c.gl.MergeRequests.CreateMergeRequest(pid, createOpts)
 	if err != nil {
 		return nil, err
 	}

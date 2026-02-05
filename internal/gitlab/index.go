@@ -214,7 +214,7 @@ func (c *Client) GetProjectMetadata(idOrPath string) (*models.ProjectMetadata, e
 	if id, parseErr := strconv.Atoi(idOrPath); parseErr == nil {
 		project, _, err = c.gl.Projects.GetProject(id, nil)
 	} else {
-		project, _, err = c.gl.Projects.GetProject(idOrPath, nil)
+		project, _, err = c.gl.Projects.GetProject(gitlab.PathEscape(idOrPath), nil)
 	}
 
 	if err != nil {

@@ -51,7 +51,12 @@ func (c *Client) GetCommits(projectID int, since time.Time) ([]models.Commit, er
 
 // GetCommit fetches detailed information about a single commit
 func (c *Client) GetCommit(projectID interface{}, sha string) (*models.CommitDetail, error) {
-	commit, _, err := c.gl.Commits.GetCommit(projectID, sha)
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	commit, _, err := c.gl.Commits.GetCommit(pid, sha)
 	if err != nil {
 		return nil, err
 	}
