@@ -369,9 +369,9 @@ var slackSendCmd = &cobra.Command{
 
 The target can be:
 - Channel name (requires index): dev-team
-- Channel ID: C03JDUBJD0D
-- Username with @ prefix for DM: @timo.friedl (requires im:write scope)
-- User ID: U03HY52RQLV
+- Channel ID: C0123456789
+- Username with @ prefix for DM: @john.doe (requires im:write scope)
+- User ID: U0123456789
 
 Use --thread/-t to reply to a specific thread.
 Use --as to choose the sender identity (bot or user).
@@ -379,9 +379,9 @@ Use --as to choose the sender identity (bot or user).
 
 Examples:
   dex slack send dev-team "Hello from dex!"
-  dex slack send dev-team "Hey @timo.friedl check this!"  # @mention in message
+  dex slack send dev-team "Hey @john.doe check this!"  # @mention in message
   dex slack send dev-team "Follow up" -t 1770257991.873399  # Reply to thread
-  dex slack send @timo.friedl "Hey, check this out!"      # DM (requires im:write)
+  dex slack send @john.doe "Hey, check this out!"      # DM (requires im:write)
   dex slack send dev-team "Message as me" --as user       # Send as user (not bot)`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completeSlackTargets,
@@ -730,8 +730,8 @@ Examples:
   dex slack mentions                    # My mentions (today)
   dex slack mentions --unhandled        # Only pending mentions
   dex slack mentions --bot              # Bot mentions (today)
-  dex slack mentions --user timo.friedl # Mentions of a specific user
-  dex slack mentions --user U03HY52RQLV # Mentions by user ID
+  dex slack mentions --user john.doe # Mentions of a specific user
+  dex slack mentions --user U0123456789 # Mentions by user ID
   dex slack mentions --limit 50         # Show more results
   dex slack mentions --since 1h         # Mentions from last hour
   dex slack mentions --since 7d         # Mentions from last 7 days
@@ -1112,7 +1112,7 @@ Query supports Slack search syntax:
 Examples:
   dex slack search "deployment"              # Search for deployment
   dex slack search "error" --since 1d        # Errors in last day
-  dex slack search "from:@timo.friedl"       # Messages from user
+  dex slack search "from:@john.doe"       # Messages from user
   dex slack search "bug" --tickets           # Find tickets mentioned with "bug"
   dex slack search "DEV-" --tickets          # Find all DEV tickets mentioned`,
 	Args: cobra.ExactArgs(1),
@@ -1268,53 +1268,54 @@ Examples:
 }
 
 var slackThreadCmd = &cobra.Command{
-	Use:   "thread <url-or-timestamp>",
+	Use:   "thread <url | channel:ts | channel ts>",
 	Short: "Show a thread and debug mention classification",
 	Long: `Fetch and display a Slack thread with classification debug info.
 
-Accepts either a Slack URL or channel:timestamp format.
+Accepts a Slack URL, channel:timestamp, or channel and timestamp as separate arguments.
+Timestamps can be in Slack URL format (p1769777574026209) or API format (1769777574.026209).
 
 Examples:
-  dex slack thread https://babelforce.slack.com/archives/C03JDUBJD0D/p1769777574026209
-  dex slack thread C03JDUBJD0D:1769777574.026209`,
-	Args: cobra.ExactArgs(1),
+  dex slack thread https://acme.slack.com/archives/C0123456789/p1769777574026209
+  dex slack thread C0123456789:1769777574.026209
+  dex slack thread C0123456789 1769777574.026209
+  dex slack thread C0123456789 p1769777574026209`,
+	Args: cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		input := args[0]
-
-		// Parse input - either URL or channel:timestamp
+		// Parse input - URL, channel:timestamp, or channel timestamp (two args)
 		var channelID, threadTS string
-		if strings.HasPrefix(input, "http") {
-			// Parse URL: https://babelforce.slack.com/archives/C03JDUBJD0D/p1769777574026209
-			parts := strings.Split(input, "/")
-			for i, part := range parts {
-				if part == "archives" && i+2 < len(parts) {
-					channelID = parts[i+1]
-					// Convert p1769777574026209 to 1769777574.026209
-					tsRaw := parts[i+2]
-					// Remove query params if present
-					if idx := strings.Index(tsRaw, "?"); idx != -1 {
-						tsRaw = tsRaw[:idx]
+
+		if len(args) == 2 {
+			// Two arguments: channel and timestamp
+			channelID = args[0]
+			threadTS = normalizeTimestamp(args[1])
+		} else {
+			input := args[0]
+			if strings.HasPrefix(input, "http") {
+				// Parse URL: https://acme.slack.com/archives/C0123456789/p1769777574026209
+				parts := strings.Split(input, "/")
+				for i, part := range parts {
+					if part == "archives" && i+2 < len(parts) {
+						channelID = parts[i+1]
+						tsRaw := parts[i+2]
+						// Remove query params if present
+						if idx := strings.Index(tsRaw, "?"); idx != -1 {
+							tsRaw = tsRaw[:idx]
+						}
+						threadTS = normalizeTimestamp(tsRaw)
+						break
 					}
-					if strings.HasPrefix(tsRaw, "p") {
-						tsRaw = tsRaw[1:]
-					}
-					if len(tsRaw) > 10 {
-						threadTS = tsRaw[:10] + "." + tsRaw[10:]
-					} else {
-						threadTS = tsRaw
-					}
-					break
 				}
+			} else if strings.Contains(input, ":") {
+				// Parse channel:timestamp format
+				parts := strings.SplitN(input, ":", 2)
+				channelID = parts[0]
+				threadTS = normalizeTimestamp(parts[1])
 			}
-		} else if strings.Contains(input, ":") {
-			// Parse channel:timestamp format
-			parts := strings.SplitN(input, ":", 2)
-			channelID = parts[0]
-			threadTS = parts[1]
 		}
 
 		if channelID == "" || threadTS == "" {
-			fmt.Fprintf(os.Stderr, "Could not parse input. Use URL or channel:timestamp format.\n")
+			fmt.Fprintf(os.Stderr, "Could not parse input. Use URL, channel:timestamp, or channel timestamp format.\n")
 			os.Exit(1)
 		}
 
@@ -1448,6 +1449,19 @@ func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
 	fmt.Println()
 	fmt.Println(text)
 	fmt.Println()
+}
+
+// normalizeTimestamp converts Slack URL timestamp format (p1769777574026209) to API format (1769777574.026209)
+func normalizeTimestamp(ts string) string {
+	// Remove 'p' prefix if present (URL format)
+	if strings.HasPrefix(ts, "p") {
+		ts = ts[1:]
+	}
+	// Add decimal point if not present (convert 1769777574026209 to 1769777574.026209)
+	if !strings.Contains(ts, ".") && len(ts) > 10 {
+		ts = ts[:10] + "." + ts[10:]
+	}
+	return ts
 }
 
 func init() {

@@ -173,7 +173,7 @@ func ResolveUser(idOrUsername string) string {
 }
 
 // ResolveMentions converts @username mentions in text to Slack <@USER_ID> format
-// Example: "Hey @timo.friedl check this" -> "Hey <@U03HY52RQLV> check this"
+// Example: "Hey @john.doe check this" -> "Hey <@U0123456789> check this"
 func ResolveMentions(text string) string {
 	idx, err := LoadIndex()
 	if err != nil || len(idx.Users) == 0 {

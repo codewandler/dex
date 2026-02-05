@@ -5,8 +5,8 @@ import "time"
 // SlackUser represents a Slack user in the index
 type SlackUser struct {
 	ID          string    `json:"id"`
-	Username    string    `json:"username"`     // e.g., "timo.friedl"
-	DisplayName string    `json:"display_name"` // e.g., "Timo Friedl"
+	Username    string    `json:"username"`     // e.g., "john.doe"
+	DisplayName string    `json:"display_name"` // e.g., "John Doe"
 	RealName    string    `json:"real_name"`
 	Email       string    `json:"email,omitempty"`
 	IsBot       bool      `json:"is_bot"`

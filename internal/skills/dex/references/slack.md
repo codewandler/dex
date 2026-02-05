@@ -48,10 +48,10 @@ dex slack users --no-cache        # Fetch from API instead of index
 ```bash
 # To channel (by name or ID)
 dex slack send dev-team "Hello from dex!"
-dex slack send C03JDUBJD0D "Hello!"
+dex slack send C0123456789 "Hello!"
 
 # With @mentions in message (auto-resolved to Slack mentions)
-dex slack send dev-team "Hey @timo.friedl check this!"
+dex slack send dev-team "Hey @john.doe check this!"
 dex slack send dev-team "@alice @bob please review"
 
 # Reply to thread (use -t with thread timestamp from previous send)
@@ -59,7 +59,7 @@ dex slack send dev-team "Follow up" -t 1770257991.873399
 dex slack send dev-team "Another reply" --thread 1770257991.873399
 
 # To user DM (requires im:write scope)
-dex slack send @timo.friedl "Hey, check this out!"
+dex slack send @john.doe "Hey, check this out!"
 
 # Send as user instead of bot (requires user token with chat:write scope)
 dex slack send dev-team "Message from me" --as user
@@ -76,8 +76,8 @@ Notes:
 dex slack mentions                    # My mentions today (requires user token)
 dex slack mentions --unhandled        # Only pending mentions (no reaction/reply from you)
 dex slack mentions --bot              # Bot mentions today
-dex slack mentions --user timo.friedl # Mentions of a specific user
-dex slack mentions --user U03HY52RQLV # By user ID
+dex slack mentions --user john.doe # Mentions of a specific user
+dex slack mentions --user U0123456789 # By user ID
 dex slack mentions --since 1h         # Mentions from last hour
 dex slack mentions --since 7d         # Mentions from last 7 days
 dex slack mentions --limit 50         # Show more results (default 20)
@@ -103,7 +103,7 @@ dex slack mentions --compact          # Compact table view
 dex slack search "query"              # Search all messages
 dex slack search "deployment"         # Find deployment-related messages
 dex slack search "error" --since 1d   # Errors in last day
-dex slack search "from:@timo.friedl"  # Messages from specific user
+dex slack search "from:@john.doe"  # Messages from specific user
 dex slack search "in:#dev-team"       # Messages in specific channel
 
 # Extract Jira tickets from results
