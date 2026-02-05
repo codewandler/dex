@@ -8,6 +8,8 @@ user-invocable: true
 
 Use `dex` for Kubernetes, GitLab, Jira, Slack, and Loki operations. Run commands via Bash tool.
 
+**IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
+
 ## Setup & Diagnostics
 
 ```bash
