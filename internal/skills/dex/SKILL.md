@@ -1,12 +1,12 @@
 ---
 name: dex
-description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, and Loki operations
+description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, and Loki operations
 user-invocable: true
 ---
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, Jira, Slack, and Loki operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, and Loki operations. Run commands via Bash tool.
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
@@ -72,6 +72,14 @@ dex slack search "query"          # Search messages
 dex slack thread <url|ch:ts>      # View thread details
 ```
 
+### GitHub (`dex gh`)
+```bash
+dex gh test                       # Test gh CLI authentication
+dex gh clone <repo> [dest]        # Clone repo (uses gh CLI)
+dex gh clone owner/repo           # Clone using short form
+dex gh clone https://github.com/owner/repo ./dir  # Clone to specific directory
+```
+
 ### Loki (`dex loki`)
 ```bash
 dex loki discover                 # Auto-discover Loki in k8s cluster
@@ -87,7 +95,7 @@ dex loki test                     # Test connection
 
 ## Tips
 
-- Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`
+- Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `gh`=`github`
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `sre/helm!2903`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)

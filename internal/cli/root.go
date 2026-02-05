@@ -15,6 +15,7 @@ var rootCmd = &cobra.Command{
 
 Unified access to your engineering tools:
   - GitLab (activity, repos)
+  - GitHub (clone via gh CLI)
   - Jira (issues, search)
   - Slack (messaging)
   - Loki (log querying)`,

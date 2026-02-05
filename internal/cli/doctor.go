@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/codewandler/dex/internal/config"
+	"github.com/codewandler/dex/internal/gh"
 	"github.com/codewandler/dex/internal/gitlab"
 	"github.com/codewandler/dex/internal/jira"
 	"github.com/codewandler/dex/internal/k8s"
@@ -28,7 +29,7 @@ var doctorCmd = &cobra.Command{
 	Short: "Check integration health",
 	Long: `Check the health of all configured integrations.
 
-Tests connectivity and authentication for GitLab, Jira, Slack, and Kubernetes.
+Tests connectivity and authentication for GitHub, GitLab, Jira, Slack, and Kubernetes.
 
 Examples:
   dex doctor`,
@@ -45,6 +46,17 @@ Examples:
 		ctx := context.Background()
 		errors := 0
 		warnings := 0
+
+		// Check GitHub
+		doctorLabel.Print("  GitHub      ")
+		if status, warn := checkGitHub(); status != "" {
+			fmt.Println(status)
+			if warn {
+				warnings++
+			}
+		} else {
+			errors++
+		}
 
 		// Check GitLab
 		doctorLabel.Print("  GitLab      ")
@@ -106,6 +118,22 @@ Examples:
 			fmt.Println()
 		}
 	},
+}
+
+// checkGitHub tests GitHub CLI availability and authentication
+func checkGitHub() (string, bool) {
+	client := gh.NewClient()
+
+	if !client.IsInstalled() {
+		return doctorWarn.Sprint("⚠ ") + doctorDim.Sprint("gh CLI not installed ") + "(install from https://cli.github.com/)", true
+	}
+
+	status, err := client.GetAuthStatus()
+	if err != nil {
+		return doctorWarn.Sprint("⚠ ") + doctorDim.Sprint("Not authenticated ") + "(run 'gh auth login')", true
+	}
+
+	return doctorSuccess.Sprint("✓ ") + fmt.Sprintf("@%s", status.Username), false
 }
 
 // checkGitLab tests GitLab connectivity. Returns status string and whether it's a warning.

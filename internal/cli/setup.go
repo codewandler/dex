@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/codewandler/dex/internal/config"
+	"github.com/codewandler/dex/internal/gh"
 	"github.com/codewandler/dex/internal/gitlab"
 	"github.com/codewandler/dex/internal/jira"
 	"github.com/codewandler/dex/internal/slack"
@@ -27,7 +29,7 @@ var setupCmd = &cobra.Command{
 	Short: "Configure integrations interactively",
 	Long: `Interactive setup wizard for dex integrations.
 
-Walks through configuration for GitLab, Jira, and Slack.
+Walks through configuration for GitHub, GitLab, Jira, and Slack.
 Only prompts for integrations that aren't already configured and working.
 
 Examples:
@@ -55,6 +57,17 @@ Examples:
 
 		configured := 0
 		skipped := 0
+
+		// GitHub
+		if isGitHubWorking() {
+			setupSuccess.Print("  GitHub      ")
+			fmt.Println("✓ Already configured")
+			skipped++
+		} else {
+			if setupGitHub(reader) {
+				configured++
+			}
+		}
 
 		// GitLab
 		if isGitLabWorking(fullCfg) {
@@ -101,6 +114,12 @@ Examples:
 	},
 }
 
+// isGitHubWorking checks if GitHub CLI is installed and authenticated
+func isGitHubWorking() bool {
+	client := gh.NewClient()
+	return client.IsAvailable()
+}
+
 // isGitLabWorking checks if GitLab is already configured and working
 func isGitLabWorking(cfg *config.Config) bool {
 	if cfg.GitLab.URL == "" || cfg.GitLab.Token == "" {
@@ -141,6 +160,54 @@ func isSlackWorking(cfg *config.Config) bool {
 	}
 	_, err = client.TestAuth()
 	return err == nil
+}
+
+// setupGitHub guides user through GitHub CLI setup
+func setupGitHub(reader *bufio.Reader) bool {
+	fmt.Println()
+	setupHeader.Println("  GitHub")
+
+	client := gh.NewClient()
+
+	if !client.IsInstalled() {
+		setupDim.Println("  The gh CLI is not installed.")
+		setupDim.Println("  Install from: https://cli.github.com/")
+		if !promptYesNo(reader, "  Open installation page?", false) {
+			setupDim.Println("  Skipped")
+			return false
+		}
+		// Try to open the URL
+		exec.Command("xdg-open", "https://cli.github.com/").Start()
+		setupDim.Println("  After installing, run 'dex setup' again.")
+		return false
+	}
+
+	setupDim.Println("  The gh CLI is installed but not authenticated.")
+	if !promptYesNo(reader, "  Run 'gh auth login' now?", true) {
+		setupDim.Println("  Skipped")
+		return false
+	}
+
+	// Run gh auth login interactively
+	cmd := exec.Command("gh", "auth", "login")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		setupError.Printf("  ✗ Authentication failed: %v\n", err)
+		return false
+	}
+
+	// Verify
+	status, err := client.GetAuthStatus()
+	if err != nil {
+		setupError.Printf("  ✗ Verification failed: %v\n", err)
+		return false
+	}
+
+	setupSuccess.Printf("  ✓ Authenticated as @%s\n", status.Username)
+	return true
 }
 
 // setupGitLab prompts for GitLab configuration

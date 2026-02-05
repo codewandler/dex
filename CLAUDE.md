@@ -7,6 +7,7 @@ Swiss army knife CLI for engineers. Usable standalone but primarily designed as 
 **Integrations:**
 - **Kubernetes** - Cluster management (contexts, namespaces, pods, services, logs)
 - **GitLab** - Activity tracking, MRs, commits, project management
+- **GitHub** - Repository operations via gh CLI (avoids API rate limits)
 - **Jira** - Issue management (OAuth)
 - **Slack** - Messaging (send, reply, channel index)
 
@@ -18,10 +19,13 @@ dex/
 ├── internal/
 │   ├── cli/                       # Cobra CLI commands
 │   │   ├── root.go                # Root command
+│   │   ├── gh.go                  # GitHub commands (gh/github)
 │   │   ├── gitlab.go              # GitLab commands (gl/gitlab)
 │   │   ├── jira.go                # Jira commands
 │   │   ├── k8s.go                 # Kubernetes commands
 │   │   └── slack.go               # Slack commands
+│   ├── gh/                        # GitHub CLI wrapper
+│   │   └── client.go              # gh CLI wrapper for clone operations
 │   ├── config/config.go           # Unified configuration (file + env)
 │   ├── gitlab/                    # GitLab API client
 │   │   ├── client.go              # Main client
@@ -98,6 +102,7 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 ```bash
 dex k8s ...    # Kubernetes (aliases: kube, kubernetes)
 dex gl ...     # GitLab (aliases: gitlab)
+dex gh ...     # GitHub (aliases: github) - wraps gh CLI
 dex jira ...   # Jira
 dex slack ...  # Slack
 ```
@@ -109,6 +114,7 @@ For full command reference, see `internal/skills/dex/SKILL.md`.
 This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that documents all commands for AI agent use. The skill enables AI assistants to:
 - Query Kubernetes clusters
 - Browse GitLab activity and MRs
+- Clone GitHub repositories
 - Look up Jira issues
 - Interact with MRs (comment, react, view diffs)
 - Send Slack messages and reply to threads
