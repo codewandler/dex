@@ -54,6 +54,80 @@ var slackAuthCmd = &cobra.Command{
 	},
 }
 
+var slackInfoCmd = &cobra.Command{
+	Use:   "info",
+	Short: "Show authenticated identities",
+	Long: `Show who you are from bot and user perspectives.
+
+Displays the authenticated identities for both the bot token and user token.
+This helps understand which identity will be used for different operations:
+
+Bot token (SLACK_BOT_TOKEN):
+- Sending messages
+- Reading channel history
+- Listing channels and users
+
+User token (SLACK_USER_TOKEN):
+- Search API (search, mentions)
+- Actions that require user context
+
+Examples:
+  dex slack info`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Bot identity
+		fmt.Println("Bot Identity (bot token)")
+		fmt.Println("────────────────────────────────────────────────────────────────")
+		botResp, err := client.TestAuth()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  Failed to authenticate: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("  Name:      %s\n", botResp.User)
+		fmt.Printf("  User ID:   %s\n", botResp.UserID)
+		fmt.Printf("  Bot ID:    %s\n", botResp.BotID)
+		fmt.Printf("  Team:      %s\n", botResp.Team)
+		fmt.Printf("  Team ID:   %s\n", botResp.TeamID)
+		fmt.Println()
+		fmt.Println("  Used for: sending messages, reading channels, listing users")
+		fmt.Println()
+
+		// User identity
+		fmt.Println("User Identity (user token)")
+		fmt.Println("────────────────────────────────────────────────────────────────")
+		if !client.HasUserToken() {
+			fmt.Println("  Not configured (set SLACK_USER_TOKEN for search capabilities)")
+		} else {
+			userResp, err := client.TestUserAuth()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  Failed to authenticate: %v\n", err)
+			} else {
+				fmt.Printf("  Name:      %s\n", userResp.User)
+				fmt.Printf("  User ID:   %s\n", userResp.UserID)
+				fmt.Printf("  Team:      %s\n", userResp.Team)
+				fmt.Printf("  Team ID:   %s\n", userResp.TeamID)
+				fmt.Println()
+				fmt.Println("  Used for: search API, mentions search")
+			}
+		}
+	},
+}
+
 var slackIndexCmd = &cobra.Command{
 	Use:   "index",
 	Short: "Index Slack channels and users",
@@ -937,6 +1011,7 @@ func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
 
 func init() {
 	slackCmd.AddCommand(slackAuthCmd)
+	slackCmd.AddCommand(slackInfoCmd)
 	slackCmd.AddCommand(slackIndexCmd)
 	slackCmd.AddCommand(slackSendCmd)
 	slackCmd.AddCommand(slackChannelsCmd)

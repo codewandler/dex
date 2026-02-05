@@ -229,6 +229,17 @@ dex jira search "text ~ 'database index' ORDER BY updated DESC"
 dex slack auth                    # Test authentication, show bot info
 ```
 
+### Identity Info
+```bash
+dex slack info                    # Show who you are (bot and user perspectives)
+```
+
+Shows authenticated identities for both tokens:
+- **Bot token**: Used for sending messages, reading channels, listing users
+- **User token**: Used for search API, mentions search
+
+Useful for understanding which identity will perform actions.
+
 ### Index (Channels & Users)
 ```bash
 dex slack index                   # Index channels and users (cached 24h)

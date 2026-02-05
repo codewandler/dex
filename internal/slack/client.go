@@ -105,6 +105,18 @@ func (c *Client) TestAuth() (*slack.AuthTestResponse, error) {
 	return resp, nil
 }
 
+// TestUserAuth tests the user token authentication and returns user info
+func (c *Client) TestUserAuth() (*slack.AuthTestResponse, error) {
+	if c.userAPI == nil {
+		return nil, fmt.Errorf("user token not configured")
+	}
+	resp, err := c.userAPI.AuthTest()
+	if err != nil {
+		return nil, fmt.Errorf("user auth test failed: %w", err)
+	}
+	return resp, nil
+}
+
 // GetChannelInfo gets information about a channel
 func (c *Client) GetChannelInfo(channelID string) (*slack.Channel, error) {
 	channel, err := c.api.GetConversationInfo(&slack.GetConversationInfoInput{
