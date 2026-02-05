@@ -13,6 +13,8 @@ Use `dex` for Kubernetes, GitLab, Jira, and Slack operations. Run commands via B
 ```bash
 dex setup                         # Interactive setup wizard (only prompts for unconfigured integrations)
 dex doctor                        # Check health of all configured integrations
+dex upgrade                       # Upgrade to latest version
+dex upgrade -v v0.2.0             # Upgrade to specific version
 ```
 
 ## Integrations

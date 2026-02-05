@@ -48,4 +48,5 @@ func init() {
 	rootCmd.AddCommand(slackCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(skillCmd)
+	rootCmd.AddCommand(upgradeCmd)
 }
