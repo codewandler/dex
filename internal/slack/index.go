@@ -195,6 +195,12 @@ func ResolveMentions(text string) string {
 			break
 		}
 
+		// Skip if this @ is already part of a Slack mention format <@...>
+		if atIdx > 0 && result[atIdx-1] == '<' {
+			i = atIdx + 1
+			continue
+		}
+
 		// Extract potential username (alphanumeric, dots, underscores, hyphens)
 		endIdx := atIdx + 1
 		for endIdx < len(result) {
