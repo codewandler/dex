@@ -1,14 +1,23 @@
-- claude tool: show info about claude from settings file, etc
-- kubernetes
-- loki
-- grafana
-- move gitlab index to .dex/gitlab/index.json
-- cli: config show ?
-- todo list
-- also add openrouter support with repl
+# TODO
 
-"find all slack mentions from today, create a todo list"
+## New Integrations
 
+- [ ] **Loki** - Log aggregation queries
+- [ ] **Grafana** - Dashboard and alerting integration
+- [ ] **OpenRouter** - AI model support with REPL
 
-jira my with status filter
-- slack mentions: parallel classification (goroutine worker pool) for faster uncached lookups
+## New Features
+
+- [ ] `claude` command - Show info about Claude from settings file
+- [ ] `config show` - Display current configuration
+- [ ] `jira my --status` - Filter issues by status
+- [ ] Todo list management
+
+## Improvements
+
+- [ ] Move GitLab index to `~/.dex/gitlab/index.json`
+- [ ] Slack mentions: parallel classification with goroutine worker pool for faster uncached lookups
+
+## Use Case Ideas
+
+- "Find all Slack mentions from today, create a todo list"
