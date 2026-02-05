@@ -31,8 +31,10 @@ The view command shows:
 
 ## Search Issues
 ```bash
-dex jira my                       # Issues assigned to me
+dex jira my                       # Issues assigned to me (excludes Done)
 dex jira my -l 50                 # Increase limit (default 20)
+dex jira my -s "In Progress"      # Filter by status
+dex jira my -s "Review"           # Filter by status
 dex jira search "<JQL>"           # Search with JQL query
 dex jira lookup KEY1 KEY2 KEY3    # Quick lookup of multiple issues
 ```

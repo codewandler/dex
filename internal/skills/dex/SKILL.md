@@ -55,6 +55,7 @@ dex gl mr create "<title>"        # Create MR from current branch
 ### Jira (`dex jira`)
 ```bash
 dex jira my                       # Issues assigned to me
+dex jira my -s "In Progress"      # Filter by status
 dex jira view <KEY>               # View issue details
 dex jira search "<JQL>"           # Search with JQL
 ```

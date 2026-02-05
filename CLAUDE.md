@@ -148,8 +148,11 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 When adding new features or commands, **always update all documentation**:
 1. `internal/skills/dex/SKILL.md` - Full command reference for AI agents
-2. `CLAUDE.md` - Project structure and dev info
-3. `README.md` - Keep examples current
+2. `internal/skills/dex/references/*.md` - Detailed reference docs per integration
+3. `CLAUDE.md` - Project structure and dev info
+4. `README.md` - Keep examples current
+
+**IMPORTANT:** Only edit skill files in `internal/skills/dex/`. Never edit `~/.claude/skills/dex/` directly - those files are installed from the internal package via `task install`.
 
 ### Commit Conventions
 

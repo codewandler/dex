@@ -125,6 +125,7 @@ var jiraMyCmd = &cobra.Command{
 		defer cancel()
 
 		limit, _ := cmd.Flags().GetInt("limit")
+		status, _ := cmd.Flags().GetString("status")
 
 		client, err := jira.NewClient()
 		if err != nil {
@@ -132,7 +133,16 @@ var jiraMyCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		result, err := client.GetMyIssues(ctx, limit)
+		// Build JQL query
+		jql := "assignee = currentUser()"
+		if status != "" {
+			jql += fmt.Sprintf(" AND status = '%s'", status)
+		} else {
+			jql += " AND status != Done"
+		}
+		jql += " ORDER BY updated DESC"
+
+		result, err := client.SearchIssues(ctx, jql, limit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -264,6 +274,7 @@ func init() {
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
+	jiraMyCmd.Flags().StringP("status", "s", "", "Filter by status (e.g., 'In Progress', 'Review')")
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
 }
