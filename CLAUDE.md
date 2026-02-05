@@ -72,7 +72,8 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
   },
   "slack": {
     "bot_token": "xoxb-...",
-    "app_token": "xapp-..."
+    "app_token": "xapp-...",
+    "user_token": "xoxp-..."
   }
 }
 ```
@@ -87,6 +88,7 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 | `JIRA_CLIENT_SECRET` | OAuth 2.0 client secret |
 | `SLACK_BOT_TOKEN` | Slack bot token (xoxb-...) |
 | `SLACK_APP_TOKEN` | Slack app token for Socket Mode (xapp-...) |
+| `SLACK_USER_TOKEN` | Slack user token for search API (xoxp-..., requires search:read scope) |
 | `ACTIVITY_DAYS` | Default days for activity lookback |
 
 ## Command Overview

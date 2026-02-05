@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/codewandler/dex/internal/config"
+	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/slack"
 
 	"github.com/spf13/cobra"
@@ -387,6 +388,28 @@ func printUser(id, username, displayName string, isBot bool) {
 	fmt.Printf("%-15s %-25s %-30s %s\n", id, username, displayName, userType)
 }
 
+// completeSlackUsers provides shell completion for usernames (without @ prefix)
+func completeSlackUsers(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	idx, err := slack.LoadIndex()
+	if err != nil || len(idx.Users) == 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+
+	for _, u := range idx.Users {
+		if u.IsBot {
+			continue
+		}
+		if strings.Contains(strings.ToLower(u.Username), toCompleteLower) {
+			completions = append(completions, u.Username)
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 // completeSlackTargets provides shell completion for channels and @users
 func completeSlackTargets(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// Only complete first argument
@@ -433,16 +456,306 @@ func completeSlackTargets(cmd *cobra.Command, args []string, toComplete string) 
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
+var slackMentionsCmd = &cobra.Command{
+	Use:   "mentions",
+	Short: "Search for mentions of a user",
+	Long: `Search for messages that mention a specific user.
+
+By default shows mentions of the authenticated bot. Use --user to search
+for mentions of a specific user by username or ID.
+
+Scans channels the bot is a member of for messages containing @mentions.
+
+Examples:
+  dex slack mentions                    # Mentions of the bot
+  dex slack mentions --user timo.friedl # Mentions of a specific user
+  dex slack mentions --user U03HY52RQLV # Mentions by user ID
+  dex slack mentions --limit 50         # Show more results
+  dex slack mentions --since 1h         # Mentions from last hour
+  dex slack mentions --since 7d         # Mentions from last 7 days
+  dex slack mentions --compact          # Compact table view`,
+	Run: func(cmd *cobra.Command, args []string) {
+		userArg, _ := cmd.Flags().GetString("user")
+		limit, _ := cmd.Flags().GetInt("limit")
+		compact, _ := cmd.Flags().GetBool("compact")
+		sinceStr, _ := cmd.Flags().GetString("since")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Create client with user token if available (enables search API)
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Load index for name resolution
+		idx, _ := slack.LoadIndex()
+
+		// Determine user ID to search for
+		var userID string
+		if userArg == "" {
+			// Default to bot's own user ID
+			userID, err = client.GetBotUserID()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to get bot user ID: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// Resolve username to user ID
+			userID = slack.ResolveUser(userArg)
+		}
+
+		// Parse since duration
+		var sinceUnix int64
+		var sinceDesc string
+		if sinceStr != "" {
+			duration := parseSlackDuration(sinceStr)
+			if duration > 0 {
+				sinceTime := time.Now().Add(-duration)
+				sinceUnix = sinceTime.Unix()
+				sinceDesc = fmt.Sprintf(" since %s", formatSlackSinceTime(sinceTime, duration))
+			}
+		}
+
+		var mentions []slack.Mention
+		var total int
+
+		// Use search API if user token available, otherwise fall back to channel scanning
+		if client.HasUserToken() {
+			fmt.Printf("Searching all channels for mentions of %s%s...\n", userID, sinceDesc)
+			mentions, total, err = client.SearchMentions(userID, limit, sinceUnix)
+		} else {
+			// Fall back to scanning channels bot is a member of
+			if idx == nil || len(idx.Channels) == 0 {
+				fmt.Fprintf(os.Stderr, "No channels indexed. Run 'dex slack index' first.\n")
+				os.Exit(1)
+			}
+
+			var channelIDs []string
+			for _, ch := range idx.Channels {
+				if ch.IsMember {
+					channelIDs = append(channelIDs, ch.ID)
+				}
+			}
+
+			if len(channelIDs) == 0 {
+				fmt.Println("Bot is not a member of any channels.")
+				return
+			}
+
+			fmt.Printf("Scanning %d channels for mentions of %s%s...\n", len(channelIDs), userID, sinceDesc)
+			mentions, err = client.GetMentionsInChannels(userID, channelIDs, limit, sinceUnix)
+			total = len(mentions)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get mentions: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(mentions) == 0 {
+			fmt.Printf("No mentions found for %s\n", userID)
+			return
+		}
+
+		fmt.Println()
+
+		if compact {
+			printMentionHeader()
+		}
+
+		for i, m := range mentions {
+			channelName := m.ChannelName
+			if channelName == "" {
+				if ch := idx.FindChannel(m.ChannelID); ch != nil {
+					channelName = ch.Name
+				} else {
+					channelName = m.ChannelID
+				}
+			}
+
+			username := m.Username
+			if username == "" {
+				if u := idx.FindUser(m.UserID); u != nil {
+					username = u.Username
+				} else {
+					username = m.UserID
+				}
+			}
+
+			ts := parseSlackTimestamp(m.Timestamp)
+
+			if compact {
+				text := truncateText(m.Text, 60)
+				printMentionCompact(ts, channelName, username, text)
+			} else {
+				text := resolveUserMentions(m.Text, idx)
+				printMentionExpanded(i+1, ts, channelName, username, text, m.Permalink)
+			}
+		}
+		if total > len(mentions) {
+			fmt.Printf("\nShowing %d of %d total mentions\n", len(mentions), total)
+		} else {
+			fmt.Printf("\nFound %d mentions\n", len(mentions))
+		}
+	},
+}
+
+func printMentionHeader() {
+	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
+	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
+}
+
+func printMentionCompact(ts, channel, from, text string) {
+	fmt.Printf("%-19s %-20s %-15s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), text)
+}
+
+func printMentionExpanded(num int, ts, channel, from, text, permalink string) {
+	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
+	fmt.Printf("#%s  •  %s  •  @%s\n", channel, ts, from)
+	if permalink != "" {
+		fmt.Printf("%s\n", permalink)
+	}
+	fmt.Println()
+	fmt.Println(text)
+	fmt.Println()
+}
+
+// resolveUserMentions converts <@USER_ID> to @username for readability
+func resolveUserMentions(text string, idx *models.SlackIndex) string {
+	if idx == nil {
+		return text
+	}
+
+	result := text
+	i := 0
+	for i < len(result) {
+		// Find <@U pattern
+		start := strings.Index(result[i:], "<@")
+		if start == -1 {
+			break
+		}
+		start += i
+
+		// Find closing >
+		end := strings.Index(result[start:], ">")
+		if end == -1 {
+			break
+		}
+		end += start
+
+		// Extract user ID (skip <@ prefix)
+		userID := result[start+2 : end]
+		// Handle format like <@U123|display_name>
+		if pipeIdx := strings.Index(userID, "|"); pipeIdx != -1 {
+			userID = userID[:pipeIdx]
+		}
+
+		// Resolve to username
+		replacement := "@" + userID
+		if u := idx.FindUser(userID); u != nil {
+			replacement = "@" + u.Username
+		}
+
+		result = result[:start] + replacement + result[end+1:]
+		i = start + len(replacement)
+	}
+
+	return result
+}
+
+func parseSlackTimestamp(ts string) string {
+	// Slack timestamp is Unix time with decimal, e.g., "1612345678.123456"
+	var sec int64
+	fmt.Sscanf(ts, "%d", &sec)
+	if sec == 0 {
+		return ts
+	}
+	return time.Unix(sec, 0).Format("2006-01-02 15:04:05")
+}
+
+func truncateText(s string, maxLen int) string {
+	// Remove newlines and excessive whitespace
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.Join(strings.Fields(s), " ")
+
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// parseSlackDuration parses a duration string like "30m", "4h", "7d"
+func parseSlackDuration(s string) time.Duration {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return 0
+	}
+
+	// Extract number and unit
+	var num int
+	var unit string
+	for i, c := range s {
+		if c < '0' || c > '9' {
+			fmt.Sscanf(s[:i], "%d", &num)
+			unit = s[i:]
+			break
+		}
+	}
+
+	if num == 0 {
+		return 0
+	}
+
+	switch unit {
+	case "m", "min", "mins":
+		return time.Duration(num) * time.Minute
+	case "h", "hr", "hrs", "hour", "hours":
+		return time.Duration(num) * time.Hour
+	case "d", "day", "days":
+		return time.Duration(num) * 24 * time.Hour
+	case "w", "week", "weeks":
+		return time.Duration(num) * 7 * 24 * time.Hour
+	default:
+		return 0
+	}
+}
+
+// formatSlackSinceTime returns a human-readable description of the time range
+func formatSlackSinceTime(since time.Time, duration time.Duration) string {
+	if duration < time.Hour {
+		return fmt.Sprintf("%s (%d minutes ago)", since.Format("15:04"), int(duration.Minutes()))
+	}
+	if duration < 24*time.Hour {
+		return fmt.Sprintf("%s (%d hours ago)", since.Format("15:04"), int(duration.Hours()))
+	}
+	return since.Format("2006-01-02")
+}
+
 func init() {
 	slackCmd.AddCommand(slackAuthCmd)
 	slackCmd.AddCommand(slackIndexCmd)
 	slackCmd.AddCommand(slackSendCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackUsersCmd)
+	slackCmd.AddCommand(slackMentionsCmd)
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackUsersCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
+	slackMentionsCmd.Flags().StringP("user", "u", "", "User to search mentions for (username or ID, defaults to bot)")
+	slackMentionsCmd.Flags().IntP("limit", "l", 20, "Maximum number of results to show")
+	slackMentionsCmd.Flags().BoolP("compact", "c", false, "Compact table view")
+	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d)")
+	_ = slackMentionsCmd.RegisterFlagCompletionFunc("user", completeSlackUsers)
 }

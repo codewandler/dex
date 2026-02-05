@@ -264,6 +264,25 @@ dex slack send @timo.friedl "Hey, check this out!"
 - @mentions in message body are auto-converted to `<@USER_ID>` format
 - Use `-t <ts>` to continue a thread (ts returned from previous send)
 
+### Search Mentions
+```bash
+dex slack mentions                    # Mentions of the bot (expanded view)
+dex slack mentions --user timo.friedl # Mentions of a specific user
+dex slack mentions --user U03HY52RQLV # By user ID
+dex slack mentions --since 2d         # Mentions from last 2 days
+dex slack mentions --since 7d         # Mentions from last 7 days
+dex slack mentions --limit 50         # Show more results (default 20)
+dex slack mentions --compact          # Compact table view
+```
+
+**With user token configured:** Searches all channels using Slack Search API (fast, comprehensive).
+
+**Without user token:** Falls back to scanning channel history in channels the bot is a member of.
+
+Time filters: `1d`, `2d`, `7d`, `2w` etc. (date granularity with search API)
+
+Default expanded view shows full message text, timestamps, and Slack permalinks. Use `--compact` for a condensed table.
+
 ## Tips
 
 - All k8s commands support shell completion for resource names

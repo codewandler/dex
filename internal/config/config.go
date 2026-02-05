@@ -56,8 +56,9 @@ type JiraConfig struct {
 
 // SlackConfig holds Slack-specific configuration
 type SlackConfig struct {
-	BotToken string `json:"bot_token,omitempty" envconfig:"SLACK_BOT_TOKEN"`
-	AppToken string `json:"app_token,omitempty" envconfig:"SLACK_APP_TOKEN"` // For Socket Mode
+	BotToken  string `json:"bot_token,omitempty" envconfig:"SLACK_BOT_TOKEN"`
+	AppToken  string `json:"app_token,omitempty" envconfig:"SLACK_APP_TOKEN"`   // For Socket Mode
+	UserToken string `json:"user_token,omitempty" envconfig:"SLACK_USER_TOKEN"` // For search API
 }
 
 // JiraToken holds Jira OAuth tokens
