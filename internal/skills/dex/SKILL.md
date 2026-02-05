@@ -219,13 +219,15 @@ dex jira search "text ~ 'database index' ORDER BY updated DESC"
 dex slack auth                    # Test authentication, show bot info
 ```
 
-### Channel Index
+### Index (Channels & Users)
 ```bash
-dex slack index                   # Index all visible channels (cached 24h)
+dex slack index                   # Index channels and users (cached 24h)
 dex slack index --force           # Force re-index
 ```
 
-Index stored at `~/.dex/slack/index.json`. Required for channel name autocomplete.
+Index stored at `~/.dex/slack/index.json` (channels and users combined).
+
+Required for channel/user name autocomplete and @username DMs.
 
 ### List Channels
 ```bash
@@ -234,27 +236,40 @@ dex slack channels --member       # Only channels bot is a member of (can post t
 dex slack channels --no-cache     # Fetch from API instead of index
 ```
 
+### List Users
+```bash
+dex slack users                   # List all indexed users
+dex slack users --no-cache        # Fetch from API instead of index
+```
+
 ### Send Message
 ```bash
-dex slack send <channel> "message"           # Send message to channel
-dex slack send dev-team "Hello from dex!"    # By channel name (requires index)
-dex slack send C03JDUBJD0D "Hello!"          # By channel ID
+# To channel (by name or ID)
+dex slack send dev-team "Hello from dex!"
+dex slack send C03JDUBJD0D "Hello!"
+
+# With @mentions in message (auto-resolved to Slack mentions)
+dex slack send dev-team "Hey @timo.friedl check this!"
+dex slack send dev-team "@alice @bob please review"
+
+# Reply to thread (use -t with thread timestamp from previous send)
+dex slack send dev-team "Follow up" -t 1770257991.873399
+dex slack send dev-team "Another reply" --thread 1770257991.873399
+
+# To user DM (requires im:write scope)
+dex slack send @timo.friedl "Hey, check this out!"
 ```
 
-Channel names autocomplete to channels the bot is a member of.
-
-### Reply to Thread
-```bash
-dex slack reply <channel> <thread_ts> "message"
-dex slack reply dev-team 1234567890.123456 "Thanks!"
-```
+- Channel names and @usernames autocomplete from index
+- @mentions in message body are auto-converted to `<@USER_ID>` format
+- Use `-t <ts>` to continue a thread (ts returned from previous send)
 
 ## Tips
 
 - All k8s commands support shell completion for resource names
 - Pod logs `-c` flag autocompletes container names
 - GitLab project names autocomplete from local index
-- Slack channel names autocomplete from local index (member channels only)
+- Slack channel names and @usernames autocomplete from local index
 - Use `-n` for namespace, `-A` for all namespaces in k8s commands
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `mr`=`merge-request`
 - Generate shell completions: `dex completion bash|zsh|fish|powershell`

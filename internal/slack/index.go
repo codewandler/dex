@@ -70,9 +70,8 @@ func SaveIndex(idx *models.SlackIndex) error {
 // ProgressFunc is called during indexing with progress updates
 type ProgressFunc func(completed, total int)
 
-// IndexChannels fetches all channels and builds the index
-func (c *Client) IndexChannels(progressFn ProgressFunc) (*models.SlackIndex, error) {
-	// Get team info
+// IndexAll fetches all channels and users and builds the index
+func (c *Client) IndexAll(channelProgressFn, userProgressFn ProgressFunc) (*models.SlackIndex, error) {
 	auth, err := c.TestAuth()
 	if err != nil {
 		return nil, err
@@ -81,7 +80,7 @@ func (c *Client) IndexChannels(progressFn ProgressFunc) (*models.SlackIndex, err
 	idx := models.NewSlackIndex(auth.TeamID, auth.Team)
 	idx.LastFullIndexAt = time.Now()
 
-	// Fetch all channels
+	// Index channels
 	channels, err := c.ListChannels()
 	if err != nil {
 		return nil, err
@@ -102,8 +101,8 @@ func (c *Client) IndexChannels(progressFn ProgressFunc) (*models.SlackIndex, err
 		}
 		idx.UpsertChannel(slackCh)
 
-		if progressFn != nil {
-			progressFn(i+1, total)
+		if channelProgressFn != nil {
+			channelProgressFn(i+1, total)
 		}
 	}
 
@@ -111,17 +110,115 @@ func (c *Client) IndexChannels(progressFn ProgressFunc) (*models.SlackIndex, err
 	sort.Slice(idx.Channels, func(i, j int) bool {
 		return idx.Channels[i].Name < idx.Channels[j].Name
 	})
-	idx.BuildLookupMaps()
 
+	// Index users
+	users, err := c.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	total = len(users)
+	for i, u := range users {
+		// Skip deleted users and slackbot
+		if u.Deleted || u.ID == "USLACKBOT" {
+			if userProgressFn != nil {
+				userProgressFn(i+1, total)
+			}
+			continue
+		}
+
+		slackUser := models.SlackUser{
+			ID:          u.ID,
+			Username:    u.Name,
+			DisplayName: u.Profile.DisplayName,
+			RealName:    u.RealName,
+			Email:       u.Profile.Email,
+			IsBot:       u.IsBot,
+			IsAdmin:     u.IsAdmin,
+			IsDeleted:   u.Deleted,
+			IndexedAt:   time.Now(),
+		}
+		idx.UpsertUser(slackUser)
+
+		if userProgressFn != nil {
+			userProgressFn(i+1, total)
+		}
+	}
+
+	// Sort users by username
+	sort.Slice(idx.Users, func(i, j int) bool {
+		return idx.Users[i].Username < idx.Users[j].Username
+	})
+
+	idx.BuildLookupMaps()
 	return idx, nil
 }
 
 // ResolveChannel resolves a channel name or ID to a channel ID
-// Uses the index if available, falls back to returning the input as-is
 func ResolveChannel(idOrName string) string {
 	idx, err := LoadIndex()
 	if err != nil {
 		return idOrName
 	}
 	return idx.ResolveChannelID(idOrName)
+}
+
+// ResolveUser resolves a username or ID to a user ID
+func ResolveUser(idOrUsername string) string {
+	idx, err := LoadIndex()
+	if err != nil {
+		return idOrUsername
+	}
+	return idx.ResolveUserID(idOrUsername)
+}
+
+// ResolveMentions converts @username mentions in text to Slack <@USER_ID> format
+// Example: "Hey @timo.friedl check this" -> "Hey <@U03HY52RQLV> check this"
+func ResolveMentions(text string) string {
+	idx, err := LoadIndex()
+	if err != nil || len(idx.Users) == 0 {
+		return text
+	}
+
+	result := text
+	i := 0
+	for i < len(result) {
+		// Find next @
+		atIdx := -1
+		for j := i; j < len(result); j++ {
+			if result[j] == '@' {
+				atIdx = j
+				break
+			}
+		}
+		if atIdx == -1 {
+			break
+		}
+
+		// Extract potential username (alphanumeric, dots, underscores, hyphens)
+		endIdx := atIdx + 1
+		for endIdx < len(result) {
+			c := result[endIdx]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+				c == '.' || c == '_' || c == '-' {
+				endIdx++
+			} else {
+				break
+			}
+		}
+
+		if endIdx > atIdx+1 {
+			username := result[atIdx+1 : endIdx]
+			user := idx.FindUser(username)
+			if user != nil {
+				mention := "<@" + user.ID + ">"
+				result = result[:atIdx] + mention + result[endIdx:]
+				i = atIdx + len(mention)
+				continue
+			}
+		}
+		i = atIdx + 1
+	}
+
+	return result
 }

@@ -121,3 +121,24 @@ func (c *Client) ListChannels() ([]slack.Channel, error) {
 
 	return allChannels, nil
 }
+
+// ListUsers lists all users in the workspace
+func (c *Client) ListUsers() ([]slack.User, error) {
+	users, err := c.api.GetUsers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+	return users, nil
+}
+
+// OpenConversation opens a DM conversation with a user and returns the channel ID
+func (c *Client) OpenConversation(userID string) (string, error) {
+	params := &slack.OpenConversationParameters{
+		Users: []string{userID},
+	}
+	channel, _, _, err := c.api.OpenConversation(params)
+	if err != nil {
+		return "", fmt.Errorf("failed to open conversation: %w", err)
+	}
+	return channel.ID, nil
+}
