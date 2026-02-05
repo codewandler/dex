@@ -1,4 +1,4 @@
-module dev-activity
+module dex
 
 go 1.25.0
 

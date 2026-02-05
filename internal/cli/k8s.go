@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"dev-activity/internal/k8s"
+	"dex/internal/k8s"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"

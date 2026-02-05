@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"dev-activity/internal/models"
+	"dex/internal/models"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/fatih/color"

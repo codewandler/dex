@@ -4,8 +4,6 @@
 
 # Build output
 /bin/
-/dex
-/dev-activity
 
 # Task
 .task/

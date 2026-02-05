@@ -3,22 +3,26 @@ version: '3'
 vars:
   BINARY: dex
   BUILD_DIR: ./bin
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  LDFLAGS: -X main.Version={{.VERSION}}
 
 tasks:
   build:
     desc: Build the dex binary to ./bin/
     cmds:
       - mkdir -p {{.BUILD_DIR}}
-      - go build -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/dex
+      - go build -ldflags "{{.LDFLAGS}}" -o {{.BUILD_DIR}}/{{.BINARY}} .
     sources:
       - ./**/*.go
     generates:
       - "{{.BUILD_DIR}}/{{.BINARY}}"
 
   install:
-    desc: Install dex to $GOPATH/bin
+    desc: Install dex to $GOPATH/bin and install skills
     cmds:
-      - go install ./cmd/dex
+      - go install -ldflags "{{.LDFLAGS}}" .
+      - dex skill install
 
   clean:
     desc: Remove build artifacts

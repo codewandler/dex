@@ -1,10 +1,18 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
+
+var version = "dev"
+
+// SetVersion sets the version string (called from main)
+func SetVersion(v string) {
+	version = v
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "dex",
@@ -24,7 +32,17 @@ func Execute() {
 	}
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(version)
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(jiraCmd)
 	rootCmd.AddCommand(gitlabCmd)
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(skillCmd)
 }

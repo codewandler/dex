@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"dev-activity/internal/config"
-	"dev-activity/internal/gitlab"
-	"dev-activity/internal/models"
-	"dev-activity/internal/output"
+	"dex/internal/config"
+	"dex/internal/gitlab"
+	"dex/internal/models"
+	"dex/internal/output"
 
 	"github.com/spf13/cobra"
 	gogitlab "github.com/xanzy/go-gitlab"
