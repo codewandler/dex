@@ -67,6 +67,7 @@ type JiraToken struct {
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	CloudID      string    `json:"cloud_id,omitempty"`
+	SiteURL      string    `json:"site_url,omitempty"` // Browsable URL like https://company.atlassian.net
 }
 
 // IsExpired checks if the token is expired (with 1 min buffer)

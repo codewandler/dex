@@ -2,6 +2,7 @@ package slack
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -307,4 +308,107 @@ func (c *Client) GetBotUserID() (string, error) {
 		return "", fmt.Errorf("failed to get bot user ID: %w", err)
 	}
 	return resp.UserID, nil
+}
+
+// SearchResult holds a search result with metadata
+type SearchResult struct {
+	ChannelID   string
+	ChannelName string
+	UserID      string
+	Username    string
+	Timestamp   string
+	Text        string
+	Permalink   string
+}
+
+// Search performs a general search with the given query (requires user token)
+func (c *Client) Search(query string, count int, since int64) ([]SearchResult, int, error) {
+	if c.userAPI == nil {
+		return nil, 0, fmt.Errorf("user token required for search")
+	}
+
+	if since > 0 {
+		sinceTime := time.Unix(since, 0)
+		query += fmt.Sprintf(" after:%s", sinceTime.Format("2006-01-02"))
+	}
+
+	params := slack.SearchParameters{
+		Sort:          "timestamp",
+		SortDirection: "desc",
+		Count:         count,
+		Page:          1,
+	}
+
+	result, err := c.userAPI.SearchMessages(query, params)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to search messages: %w", err)
+	}
+
+	var results []SearchResult
+	for _, msg := range result.Matches {
+		results = append(results, SearchResult{
+			ChannelID:   msg.Channel.ID,
+			ChannelName: msg.Channel.Name,
+			UserID:      msg.User,
+			Username:    msg.Username,
+			Timestamp:   msg.Timestamp,
+			Text:        msg.Text,
+			Permalink:   msg.Permalink,
+		})
+	}
+
+	return results, result.Total, nil
+}
+
+// ExtractTickets extracts ticket references from text given a list of project keys.
+// For example, with projectKeys=["DEV", "TEL"], it will find "DEV-123", "TEL-456", etc.
+func ExtractTickets(text string, projectKeys []string) []string {
+	if len(projectKeys) == 0 {
+		return nil
+	}
+
+	// Build pattern: (DEV|TEL|...)-\d+
+	pattern := "(?i)\\b("
+	for i, key := range projectKeys {
+		if i > 0 {
+			pattern += "|"
+		}
+		pattern += regexp.QuoteMeta(key)
+	}
+	pattern += ")-\\d+\\b"
+
+	re := regexp.MustCompile(pattern)
+	matches := re.FindAllString(text, -1)
+
+	// Deduplicate and uppercase
+	seen := make(map[string]bool)
+	var tickets []string
+	for _, m := range matches {
+		// Normalize to uppercase
+		ticket := regexp.MustCompile(`(?i)([a-z]+)-(\d+)`).ReplaceAllStringFunc(m, func(s string) string {
+			parts := regexp.MustCompile(`(?i)([a-z]+)-(\d+)`).FindStringSubmatch(s)
+			if len(parts) == 3 {
+				return fmt.Sprintf("%s-%s", toUpper(parts[1]), parts[2])
+			}
+			return s
+		})
+		if !seen[ticket] {
+			seen[ticket] = true
+			tickets = append(tickets, ticket)
+		}
+	}
+
+	return tickets
+}
+
+func toUpper(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
 }

@@ -155,6 +155,16 @@ dex gl mr create "Feature" -p group/proj -s branch # Explicit project and source
 dex jira auth                     # Authenticate via OAuth (opens browser)
 ```
 
+### Projects
+```bash
+dex jira projects                 # List active projects (excludes archived)
+dex jira projects --keys          # Output only project keys (one per line)
+dex jira projects --archived      # Include archived projects
+```
+
+Project keys (e.g., DEV, TEL, SRE) are the prefixes used in issue keys like DEV-123.
+Archived projects (names starting with "z[archive]") are hidden by default.
+
 ### View Issue (Full Details)
 ```bash
 dex jira view <KEY>               # View issue with description, comments, links, subtasks
@@ -282,6 +292,38 @@ dex slack mentions --compact          # Compact table view
 Time filters: `1d`, `2d`, `7d`, `2w` etc. (date granularity with search API)
 
 Default expanded view shows full message text, timestamps, and Slack permalinks. Use `--compact` for a condensed table.
+
+### Search Messages (requires user token)
+```bash
+# General search
+dex slack search "query"              # Search all messages
+dex slack search "deployment"         # Find deployment-related messages
+dex slack search "error" --since 1d   # Errors in last day
+dex slack search "from:@timo.friedl"  # Messages from specific user
+dex slack search "in:#dev-team"       # Messages in specific channel
+
+# Extract Jira tickets from results
+dex slack search "bug" --tickets              # Find tickets mentioned with "bug"
+dex slack search "DEV-" --tickets             # Find all DEV tickets mentioned
+dex slack search "TEL-" --tickets --since 7d  # TEL tickets from last week
+dex slack search "urgent" --tickets --compact # Compact ticket list
+
+# Output control
+dex slack search "query" --limit 50   # More results (default 50)
+dex slack search "query" --compact    # Compact table view
+```
+
+**Ticket extraction (`--tickets`):**
+- Fetches Jira project keys to identify valid ticket patterns
+- Extracts tickets like DEV-123, TEL-456 from message text
+- Groups by ticket and shows mention count + permalinks
+- Useful for finding "which tickets were discussed recently"
+
+**Slack search syntax:**
+- `from:@username` - Messages from a specific user
+- `in:#channel` - Messages in a specific channel
+- `has:link` - Messages containing links
+- `before:YYYY-MM-DD`, `after:YYYY-MM-DD` - Date filters
 
 ## Tips
 

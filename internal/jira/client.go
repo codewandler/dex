@@ -98,6 +98,15 @@ type SearchResult struct {
 	Issues     []Issue `json:"issues"`
 }
 
+// Project represents a Jira project
+type Project struct {
+	ID         string `json:"id"`
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	ProjectType string `json:"projectTypeKey"`
+	Self       string `json:"self"`
+}
+
 func NewClient() (*Client, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -144,6 +153,18 @@ func (c *Client) EnsureAuth(ctx context.Context) error {
 		c.token = token
 		if err := SaveToken(c.token); err != nil {
 			return fmt.Errorf("failed to save refreshed token: %w", err)
+		}
+	}
+
+	// Backfill SiteURL if missing (for tokens created before this field existed)
+	if c.token.SiteURL == "" {
+		siteInfo, err := c.oauth.GetSiteInfo(ctx, c.token.AccessToken)
+		if err == nil {
+			c.token.SiteURL = siteInfo.SiteURL
+			if c.token.CloudID == "" {
+				c.token.CloudID = siteInfo.CloudID
+			}
+			_ = SaveToken(c.token) // Best effort save
 		}
 	}
 
@@ -237,6 +258,50 @@ func (c *Client) GetMyIssues(ctx context.Context, maxResults int) (*SearchResult
 // GetRecentIssues fetches recently updated issues
 func (c *Client) GetRecentIssues(ctx context.Context, maxResults int) (*SearchResult, error) {
 	return c.SearchIssues(ctx, "updated >= -7d ORDER BY updated DESC", maxResults)
+}
+
+// ListProjects fetches all accessible Jira projects
+func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
+	resp, err := c.doRequest(ctx, "GET", "/project", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]any
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("failed to list projects %d: %v", resp.StatusCode, errResp)
+	}
+
+	var projects []Project
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		return nil, err
+	}
+
+	return projects, nil
+}
+
+// GetProjectKeys returns just the project keys (e.g., DEV, TEL)
+func (c *Client) GetProjectKeys(ctx context.Context) ([]string, error) {
+	projects, err := c.ListProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, len(projects))
+	for i, p := range projects {
+		keys[i] = p.Key
+	}
+	return keys, nil
+}
+
+// GetSiteURL returns the browsable Jira site URL (e.g., https://company.atlassian.net)
+func (c *Client) GetSiteURL() string {
+	if c.token != nil {
+		return c.token.SiteURL
+	}
+	return ""
 }
 
 // FormatIssue returns a formatted string representation of an issue

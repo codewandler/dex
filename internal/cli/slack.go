@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/codewandler/dex/internal/config"
+	"github.com/codewandler/dex/internal/jira"
 	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/slack"
 
@@ -740,6 +743,198 @@ func formatSlackSinceTime(since time.Time, duration time.Duration) string {
 	return since.Format("2006-01-02")
 }
 
+var slackSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search Slack messages",
+	Long: `Search Slack messages using the search API (requires user token with search:read scope).
+
+Use --tickets to extract and display Jira ticket references from results.
+Ticket extraction requires Jira authentication to fetch project keys.
+
+Query supports Slack search syntax:
+- from:@username - Messages from a specific user
+- in:#channel - Messages in a specific channel
+- has:link - Messages containing links
+- before:YYYY-MM-DD, after:YYYY-MM-DD - Date filters
+
+Examples:
+  dex slack search "deployment"              # Search for deployment
+  dex slack search "error" --since 1d        # Errors in last day
+  dex slack search "from:@timo.friedl"       # Messages from user
+  dex slack search "bug" --tickets           # Find tickets mentioned with "bug"
+  dex slack search "DEV-" --tickets          # Find all DEV tickets mentioned`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		query := args[0]
+		limit, _ := cmd.Flags().GetInt("limit")
+		sinceStr, _ := cmd.Flags().GetString("since")
+		extractTickets, _ := cmd.Flags().GetBool("tickets")
+		compact, _ := cmd.Flags().GetBool("compact")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if !client.HasUserToken() {
+			fmt.Fprintf(os.Stderr, "Error: User token required for search (set SLACK_USER_TOKEN with search:read scope)\n")
+			os.Exit(1)
+		}
+
+		// Parse since duration
+		var sinceUnix int64
+		if sinceStr != "" {
+			duration := parseSlackDuration(sinceStr)
+			if duration > 0 {
+				sinceTime := time.Now().Add(-duration)
+				sinceUnix = sinceTime.Unix()
+			}
+		}
+
+		// Load index for name resolution
+		idx, _ := slack.LoadIndex()
+
+		// Get Jira project keys if ticket extraction is requested
+		var projectKeys []string
+		if extractTickets {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			jiraClient, err := jira.NewClient()
+			if err == nil {
+				projectKeys, _ = jiraClient.GetProjectKeys(ctx)
+			}
+			cancel()
+
+			if len(projectKeys) == 0 {
+				fmt.Fprintf(os.Stderr, "Warning: Could not fetch Jira project keys. Using common patterns.\n")
+				// Fallback to common project key pattern
+				projectKeys = []string{"DEV", "TEL", "OPS", "SEC", "QA"}
+			}
+		}
+
+		results, total, err := client.Search(query, limit, sinceUnix)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Search failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(results) == 0 {
+			fmt.Println("No results found.")
+			return
+		}
+
+		// Collect all tickets if extraction is enabled
+		allTickets := make(map[string][]string) // ticket -> permalinks where mentioned
+		if extractTickets {
+			for _, r := range results {
+				tickets := slack.ExtractTickets(r.Text, projectKeys)
+				for _, t := range tickets {
+					allTickets[t] = append(allTickets[t], r.Permalink)
+				}
+			}
+		}
+
+		fmt.Println()
+
+		if extractTickets && len(allTickets) > 0 {
+			// Output ticket-focused view
+			fmt.Printf("Found %d tickets in %d messages:\n\n", len(allTickets), len(results))
+
+			// Sort tickets for consistent output
+			var ticketList []string
+			for t := range allTickets {
+				ticketList = append(ticketList, t)
+			}
+			sort.Strings(ticketList)
+
+			for _, ticket := range ticketList {
+				links := allTickets[ticket]
+				fmt.Printf("  %-12s (%d mentions)\n", ticket, len(links))
+				if !compact {
+					for _, link := range links {
+						fmt.Printf("    %s\n", link)
+					}
+				}
+			}
+
+			if total > len(results) {
+				fmt.Printf("\nSearched %d of %d total matches\n", len(results), total)
+			}
+		} else {
+			// Standard search output
+			if compact {
+				printSearchHeader()
+			}
+
+			for i, r := range results {
+				channelName := r.ChannelName
+				if channelName == "" {
+					if ch := idx.FindChannel(r.ChannelID); ch != nil {
+						channelName = ch.Name
+					} else {
+						channelName = r.ChannelID
+					}
+				}
+
+				username := r.Username
+				if username == "" {
+					if u := idx.FindUser(r.UserID); u != nil {
+						username = u.Username
+					} else {
+						username = r.UserID
+					}
+				}
+
+				ts := parseSlackTimestamp(r.Timestamp)
+
+				if compact {
+					text := truncateText(r.Text, 60)
+					printSearchCompact(ts, channelName, username, text)
+				} else {
+					text := resolveUserMentions(r.Text, idx)
+					printSearchExpanded(i+1, ts, channelName, username, text, r.Permalink)
+				}
+			}
+
+			if total > len(results) {
+				fmt.Printf("\nShowing %d of %d total results\n", len(results), total)
+			} else {
+				fmt.Printf("\nFound %d results\n", len(results))
+			}
+		}
+	},
+}
+
+func printSearchHeader() {
+	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
+	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
+}
+
+func printSearchCompact(ts, channel, from, text string) {
+	fmt.Printf("%-19s %-20s %-15s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), text)
+}
+
+func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
+	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
+	fmt.Printf("#%s  •  %s  •  @%s\n", channel, ts, from)
+	if permalink != "" {
+		fmt.Printf("%s\n", permalink)
+	}
+	fmt.Println()
+	fmt.Println(text)
+	fmt.Println()
+}
+
 func init() {
 	slackCmd.AddCommand(slackAuthCmd)
 	slackCmd.AddCommand(slackIndexCmd)
@@ -747,6 +942,7 @@ func init() {
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackUsersCmd)
 	slackCmd.AddCommand(slackMentionsCmd)
+	slackCmd.AddCommand(slackSearchCmd)
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
@@ -758,4 +954,9 @@ func init() {
 	slackMentionsCmd.Flags().BoolP("compact", "c", false, "Compact table view")
 	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d)")
 	_ = slackMentionsCmd.RegisterFlagCompletionFunc("user", completeSlackUsers)
+
+	slackSearchCmd.Flags().IntP("limit", "l", 50, "Maximum number of results")
+	slackSearchCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d)")
+	slackSearchCmd.Flags().BoolP("tickets", "t", false, "Extract and display Jira ticket references")
+	slackSearchCmd.Flags().BoolP("compact", "c", false, "Compact output (less detail)")
 }

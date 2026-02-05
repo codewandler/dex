@@ -86,12 +86,13 @@ func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*config.Jira
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 	}
 
-	// Get CloudID
-	cloudID, err := o.getCloudID(ctx, token.AccessToken)
+	// Get site info (CloudID and SiteURL)
+	siteInfo, err := o.GetSiteInfo(ctx, token.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cloud ID: %w", err)
+		return nil, fmt.Errorf("failed to get site info: %w", err)
 	}
-	token.CloudID = cloudID
+	token.CloudID = siteInfo.CloudID
+	token.SiteURL = siteInfo.SiteURL
 
 	return token, nil
 }
@@ -133,11 +134,13 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 		return nil, err
 	}
 
-	// Load existing token to preserve CloudID
+	// Load existing token to preserve CloudID and SiteURL
 	existingToken, _ := LoadToken()
 	cloudID := ""
+	siteURL := ""
 	if existingToken != nil {
 		cloudID = existingToken.CloudID
+		siteURL = existingToken.SiteURL
 	}
 
 	token := &config.JiraToken{
@@ -145,30 +148,39 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 		CloudID:      cloudID,
+		SiteURL:      siteURL,
 	}
 
-	// If we don't have CloudID, fetch it
-	if token.CloudID == "" {
-		cloudID, err := o.getCloudID(ctx, token.AccessToken)
+	// If we don't have CloudID or SiteURL, fetch them
+	if token.CloudID == "" || token.SiteURL == "" {
+		siteInfo, err := o.GetSiteInfo(ctx, token.AccessToken)
 		if err == nil {
-			token.CloudID = cloudID
+			token.CloudID = siteInfo.CloudID
+			token.SiteURL = siteInfo.SiteURL
 		}
 	}
 
 	return token, nil
 }
 
-func (o *OAuthFlow) getCloudID(ctx context.Context, accessToken string) (string, error) {
+// JiraSiteInfo contains cloud ID and browsable site URL
+type JiraSiteInfo struct {
+	CloudID string
+	SiteURL string
+}
+
+// GetSiteInfo fetches the Jira site info (CloudID and SiteURL) from the accessible-resources API
+func (o *OAuthFlow) GetSiteInfo(ctx context.Context, accessToken string) (*JiraSiteInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.atlassian.com/oauth/token/accessible-resources", nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -179,15 +191,18 @@ func (o *OAuthFlow) getCloudID(ctx context.Context, accessToken string) (string,
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&resources); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(resources) == 0 {
-		return "", fmt.Errorf("no accessible Jira sites found")
+		return nil, fmt.Errorf("no accessible Jira sites found")
 	}
 
 	// Return the first accessible site (usually there's only one)
-	return resources[0].ID, nil
+	return &JiraSiteInfo{
+		CloudID: resources[0].ID,
+		SiteURL: resources[0].URL,
+	}, nil
 }
 
 // StartAuthServer starts a local server to handle the OAuth callback
