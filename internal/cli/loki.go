@@ -156,13 +156,19 @@ var lokiLabelsCmd = &cobra.Command{
 	Short: "List labels or label values",
 	Long: `List all label names, or values for a specific label.
 
+By default, results are scoped to the current Kubernetes namespace.
+Use -A/--all-namespaces to query across all namespaces.
+
 Examples:
-  dex loki labels              # List all label names
+  dex loki labels              # List labels in current namespace
+  dex loki labels -A           # List all labels across namespaces
   dex loki labels job          # List values for 'job' label
   dex loki labels namespace    # List values for 'namespace' label`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		urlFlag, _ := cmd.Flags().GetString("url")
+		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
+		namespace, _ := cmd.Flags().GetString("namespace")
 
 		// Get Loki URL from flag or config
 		lokiURL := urlFlag
@@ -180,6 +186,23 @@ Examples:
 			lokiURL = cfg.Loki.URL
 		}
 
+		// Build namespace filter query
+		var query string
+		if !allNamespaces {
+			ns := namespace
+			if ns == "" {
+				// Get current k8s namespace
+				k8sClient, err := k8s.NewClient("")
+				if err == nil {
+					ns = k8sClient.Namespace()
+				}
+			}
+			if ns != "" {
+				query = fmt.Sprintf(`{namespace="%s"}`, ns)
+				lokiTimeColor.Printf("Namespace: %s (use -A for all namespaces)\n\n", ns)
+			}
+		}
+
 		client, err := loki.NewClient(lokiURL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Loki client: %v\n", err)
@@ -188,7 +211,7 @@ Examples:
 
 		if len(args) == 0 {
 			// List all labels
-			labels, err := client.Labels()
+			labels, err := client.Labels(query)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to get labels: %v\n", err)
 				os.Exit(1)
@@ -212,7 +235,7 @@ Examples:
 		} else {
 			// List values for specific label
 			label := args[0]
-			values, err := client.LabelValues(label)
+			values, err := client.LabelValues(label, query)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to get label values: %v\n", err)
 				os.Exit(1)
@@ -389,7 +412,7 @@ Examples:
 			}
 
 			// Try to get labels as a connectivity test
-			_, err = lokiClient.Labels()
+			_, err = lokiClient.Labels("")
 			if err != nil {
 				lokiErrorColor.Printf("✗ %v\n", err)
 				continue
@@ -472,6 +495,10 @@ func init() {
 	lokiQueryCmd.Flags().IntP("limit", "l", 1000, "Maximum number of entries to return")
 	lokiQueryCmd.Flags().BoolP("all-namespaces", "A", false, "Query all namespaces (default: current k8s namespace)")
 	lokiQueryCmd.Flags().StringP("namespace", "n", "", "Namespace to query (default: current k8s namespace)")
+
+	// Labels command flags
+	lokiLabelsCmd.Flags().BoolP("all-namespaces", "A", false, "List labels/values across all namespaces (default: current k8s namespace)")
+	lokiLabelsCmd.Flags().StringP("namespace", "n", "", "Namespace to filter (default: current k8s namespace)")
 
 	// Discover command flags
 	lokiDiscoverCmd.Flags().StringP("namespace", "n", "", "Namespace to search (default: monitoring, loki, observability, logging)")

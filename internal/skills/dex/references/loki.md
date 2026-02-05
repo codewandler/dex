@@ -43,10 +43,15 @@ By default, queries are scoped to your current Kubernetes namespace. Use `-A` fo
 
 ## Labels
 ```bash
-dex loki labels                   # List all label names
+dex loki labels                   # List labels (current k8s namespace)
+dex loki labels -A                # List labels (all namespaces)
+dex loki labels -n prod           # List labels in specific namespace
 dex loki labels job               # List values for 'job' label
+dex loki labels job -A            # List all values for 'job' label
 dex loki labels namespace         # List values for 'namespace' label
 ```
+
+By default, labels are scoped to your current Kubernetes namespace. Use `-A` for all namespaces.
 
 ## Test Connection
 ```bash

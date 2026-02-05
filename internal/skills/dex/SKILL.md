@@ -73,7 +73,8 @@ dex loki query '{job="app"}'      # Query (current k8s namespace)
 dex loki query '{job="app"}' -A   # Query all namespaces
 dex loki query '{job="app"}' -n prod  # Query specific namespace
 dex loki query '{app="x"} |= "error"' -s 30m  # Filter + time range
-dex loki labels                   # List label names
+dex loki labels                   # List labels (current namespace)
+dex loki labels -A                # List labels (all namespaces)
 dex loki labels job               # List values for label
 dex loki test                     # Test connection
 ```

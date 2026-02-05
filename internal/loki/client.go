@@ -121,8 +121,15 @@ func (c *Client) Query(query string, since time.Duration, limit int) ([]QueryRes
 }
 
 // Labels returns all label names from Loki
-func (c *Client) Labels() ([]string, error) {
+// If query is non-empty, labels are scoped to streams matching the query selector
+func (c *Client) Labels(query string) ([]string, error) {
 	endpoint := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
+
+	if query != "" {
+		params := url.Values{}
+		params.Set("query", query)
+		endpoint = fmt.Sprintf("%s?%s", endpoint, params.Encode())
+	}
 
 	resp, err := c.httpClient.Get(endpoint)
 	if err != nil {
@@ -148,8 +155,15 @@ func (c *Client) Labels() ([]string, error) {
 }
 
 // LabelValues returns all values for a given label
-func (c *Client) LabelValues(label string) ([]string, error) {
+// If query is non-empty, values are scoped to streams matching the query selector
+func (c *Client) LabelValues(label, query string) ([]string, error) {
 	endpoint := fmt.Sprintf("%s/loki/api/v1/label/%s/values", c.baseURL, url.PathEscape(label))
+
+	if query != "" {
+		params := url.Values{}
+		params.Set("query", query)
+		endpoint = fmt.Sprintf("%s?%s", endpoint, params.Encode())
+	}
 
 	resp, err := c.httpClient.Get(endpoint)
 	if err != nil {
