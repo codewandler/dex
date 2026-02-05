@@ -268,6 +268,15 @@ func (c *Client) SearchMentions(userID string, limit int, since int64) ([]Mentio
 	return mentions, result.Total, nil
 }
 
+// MentionStatus indicates whether a mention has been handled
+type MentionStatus string
+
+const (
+	MentionStatusPending MentionStatus = "Pending" // No reaction or reply
+	MentionStatusAcked   MentionStatus = "Acked"   // Has reaction but no reply
+	MentionStatusReplied MentionStatus = "Replied" // Has reply from bot or user
+)
+
 // Mention represents a message that mentions a user
 type Mention struct {
 	ChannelID   string
@@ -277,6 +286,7 @@ type Mention struct {
 	Timestamp   string
 	Text        string
 	Permalink   string
+	Status      MentionStatus
 }
 
 // GetMentionsInChannels scans channel history for mentions of a user (works with bot tokens)
@@ -347,6 +357,63 @@ func (c *Client) GetBotUserID() (string, error) {
 		return "", fmt.Errorf("failed to get bot user ID: %w", err)
 	}
 	return resp.UserID, nil
+}
+
+// GetReactions returns reactions on a message
+func (c *Client) GetReactions(channelID, timestamp string) ([]slack.ItemReaction, error) {
+	item := slack.NewRefToMessage(channelID, timestamp)
+	reactions, err := c.api.GetReactions(item, slack.NewGetReactionsParameters())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reactions: %w", err)
+	}
+	return reactions, nil
+}
+
+// GetThreadReplies returns replies in a thread
+func (c *Client) GetThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
+	params := &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: threadTS,
+		Limit:     100,
+	}
+	msgs, _, _, err := c.api.GetConversationReplies(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get thread replies: %w", err)
+	}
+	return msgs, nil
+}
+
+// ClassifyMentionStatus determines the status of a mention based on reactions and replies
+// myUserIDs should include both the bot user ID and the authenticated user ID
+func (c *Client) ClassifyMentionStatus(channelID, timestamp string, myUserIDs []string) MentionStatus {
+	// Check for thread replies first (takes precedence over reactions)
+	replies, err := c.GetThreadReplies(channelID, timestamp)
+	if err == nil && len(replies) > 1 { // First message is the parent, replies start from index 1
+		for _, reply := range replies[1:] {
+			for _, myID := range myUserIDs {
+				if reply.User == myID {
+					return MentionStatusReplied
+				}
+			}
+		}
+	}
+
+	// Check for reactions
+	reactions, err := c.GetReactions(channelID, timestamp)
+	if err == nil && len(reactions) > 0 {
+		// Check if any of our users reacted
+		for _, reaction := range reactions {
+			for _, reactorID := range reaction.Users {
+				for _, myID := range myUserIDs {
+					if reactorID == myID {
+						return MentionStatusAcked
+					}
+				}
+			}
+		}
+	}
+
+	return MentionStatusPending
 }
 
 // SearchResult holds a search result with metadata

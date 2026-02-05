@@ -136,6 +136,10 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 ## Development
 
+### Testing Slack Commands
+
+**Always use `#dex-tests` channel** for testing Slack send/reply functionality. Never send test messages to other channels to avoid disrupting co-workers.
+
 ### Git Workflow
 
 **NEVER commit without explicit user instruction.** Wait for the user to say "commit" before running `git commit`. Completing a task does not imply permission to commit.

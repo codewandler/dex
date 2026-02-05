@@ -307,6 +307,7 @@ dex slack send dev-team "Message from me" --as user
 ### Search Mentions
 ```bash
 dex slack mentions                    # My mentions today (requires user token)
+dex slack mentions --unhandled        # Only pending mentions (no reaction/reply from you)
 dex slack mentions --bot              # Bot mentions today
 dex slack mentions --user timo.friedl # Mentions of a specific user
 dex slack mentions --user U03HY52RQLV # By user ID
@@ -320,6 +321,12 @@ dex slack mentions --compact          # Compact table view
 - No flags: searches for mentions of the authenticated user (from user token)
 - `--bot`: searches for mentions of the bot
 - `--user <name>`: searches for mentions of a specific user
+- `--unhandled`: filters to show only pending mentions
+
+**Status categories:**
+- `Pending` - No reaction or reply from you (bot or user)
+- `Acked` - You reacted but didn't reply
+- `Replied` - You replied in the thread
 
 **Default time range:** Today (since midnight). Use `--since` to override.
 

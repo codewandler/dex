@@ -719,9 +719,16 @@ var slackMentionsCmd = &cobra.Command{
 By default shows mentions of the authenticated user (from user token) from today.
 Use --bot to search for mentions of the bot instead.
 Use --user to search for mentions of a specific user by username or ID.
+Use --unhandled to show only pending mentions (no reaction or reply from you).
+
+Status categories:
+  Pending  - No reaction or reply from you
+  Acked    - You reacted but didn't reply
+  Replied  - You replied in the thread
 
 Examples:
   dex slack mentions                    # My mentions (today)
+  dex slack mentions --unhandled        # Only pending mentions
   dex slack mentions --bot              # Bot mentions (today)
   dex slack mentions --user timo.friedl # Mentions of a specific user
   dex slack mentions --user U03HY52RQLV # Mentions by user ID
@@ -735,6 +742,7 @@ Examples:
 		limit, _ := cmd.Flags().GetInt("limit")
 		compact, _ := cmd.Flags().GetBool("compact")
 		sinceStr, _ := cmd.Flags().GetString("since")
+		unhandled, _ := cmd.Flags().GetBool("unhandled")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -785,6 +793,20 @@ Examples:
 			}
 			userID = userResp.UserID
 			targetDesc = userID + " (me)"
+		}
+
+		// Collect user IDs for status classification (both bot and authenticated user)
+		var myUserIDs []string
+		botUserID, _ := client.GetBotUserID()
+		if botUserID != "" {
+			myUserIDs = append(myUserIDs, botUserID)
+		}
+		if client.HasUserToken() {
+			if userResp, err := client.TestUserAuth(); err == nil {
+				if userResp.UserID != botUserID {
+					myUserIDs = append(myUserIDs, userResp.UserID)
+				}
+			}
 		}
 
 		// Parse since duration (defaults to today if not specified)
@@ -845,10 +867,38 @@ Examples:
 			return
 		}
 
+		// Classify mention status
+		fmt.Print("Classifying mentions...")
+		for i := range mentions {
+			mentions[i].Status = client.ClassifyMentionStatus(mentions[i].ChannelID, mentions[i].Timestamp, myUserIDs)
+			fmt.Printf("\rClassifying mentions... %d/%d", i+1, len(mentions))
+		}
+		fmt.Println()
+
+		// Filter if --unhandled is set
+		if unhandled {
+			var filtered []slack.Mention
+			for _, m := range mentions {
+				if m.Status == slack.MentionStatusPending {
+					filtered = append(filtered, m)
+				}
+			}
+			mentions = filtered
+		}
+
+		if len(mentions) == 0 {
+			if unhandled {
+				fmt.Printf("No pending mentions found for %s\n", targetDesc)
+			} else {
+				fmt.Printf("No mentions found for %s\n", targetDesc)
+			}
+			return
+		}
+
 		fmt.Println()
 
 		if compact {
-			printMentionHeader()
+			printMentionHeaderWithStatus()
 		}
 
 		for i, m := range mentions {
@@ -873,14 +923,16 @@ Examples:
 			ts := parseSlackTimestamp(m.Timestamp)
 
 			if compact {
-				text := truncateText(m.Text, 60)
-				printMentionCompact(ts, channelName, username, text)
+				text := truncateText(m.Text, 50)
+				printMentionCompactWithStatus(ts, channelName, username, string(m.Status), text)
 			} else {
 				text := resolveUserMentions(m.Text, idx)
-				printMentionExpanded(i+1, ts, channelName, username, text, m.Permalink)
+				printMentionExpandedWithStatus(i+1, ts, channelName, username, string(m.Status), text, m.Permalink)
 			}
 		}
-		if total > len(mentions) {
+		if unhandled {
+			fmt.Printf("\nFound %d pending mentions\n", len(mentions))
+		} else if total > len(mentions) {
 			fmt.Printf("\nShowing %d of %d total mentions\n", len(mentions), total)
 		} else {
 			fmt.Printf("\nFound %d mentions\n", len(mentions))
@@ -888,18 +940,18 @@ Examples:
 	},
 }
 
-func printMentionHeader() {
-	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
+func printMentionHeaderWithStatus() {
+	fmt.Printf("%-19s %-20s %-15s %-8s %s\n", "TIME", "CHANNEL", "FROM", "STATUS", "MESSAGE")
+	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────────────")
 }
 
-func printMentionCompact(ts, channel, from, text string) {
-	fmt.Printf("%-19s %-20s %-15s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), text)
+func printMentionCompactWithStatus(ts, channel, from, status, text string) {
+	fmt.Printf("%-19s %-20s %-15s %-8s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), status, text)
 }
 
-func printMentionExpanded(num int, ts, channel, from, text, permalink string) {
+func printMentionExpandedWithStatus(num int, ts, channel, from, status, text, permalink string) {
 	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
-	fmt.Printf("#%s  •  %s  •  @%s\n", channel, ts, from)
+	fmt.Printf("#%s  •  %s  •  @%s  •  [%s]\n", channel, ts, from, status)
 	if permalink != "" {
 		fmt.Printf("%s\n", permalink)
 	}
@@ -1236,6 +1288,7 @@ func init() {
 	slackMentionsCmd.Flags().IntP("limit", "l", 20, "Maximum number of results to show")
 	slackMentionsCmd.Flags().BoolP("compact", "c", false, "Compact table view")
 	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d); defaults to today")
+	slackMentionsCmd.Flags().Bool("unhandled", false, "Only show pending mentions (no reaction or reply)")
 	_ = slackMentionsCmd.RegisterFlagCompletionFunc("user", completeSlackUsers)
 
 	slackSearchCmd.Flags().IntP("limit", "l", 50, "Maximum number of results")
