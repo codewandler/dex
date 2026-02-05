@@ -24,7 +24,7 @@ var defaultSegments = map[string]segmentDefaults{
 		cacheTTL: 2 * time.Minute,
 	},
 	"github": {
-		format:   `{{if .PRs}}{{.PRs}} PRs{{end}}{{if and .PRs .Issues}}, {{end}}{{if .Issues}}{{.Issues}} issues{{end}}`,
+		format:   `{{if .PRs}}{{.PRs}} PRs{{end}}{{if .Reviewing}}{{if .PRs}}, {{end}}{{.Reviewing}} review{{end}}{{if .Issues}}{{if or .PRs .Reviewing}}, {{end}}{{.Issues}} issues{{end}}`,
 		cacheTTL: 2 * time.Minute,
 	},
 	"jira": {

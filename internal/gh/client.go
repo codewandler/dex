@@ -735,6 +735,165 @@ func (c *Client) LabelDelete(opts LabelDeleteOptions) error {
 	return nil
 }
 
+// SearchIssuesOptions contains options for searching issues globally
+type SearchIssuesOptions struct {
+	Assignee string
+	Author   string
+	State    string // open, closed
+	Limit    int
+}
+
+// SearchIssues searches for issues globally across all repos
+func (c *Client) SearchIssues(opts SearchIssuesOptions) ([]Issue, error) {
+	args := []string{"search", "issues", "--json", "number,title,state,author,labels,assignees,createdAt,url,repository"}
+
+	if opts.Assignee != "" {
+		args = append(args, "--assignee", opts.Assignee)
+	}
+	if opts.Author != "" {
+		args = append(args, "--author", opts.Author)
+	}
+	if opts.State != "" {
+		args = append(args, "--state", opts.State)
+	}
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh search issues failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh search issues failed: %w", err)
+	}
+
+	var rawIssues []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		Author    struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+		Assignees []struct {
+			Login string `json:"login"`
+		} `json:"assignees"`
+		CreatedAt  string `json:"createdAt"`
+		URL        string `json:"url"`
+		Repository struct {
+			Name string `json:"name"`
+		} `json:"repository"`
+	}
+
+	if err := json.Unmarshal(output, &rawIssues); err != nil {
+		return nil, fmt.Errorf("failed to parse search results: %w", err)
+	}
+
+	issues := make([]Issue, 0, len(rawIssues))
+	for _, raw := range rawIssues {
+		labels := make([]string, len(raw.Labels))
+		for j, l := range raw.Labels {
+			labels[j] = l.Name
+		}
+		assignees := make([]string, len(raw.Assignees))
+		for j, a := range raw.Assignees {
+			assignees[j] = a.Login
+		}
+		issues = append(issues, Issue{
+			Number:    raw.Number,
+			Title:     raw.Title,
+			State:     raw.State,
+			Author:    raw.Author.Login,
+			Labels:    labels,
+			Assignees: assignees,
+			CreatedAt: raw.CreatedAt,
+			URL:       raw.URL,
+		})
+	}
+
+	return issues, nil
+}
+
+// SearchPRsOptions contains options for searching PRs globally
+type SearchPRsOptions struct {
+	Assignee      string
+	Author        string
+	ReviewRequest string // reviewer:username
+	State         string // open, closed, merged
+	Limit         int
+}
+
+// SearchPRs searches for pull requests globally across all repos
+func (c *Client) SearchPRs(opts SearchPRsOptions) ([]PR, error) {
+	args := []string{"search", "prs", "--json", "number,title,state,author,assignees,url,isDraft"}
+
+	if opts.Assignee != "" {
+		args = append(args, "--assignee", opts.Assignee)
+	}
+	if opts.Author != "" {
+		args = append(args, "--author", opts.Author)
+	}
+	if opts.ReviewRequest != "" {
+		args = append(args, "--review-requested", opts.ReviewRequest)
+	}
+	if opts.State != "" {
+		args = append(args, "--state", opts.State)
+	}
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh search prs failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh search prs failed: %w", err)
+	}
+
+	var rawPRs []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		Author    struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		Assignees []struct {
+			Login string `json:"login"`
+		} `json:"assignees"`
+		URL     string `json:"url"`
+		IsDraft bool   `json:"isDraft"`
+	}
+
+	if err := json.Unmarshal(output, &rawPRs); err != nil {
+		return nil, fmt.Errorf("failed to parse search results: %w", err)
+	}
+
+	prs := make([]PR, 0, len(rawPRs))
+	for _, raw := range rawPRs {
+		assignees := make([]string, len(raw.Assignees))
+		for j, a := range raw.Assignees {
+			assignees[j] = a.Login
+		}
+		prs = append(prs, PR{
+			Number:    raw.Number,
+			Title:     raw.Title,
+			State:     raw.State,
+			Author:    raw.Author.Login,
+			Assignees: assignees,
+			URL:       raw.URL,
+			IsDraft:   raw.IsDraft,
+		})
+	}
+
+	return prs, nil
+}
+
 // PR represents a GitHub pull request
 type PR struct {
 	Number    int      `json:"number"`
