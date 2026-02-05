@@ -150,6 +150,14 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 **NEVER commit without explicit user instruction.** Wait for the user to say "commit" before running `git commit`. Completing a task does not imply permission to commit.
 
+### GitHub Issues
+
+**Do NOT close issues prematurely.** When implementing a feature from a GitHub issue:
+- Create the issue before starting work
+- Reference the issue in commits (`Refs: #123`)
+- Do NOT close the issue when implementation works locally
+- Issues are closed only after a release that includes the fix (see Release Process)
+
 ### Documentation Sync
 
 When adding new features or commands, **always update all documentation**:
@@ -225,3 +233,4 @@ When the user asks to "release" or "publish" the current changes:
    - Link to the GitHub release
    - Brief summary of key changes
    - Install command: `go install github.com/codewandler/dex@latest`
+10. **Close resolved issues**: Close any GitHub issues that were fixed in this release with a comment linking to the release (e.g., "Released in v0.19.0")
