@@ -735,6 +735,93 @@ func (c *Client) LabelDelete(opts LabelDeleteOptions) error {
 	return nil
 }
 
+// PR represents a GitHub pull request
+type PR struct {
+	Number    int      `json:"number"`
+	Title     string   `json:"title"`
+	State     string   `json:"state"`
+	Author    string   `json:"author"`
+	Assignees []string `json:"assignees"`
+	URL       string   `json:"url"`
+	IsDraft   bool     `json:"isDraft"`
+}
+
+// PRListOptions contains options for listing pull requests
+type PRListOptions struct {
+	State    string // open, closed, merged, all
+	Assignee string
+	Author   string
+	Limit    int
+	Repo     string
+}
+
+// PRList lists pull requests in a repository
+func (c *Client) PRList(opts PRListOptions) ([]PR, error) {
+	args := []string{"pr", "list", "--json", "number,title,state,author,assignees,url,isDraft"}
+
+	if opts.State != "" {
+		args = append(args, "--state", opts.State)
+	}
+	if opts.Assignee != "" {
+		args = append(args, "--assignee", opts.Assignee)
+	}
+	if opts.Author != "" {
+		args = append(args, "--author", opts.Author)
+	}
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh pr list failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh pr list failed: %w", err)
+	}
+
+	var rawPRs []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		Author    struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		Assignees []struct {
+			Login string `json:"login"`
+		} `json:"assignees"`
+		URL     string `json:"url"`
+		IsDraft bool   `json:"isDraft"`
+	}
+
+	if err := json.Unmarshal(output, &rawPRs); err != nil {
+		return nil, fmt.Errorf("failed to parse PRs: %w", err)
+	}
+
+	prs := make([]PR, 0, len(rawPRs))
+	for _, raw := range rawPRs {
+		assignees := make([]string, len(raw.Assignees))
+		for j, a := range raw.Assignees {
+			assignees[j] = a.Login
+		}
+		prs = append(prs, PR{
+			Number:    raw.Number,
+			Title:     raw.Title,
+			State:     raw.State,
+			Author:    raw.Author.Login,
+			Assignees: assignees,
+			URL:       raw.URL,
+			IsDraft:   raw.IsDraft,
+		})
+	}
+
+	return prs, nil
+}
+
 // normalizeRepo converts various GitHub URL formats to owner/repo format
 func normalizeRepo(repoURL string) string {
 	// Remove trailing .git

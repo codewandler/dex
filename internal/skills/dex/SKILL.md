@@ -36,6 +36,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 | Jira | `dex jira` | [references/jira.md](references/jira.md) |
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
+| Claude Code | `dex claude` | [references/claude.md](references/claude.md) |
 
 ## Quick Reference
 
@@ -106,6 +107,11 @@ dex loki labels                   # List labels (current namespace)
 dex loki labels -A                # List labels (all namespaces)
 dex loki labels job               # List values for label
 dex loki test                     # Test connection
+```
+
+### Claude Code (`dex claude`)
+```bash
+dex claude statusline             # Generate status line for Claude Code
 ```
 
 ## Tips

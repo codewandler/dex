@@ -47,6 +47,7 @@ func init() {
 	rootCmd.AddCommand(jiraCmd)
 	rootCmd.AddCommand(gitlabCmd)
 	rootCmd.AddCommand(slackCmd)
+	rootCmd.AddCommand(claudeCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(skillCmd)
 	rootCmd.AddCommand(upgradeCmd)

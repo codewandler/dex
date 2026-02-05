@@ -34,10 +34,24 @@ type Config struct {
 	ActivityDays int `json:"activity_days,omitempty" envconfig:"ACTIVITY_DAYS" default:"14"`
 
 	// Integration configs (embedded)
-	GitLab GitLabConfig `json:"gitlab,omitempty"`
-	Jira   JiraConfig   `json:"jira,omitempty"`
-	Slack  SlackConfig  `json:"slack,omitempty"`
-	Loki   LokiConfig   `json:"loki,omitempty"`
+	GitLab     GitLabConfig     `json:"gitlab,omitempty"`
+	Jira       JiraConfig       `json:"jira,omitempty"`
+	Slack      SlackConfig      `json:"slack,omitempty"`
+	Loki       LokiConfig       `json:"loki,omitempty"`
+	StatusLine StatusLineConfig `json:"status_line,omitempty"`
+}
+
+// StatusLineConfig holds status line configuration for Claude Code
+type StatusLineConfig struct {
+	Format   string                   `json:"format,omitempty"`
+	Segments map[string]SegmentConfig `json:"segments,omitempty"`
+}
+
+// SegmentConfig holds configuration for a single status line segment
+type SegmentConfig struct {
+	Enabled  *bool  `json:"enabled,omitempty"`
+	Format   string `json:"format,omitempty"`
+	CacheTTL string `json:"cache_ttl,omitempty"`
 }
 
 // LokiConfig holds Loki-specific configuration
