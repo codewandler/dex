@@ -22,7 +22,7 @@ func indexConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".config", "dex")
+	dir := filepath.Join(home, ".dex", "gitlab")
 	return dir, os.MkdirAll(dir, 0700)
 }
 
@@ -31,7 +31,7 @@ func indexFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "gitlab-index.json"), nil
+	return filepath.Join(dir, "index.json"), nil
 }
 
 func LoadIndex() (*models.GitLabIndex, error) {

@@ -100,7 +100,7 @@ var gitlabIndexCmd = &cobra.Command{
 	Short: "Index all accessible GitLab projects",
 	Long: `Scan and cache metadata for all GitLab projects you have access to.
 
-The index is stored at ~/.config/dex/gitlab-index.json and includes:
+The index is stored at ~/.dex/gitlab/index.json and includes:
 - Project info (name, path, description, visibility)
 - Languages breakdown
 - Top 5 contributors with commit stats
@@ -158,7 +158,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		fmt.Printf("Indexed %d projects. Saved to ~/.config/dex/gitlab-index.json\n", len(idx.Projects))
+		fmt.Printf("Indexed %d projects. Saved to ~/.dex/gitlab/index.json\n", len(idx.Projects))
 	},
 }
 

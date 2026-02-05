@@ -15,6 +15,8 @@ dex gl index                      # Index all accessible projects (cached 24h)
 dex gl index --force              # Force re-index
 ```
 
+Index stored at `~/.dex/gitlab/index.json`.
+
 ## Projects
 ```bash
 dex gl proj ls                    # List projects (from index)

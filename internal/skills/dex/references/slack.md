@@ -127,3 +127,19 @@ dex slack search "query" --compact    # Compact table view
 - `in:#channel` - Messages in a specific channel
 - `has:link` - Messages containing links
 - `before:YYYY-MM-DD`, `after:YYYY-MM-DD` - Date filters
+
+## View Thread
+```bash
+# Fetch and display a thread with mention classification debug info
+dex slack thread <url>                              # From Slack URL
+dex slack thread <channel>:<ts>                     # Channel:timestamp format
+dex slack thread <channel> <ts>                     # Separate arguments
+
+# Examples
+dex slack thread https://acme.slack.com/archives/C0123456789/p1769777574026209
+dex slack thread C0123456789:1769777574.026209
+dex slack thread C0123456789 1769777574.026209
+dex slack thread C0123456789 p1769777574026209      # URL-style timestamp also works
+```
+
+Timestamps can be in Slack URL format (`p1769777574026209`) or API format (`1769777574.026209`).

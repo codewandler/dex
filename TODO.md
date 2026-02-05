@@ -15,7 +15,7 @@
 
 ## Improvements
 
-- [ ] Move GitLab index to `~/.dex/gitlab/index.json`
+- [x] Move GitLab index from `~/.config/dex/gitlab-index.json` to `~/.dex/gitlab/index.json`
 - [ ] Slack mentions: parallel classification with goroutine worker pool for faster uncached lookups
 
 ## Use Case Ideas

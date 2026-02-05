@@ -15,6 +15,10 @@ dex setup                         # Interactive setup wizard (only prompts for u
 dex doctor                        # Check health of all configured integrations
 dex upgrade                       # Upgrade to latest version
 dex upgrade -v v0.2.0             # Upgrade to specific version
+dex version                       # Print version information
+dex completion bash|zsh|fish      # Generate shell completions
+dex skill install                 # Install skill to ~/.claude/skills/dex/
+dex skill show                    # Print skill content to stdout
 ```
 
 ## Integrations
@@ -58,6 +62,7 @@ dex slack send <channel> "msg"    # Send message
 dex slack send <ch> "msg" -t <ts> # Reply to thread
 dex slack mentions [--unhandled]  # My mentions today
 dex slack search "query"          # Search messages
+dex slack thread <url|ch:ts>      # View thread details
 ```
 
 ## Tips
@@ -65,4 +70,3 @@ dex slack search "query"          # Search messages
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `sre/helm!2903`)
-- Shell completions: `dex completion bash|zsh|fish|powershell`
