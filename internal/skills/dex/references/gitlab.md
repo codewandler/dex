@@ -78,6 +78,27 @@ The `--parsed` flag shows a table with explicit line numbers:
 
 Use this to inspect diff contents before adding inline comments. The `new` column shows the line number to use with `--line`.
 
+### Inspect Specific Lines
+```bash
+dex gl mr diff proj!123 -f path --line 42     # Inspect line 42 with context
+dex gl mr diff proj!123 -f path -l 42         # Short flag
+dex gl mr diff proj!123 -f path -l 42 -C 5    # Show 5 context lines (default: 3)
+```
+
+Shows the target line highlighted with surrounding context, and explains:
+- Line type (add/del/ctx)
+- Old and new line numbers
+- How to use this line for inline comments
+
+### Search Lines in Diff
+```bash
+dex gl mr diff proj!123 -f path --search "TODO"      # Find lines containing "TODO"
+dex gl mr diff proj!123 -f path -s "error|warn"      # Regex pattern support
+dex gl mr diff proj!123 -f path -s "function.*init"  # Complex patterns
+```
+
+Returns all matching lines with their line numbers and types, useful for finding where to add comments.
+
 ### Open in Browser
 ```bash
 dex gl mr open <project!iid>         # Open MR in default browser
@@ -98,12 +119,24 @@ dex gl mr comment proj!123 "Fixed!" --reply-to abc123def456...
 dex gl mr comment <project!iid> "comment" --file <path> --line <n>
 dex gl mr comment proj!123 "Use a constant" --file src/main.go --line 42
 
-# IMPORTANT for inline comments:
-# - The --line number is the NEW file line number (right side of diff)
-# - You can only comment on lines that appear in the diff hunks
-# - Use `dex gl mr diff <ref> --file <path>` to inspect the raw diff first
-# - Verify the file actually contains the code you want to reference
-# - Look at the @@ -old,count +new,count @@ headers to find line ranges
+# Preview inline comment location (dry run)
+dex gl mr comment proj!123 "test" --file src/main.go --line 42 --dry-run
+```
+
+The `--dry-run` flag validates and previews where an inline comment will land:
+- Shows the target line with context
+- Validates the line is in the diff
+- Warns on deleted lines or empty lines
+- Shows the exact parameters that will be used
+
+Use `--dry-run` before posting to avoid errors from invalid line numbers.
+
+**Inline comment tips:**
+- The `--line` number is the NEW file line number (right side of diff)
+- You can only comment on lines that appear in the diff hunks
+- Use `dex gl mr diff <ref> -f <path> -l <n>` to inspect specific lines
+- Use `dex gl mr diff <ref> -f <path> -s "pattern"` to find lines by content
+- Errors now include helpful diagnostics showing available line ranges
 ```
 
 ### Reactions

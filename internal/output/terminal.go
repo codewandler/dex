@@ -778,6 +778,364 @@ func PrintParsedDiff(filePath string, diff *gl.ParsedDiff) {
 	fmt.Println()
 }
 
+// PrintLineWithContext displays a specific line with surrounding context
+func PrintLineWithContext(filePath string, diff *gl.ParsedDiff, lineNum int, contextLines int) {
+	target, before, after := diff.GetLineWithContext(lineNum, contextLines)
+
+	if target == nil {
+		fmt.Printf("Line %d not found in diff for %s\n", lineNum, filePath)
+		fmt.Println("\nAvailable line ranges in this diff:")
+		printLineRanges(diff)
+		return
+	}
+
+	hdrColor := color.New(color.FgCyan)
+	addColor := color.New(color.FgGreen)
+	delColor := color.New(color.FgRed)
+	ctxColor := color.New(color.FgWhite)
+	highlightColor := color.New(color.BgYellow, color.FgBlack)
+
+	fmt.Printf("%s:%d\n\n", filePath, lineNum)
+
+	// Print context before
+	for _, line := range before {
+		printDiffLineWithHighlight(&line, false, addColor, delColor, ctxColor, highlightColor)
+	}
+
+	// Print target line (highlighted)
+	printDiffLineWithHighlight(target, true, addColor, delColor, ctxColor, highlightColor)
+
+	// Print context after
+	for _, line := range after {
+		printDiffLineWithHighlight(&line, false, addColor, delColor, ctxColor, highlightColor)
+	}
+
+	// Print line info summary
+	fmt.Println()
+	hdrColor.Println("Line Info:")
+	fmt.Printf("  Type:     %s\n", target.Type.String())
+	fmt.Printf("  New line: %d\n", target.NewLine)
+	fmt.Printf("  Old line: %d\n", target.OldLine)
+
+	// Explain what this means for inline comments
+	fmt.Println()
+	hdrColor.Println("For inline comments:")
+	switch target.Type {
+	case gl.LineAdded:
+		fmt.Printf("  Use --line %d (added line, only has new_line)\n", target.NewLine)
+	case gl.LineDeleted:
+		fmt.Printf("  Cannot comment on deleted lines (line only exists in old version)\n")
+	case gl.LineContext:
+		fmt.Printf("  Use --line %d (context line, has both old_line=%d and new_line=%d)\n",
+			target.NewLine, target.OldLine, target.NewLine)
+	}
+}
+
+// printDiffLineWithHighlight prints a single diff line with optional highlighting
+func printDiffLineWithHighlight(line *gl.DiffLine, highlight bool, addColor, delColor, ctxColor, highlightColor *color.Color) {
+	// Format line numbers
+	newNum := "    -"
+	oldNum := "    -"
+	if line.NewLine > 0 {
+		newNum = fmt.Sprintf("%5d", line.NewLine)
+	}
+	if line.OldLine > 0 {
+		oldNum = fmt.Sprintf("%5d", line.OldLine)
+	}
+
+	prefix := " "
+	var printFn func(format string, a ...interface{})
+
+	switch line.Type {
+	case gl.LineAdded:
+		prefix = "+"
+		printFn = func(format string, a ...interface{}) { addColor.Printf(format, a...) }
+	case gl.LineDeleted:
+		prefix = "-"
+		printFn = func(format string, a ...interface{}) { delColor.Printf(format, a...) }
+	default:
+		printFn = func(format string, a ...interface{}) { ctxColor.Printf(format, a...) }
+	}
+
+	if highlight {
+		highlightColor.Printf("→ %s  %s  %s  %s %s\n", newNum, oldNum, line.Type.String(), prefix, line.Content)
+	} else {
+		printFn("  %s  %s  %s  %s %s\n", newNum, oldNum, line.Type.String(), prefix, line.Content)
+	}
+}
+
+// printLineRanges shows what line ranges are available in the diff
+func printLineRanges(diff *gl.ParsedDiff) {
+	if len(diff.Lines) == 0 {
+		fmt.Println("  (no lines in diff)")
+		return
+	}
+
+	// Find continuous ranges
+	type lineRange struct {
+		start, end int
+	}
+	var ranges []lineRange
+	var current *lineRange
+
+	for _, line := range diff.Lines {
+		if line.NewLine == 0 {
+			continue // Skip deleted lines (no new line number)
+		}
+		if current == nil {
+			current = &lineRange{start: line.NewLine, end: line.NewLine}
+		} else if line.NewLine == current.end+1 {
+			current.end = line.NewLine
+		} else {
+			ranges = append(ranges, *current)
+			current = &lineRange{start: line.NewLine, end: line.NewLine}
+		}
+	}
+	if current != nil {
+		ranges = append(ranges, *current)
+	}
+
+	for _, r := range ranges {
+		if r.start == r.end {
+			fmt.Printf("  Line %d\n", r.start)
+		} else {
+			fmt.Printf("  Lines %d-%d\n", r.start, r.end)
+		}
+	}
+}
+
+// PrintInlineCommentDryRun previews where an inline comment will land
+func PrintInlineCommentDryRun(client *gl.Client, projectID string, mrIID int, filePath string, lineNum int, message string) {
+	hdrColor := color.New(color.FgCyan, color.Bold)
+	warnColor := color.New(color.FgYellow)
+	errColor := color.New(color.FgRed)
+	okColor := color.New(color.FgGreen)
+
+	fmt.Println()
+	hdrColor.Println("Dry Run: Inline Comment Preview")
+	fmt.Println(strings.Repeat("─", 50))
+	fmt.Println()
+
+	// Try to get the parsed diff for the file
+	diff, err := client.GetParsedDiffForFile(projectID, mrIID, filePath)
+	if err != nil {
+		errColor.Printf("✗ File not found in diff: %s\n", filePath)
+		fmt.Println()
+		fmt.Println("The file must be changed in this MR to add inline comments.")
+
+		// List available files
+		files, err := client.GetMergeRequestChanges(projectID, mrIID, false)
+		if err == nil && len(files) > 0 {
+			fmt.Println()
+			fmt.Println("Changed files in this MR:")
+			for _, f := range files {
+				fmt.Printf("  • %s\n", f.NewPath)
+			}
+		}
+		os.Exit(1)
+	}
+
+	// Look for the line in the diff
+	line, found := diff.FindLineByNew(lineNum)
+	if !found {
+		errColor.Printf("✗ Line %d is not in the diff for %s\n", lineNum, filePath)
+		fmt.Println()
+		fmt.Println("You can only comment on lines that appear in the diff.")
+		fmt.Println()
+		printLineRanges(diff)
+		os.Exit(1)
+	}
+
+	// Found the line - show what it looks like
+	okColor.Printf("✓ Line %d found in diff\n", lineNum)
+	fmt.Println()
+
+	fmt.Printf("  File:     %s\n", filePath)
+	fmt.Printf("  Line:     %d\n", lineNum)
+	fmt.Printf("  Type:     %s\n", line.Type.String())
+
+	if line.OldLine > 0 {
+		fmt.Printf("  Old line: %d\n", line.OldLine)
+	}
+	fmt.Println()
+
+	// Show the target line with context
+	fmt.Println("Target line:")
+	target, before, after := diff.GetLineWithContext(lineNum, 2)
+	if target != nil {
+		addColor := color.New(color.FgGreen)
+		delColor := color.New(color.FgRed)
+		ctxColor := color.New(color.FgWhite)
+		highlightColor := color.New(color.BgYellow, color.FgBlack)
+
+		for _, l := range before {
+			printDiffLineWithHighlight(&l, false, addColor, delColor, ctxColor, highlightColor)
+		}
+		printDiffLineWithHighlight(target, true, addColor, delColor, ctxColor, highlightColor)
+		for _, l := range after {
+			printDiffLineWithHighlight(&l, false, addColor, delColor, ctxColor, highlightColor)
+		}
+	}
+	fmt.Println()
+
+	// Check for potential issues
+	if line.Type == gl.LineDeleted {
+		warnColor.Println("⚠ Warning: This is a deleted line. Comments on deleted lines")
+		warnColor.Println("  may not display as expected in the GitLab UI.")
+		fmt.Println()
+	}
+
+	if line.Content == "" {
+		warnColor.Println("⚠ Warning: This is an empty line. Consider commenting on a")
+		warnColor.Println("  nearby line with actual content.")
+		fmt.Println()
+	}
+
+	// Show the message preview
+	hdrColor.Println("Comment message:")
+	fmt.Printf("  %s\n", message)
+	fmt.Println()
+
+	okColor.Println("Run without --dry-run to post this comment.")
+}
+
+// PrintInlineCommentError provides a helpful error message when inline comment fails
+func PrintInlineCommentError(client *gl.Client, projectID string, mrIID int, filePath string, lineNum int, err error) {
+	errColor := color.New(color.FgRed)
+	hdrColor := color.New(color.FgCyan)
+
+	errColor.Fprintf(os.Stderr, "Failed to add inline comment: %v\n", err)
+	fmt.Fprintln(os.Stderr)
+
+	// Try to diagnose the issue
+	diff, diffErr := client.GetParsedDiffForFile(projectID, mrIID, filePath)
+	if diffErr != nil {
+		hdrColor.Fprintln(os.Stderr, "Possible cause: File not found in diff")
+		fmt.Fprintf(os.Stderr, "The file '%s' does not appear in the MR changes.\n", filePath)
+		fmt.Fprintln(os.Stderr)
+
+		// List available files
+		files, listErr := client.GetMergeRequestChanges(projectID, mrIID, false)
+		if listErr == nil && len(files) > 0 {
+			fmt.Fprintln(os.Stderr, "Available files:")
+			for _, f := range files {
+				fmt.Fprintf(os.Stderr, "  • %s\n", f.NewPath)
+			}
+		}
+		return
+	}
+
+	line, found := diff.FindLineByNew(lineNum)
+	if !found {
+		hdrColor.Fprintln(os.Stderr, "Possible cause: Line not in diff")
+		fmt.Fprintf(os.Stderr, "Line %d is not part of the diff for '%s'.\n", lineNum, filePath)
+		fmt.Fprintln(os.Stderr, "You can only comment on lines that appear in the diff.")
+		fmt.Fprintln(os.Stderr)
+
+		fmt.Fprintln(os.Stderr, "Available line ranges:")
+		printLineRangesToStderr(diff)
+		return
+	}
+
+	if line.Type == gl.LineDeleted {
+		hdrColor.Fprintln(os.Stderr, "Possible cause: Commenting on deleted line")
+		fmt.Fprintln(os.Stderr, "Line", lineNum, "is a deleted line, which may require special handling.")
+		fmt.Fprintln(os.Stderr)
+	}
+
+	// Generic advice
+	hdrColor.Fprintln(os.Stderr, "Troubleshooting:")
+	fmt.Fprintln(os.Stderr, "  1. Use 'dex gl mr comment ... --dry-run' to preview the comment location")
+	fmt.Fprintln(os.Stderr, "  2. Use 'dex gl mr diff ... -f <file> -l <line>' to inspect the line")
+	fmt.Fprintln(os.Stderr, "  3. Ensure the line number is from the 'new' version (right side of diff)")
+}
+
+// printLineRangesToStderr is like printLineRanges but writes to stderr
+func printLineRangesToStderr(diff *gl.ParsedDiff) {
+	if len(diff.Lines) == 0 {
+		fmt.Fprintln(os.Stderr, "  (no lines in diff)")
+		return
+	}
+
+	type lineRange struct {
+		start, end int
+	}
+	var ranges []lineRange
+	var current *lineRange
+
+	for _, line := range diff.Lines {
+		if line.NewLine == 0 {
+			continue
+		}
+		if current == nil {
+			current = &lineRange{start: line.NewLine, end: line.NewLine}
+		} else if line.NewLine == current.end+1 {
+			current.end = line.NewLine
+		} else {
+			ranges = append(ranges, *current)
+			current = &lineRange{start: line.NewLine, end: line.NewLine}
+		}
+	}
+	if current != nil {
+		ranges = append(ranges, *current)
+	}
+
+	for _, r := range ranges {
+		if r.start == r.end {
+			fmt.Fprintf(os.Stderr, "  Line %d\n", r.start)
+		} else {
+			fmt.Fprintf(os.Stderr, "  Lines %d-%d\n", r.start, r.end)
+		}
+	}
+}
+
+// PrintSearchResults displays lines matching a search pattern
+func PrintSearchResults(filePath string, diff *gl.ParsedDiff, pattern string) {
+	matches, err := diff.SearchLines(pattern)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid regex pattern: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(matches) == 0 {
+		fmt.Printf("No lines matching %q in %s\n", pattern, filePath)
+		return
+	}
+
+	hdrColor := color.New(color.FgCyan)
+	addColor := color.New(color.FgGreen)
+	delColor := color.New(color.FgRed)
+	ctxColor := color.New(color.FgWhite)
+
+	fmt.Printf("%s: %d matches for %q\n\n", filePath, len(matches), pattern)
+	hdrColor.Printf("  %5s  %5s  %-4s  %s\n", "new", "old", "type", "content")
+	hdrColor.Printf("  %5s  %5s  %-4s  %s\n", "---", "---", "----", strings.Repeat("-", 50))
+
+	for _, line := range matches {
+		newNum := "    -"
+		oldNum := "    -"
+		if line.NewLine > 0 {
+			newNum = fmt.Sprintf("%5d", line.NewLine)
+		}
+		if line.OldLine > 0 {
+			oldNum = fmt.Sprintf("%5d", line.OldLine)
+		}
+
+		var printFn func(format string, a ...interface{})
+		switch line.Type {
+		case gl.LineAdded:
+			printFn = func(format string, a ...interface{}) { addColor.Printf(format, a...) }
+		case gl.LineDeleted:
+			printFn = func(format string, a ...interface{}) { delColor.Printf(format, a...) }
+		default:
+			printFn = func(format string, a ...interface{}) { ctxColor.Printf(format, a...) }
+		}
+
+		printFn("  %s  %s  %-4s  %s\n", newNum, oldNum, line.Type.String(), line.Content)
+	}
+	fmt.Println()
+}
+
 // PrintCommitDetails displays full commit information
 func PrintCommitDetails(c *models.CommitDetail) {
 	line := strings.Repeat("═", 60)

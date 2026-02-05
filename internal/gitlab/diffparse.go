@@ -144,3 +144,74 @@ func (p *ParsedDiff) FindLineByOld(oldLine int) (*DiffLine, bool) {
 	}
 	return nil, false
 }
+
+// GetLineWithContext returns a line and its surrounding context lines
+// contextLines specifies how many lines before and after to include
+func (p *ParsedDiff) GetLineWithContext(newLine int, contextLines int) (target *DiffLine, before []DiffLine, after []DiffLine) {
+	var targetIdx int = -1
+
+	// Find the target line index
+	for i := range p.Lines {
+		if p.Lines[i].NewLine == newLine {
+			targetIdx = i
+			target = &p.Lines[i]
+			break
+		}
+	}
+
+	if targetIdx == -1 {
+		return nil, nil, nil
+	}
+
+	// Get lines before
+	startIdx := targetIdx - contextLines
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	for i := startIdx; i < targetIdx; i++ {
+		before = append(before, p.Lines[i])
+	}
+
+	// Get lines after
+	endIdx := targetIdx + contextLines + 1
+	if endIdx > len(p.Lines) {
+		endIdx = len(p.Lines)
+	}
+	for i := targetIdx + 1; i < endIdx; i++ {
+		after = append(after, p.Lines[i])
+	}
+
+	return target, before, after
+}
+
+// SearchLines searches for lines matching a regex pattern
+// Returns matching lines with their indices
+func (p *ParsedDiff) SearchLines(pattern string) ([]DiffLine, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []DiffLine
+	for _, line := range p.Lines {
+		if re.MatchString(line.Content) {
+			matches = append(matches, line)
+		}
+	}
+
+	return matches, nil
+}
+
+// LineTypeString returns a human-readable string for a line type
+func (lt LineType) String() string {
+	switch lt {
+	case LineAdded:
+		return "add"
+	case LineDeleted:
+		return "del"
+	case LineContext:
+		return "ctx"
+	default:
+		return "unknown"
+	}
+}

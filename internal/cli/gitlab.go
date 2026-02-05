@@ -359,6 +359,9 @@ Comment types:
   - Reply to thread: use --reply-to <discussion-id>
   - Inline comment: use --file and --line flags
 
+Use --dry-run with inline comments to preview where the comment will land
+without actually posting it.
+
 Examples:
   dex gl mr comment sre/helm!2903 "LGTM, approved!"
   dex gl mr comment group/project!456 "Please address the review comments"
@@ -368,12 +371,16 @@ Examples:
   dex gl mr comment project!123 "Done, fixed!" --reply-to abc12345
 
   # Add inline comment on a file/line
-  dex gl mr comment project!123 "Use a constant here" --file src/main.go --line 42`,
+  dex gl mr comment project!123 "Use a constant here" --file src/main.go --line 42
+
+  # Preview where comment will land (dry run)
+  dex gl mr comment project!123 "test" --file src/main.go --line 42 --dry-run`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		replyTo, _ := cmd.Flags().GetString("reply-to")
 		filePath, _ := cmd.Flags().GetString("file")
 		lineNum, _ := cmd.Flags().GetInt("line")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
@@ -408,6 +415,10 @@ Examples:
 			fmt.Fprintf(os.Stderr, "Both --file and --line are required for inline comments\n")
 			os.Exit(1)
 		}
+		if dryRun && filePath == "" {
+			fmt.Fprintf(os.Stderr, "--dry-run only applies to inline comments (requires --file and --line)\n")
+			os.Exit(1)
+		}
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -430,6 +441,12 @@ Examples:
 			}
 			fmt.Printf("Reply added to discussion %s on %s!%d\n", replyTo, projectID, mrIID)
 		} else if filePath != "" && lineNum > 0 {
+			// Handle dry-run for inline comments
+			if dryRun {
+				output.PrintInlineCommentDryRun(client, projectID, mrIID, filePath, lineNum, message)
+				return
+			}
+
 			// Create inline comment
 			opts := gitlab.InlineCommentOptions{
 				Body:    message,
@@ -438,7 +455,8 @@ Examples:
 				NewLine: lineNum,
 			}
 			if err := client.CreateMergeRequestInlineComment(projectID, mrIID, opts); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to add inline comment: %v\n", err)
+				// Provide better error message for inline comment failures
+				output.PrintInlineCommentError(client, projectID, mrIID, filePath, lineNum, err)
 				os.Exit(1)
 			}
 			fmt.Printf("Inline comment added to %s:%d on %s!%d\n", filePath, lineNum, projectID, mrIID)
@@ -675,15 +693,22 @@ var gitlabMRDiffCmd = &cobra.Command{
 Without --file, lists all files changed in the MR.
 With --file, shows the raw diff content for that file.
 With --parsed, shows a table with line numbers and line types.
+With --line, shows a specific line with context (requires --file).
+With --search, finds lines matching a regex pattern (requires --file).
 
 Examples:
-  dex gl mr diff project!123                      # List all changed files
-  dex gl mr diff project!123 --file src/main.go   # Show raw diff
-  dex gl mr diff project!123 -f src/main.go -p    # Show parsed with line numbers`,
+  dex gl mr diff project!123                        # List all changed files
+  dex gl mr diff project!123 --file src/main.go     # Show raw diff
+  dex gl mr diff project!123 -f src/main.go -p      # Show parsed with line numbers
+  dex gl mr diff project!123 -f src/main.go -l 42   # Inspect line 42 with context
+  dex gl mr diff project!123 -f src/main.go -s "TODO"  # Find lines matching pattern`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath, _ := cmd.Flags().GetString("file")
 		parsed, _ := cmd.Flags().GetBool("parsed")
+		lineNum, _ := cmd.Flags().GetInt("line")
+		searchPattern, _ := cmd.Flags().GetString("search")
+		contextLines, _ := cmd.Flags().GetInt("context")
 
 		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
@@ -749,9 +774,22 @@ Examples:
 			os.Exit(1)
 		}
 
+		diff := gitlab.ParseUnifiedDiff(targetFile.Diff)
+
+		// Handle --line flag: inspect a specific line with context
+		if lineNum > 0 {
+			output.PrintLineWithContext(targetFile.NewPath, diff, lineNum, contextLines)
+			return
+		}
+
+		// Handle --search flag: find lines matching pattern
+		if searchPattern != "" {
+			output.PrintSearchResults(targetFile.NewPath, diff, searchPattern)
+			return
+		}
+
 		if parsed {
 			// Parse and display with line numbers
-			diff := gitlab.ParseUnifiedDiff(targetFile.Diff)
 			output.PrintParsedDiff(targetFile.NewPath, diff)
 		} else {
 			// Output the raw diff
@@ -1167,10 +1205,14 @@ func init() {
 
 	gitlabMRDiffCmd.Flags().StringP("file", "f", "", "File path to show diff for")
 	gitlabMRDiffCmd.Flags().BoolP("parsed", "p", false, "Show parsed diff with line numbers")
+	gitlabMRDiffCmd.Flags().IntP("line", "l", 0, "Inspect specific line with context (requires --file)")
+	gitlabMRDiffCmd.Flags().StringP("search", "s", "", "Find lines matching pattern (regex, requires --file)")
+	gitlabMRDiffCmd.Flags().IntP("context", "C", 3, "Number of context lines to show with --line")
 
 	gitlabMRCommentCmd.Flags().String("reply-to", "", "Reply to an existing discussion thread (discussion ID)")
 	gitlabMRCommentCmd.Flags().String("file", "", "File path for inline comment")
 	gitlabMRCommentCmd.Flags().Int("line", 0, "Line number for inline comment")
+	gitlabMRCommentCmd.Flags().Bool("dry-run", false, "Preview where inline comment will land without posting")
 
 	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
 
