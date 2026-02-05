@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/codewandler/dex/internal/config"
 )
 
 const (
@@ -18,10 +20,10 @@ const (
 )
 
 type OAuthFlow struct {
-	config *Config
+	config *config.Config
 }
 
-func NewOAuthFlow(cfg *Config) *OAuthFlow {
+func NewOAuthFlow(cfg *config.Config) *OAuthFlow {
 	return &OAuthFlow{config: cfg}
 }
 
@@ -29,7 +31,7 @@ func NewOAuthFlow(cfg *Config) *OAuthFlow {
 func (o *OAuthFlow) GetAuthURL(state string) string {
 	params := url.Values{
 		"audience":      {"api.atlassian.com"},
-		"client_id":     {o.config.ClientID},
+		"client_id":     {o.config.Jira.ClientID},
 		"scope":         {scopes},
 		"redirect_uri":  {redirectURI},
 		"state":         {state},
@@ -40,11 +42,11 @@ func (o *OAuthFlow) GetAuthURL(state string) string {
 }
 
 // ExchangeCode exchanges an authorization code for tokens
-func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*Token, error) {
+func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*config.JiraToken, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
-		"client_id":     {o.config.ClientID},
-		"client_secret": {o.config.ClientSecret},
+		"client_id":     {o.config.Jira.ClientID},
+		"client_secret": {o.config.Jira.ClientSecret},
 		"code":          {code},
 		"redirect_uri":  {redirectURI},
 	}
@@ -78,7 +80,7 @@ func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*Token, erro
 		return nil, err
 	}
 
-	token := &Token{
+	token := &config.JiraToken{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
@@ -95,11 +97,11 @@ func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*Token, erro
 }
 
 // RefreshToken refreshes an expired access token
-func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*Token, error) {
+func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*config.JiraToken, error) {
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
-		"client_id":     {o.config.ClientID},
-		"client_secret": {o.config.ClientSecret},
+		"client_id":     {o.config.Jira.ClientID},
+		"client_secret": {o.config.Jira.ClientSecret},
 		"refresh_token": {refreshToken},
 	}
 
@@ -138,7 +140,7 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*Tok
 		cloudID = existingToken.CloudID
 	}
 
-	token := &Token{
+	token := &config.JiraToken{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
@@ -189,7 +191,7 @@ func (o *OAuthFlow) getCloudID(ctx context.Context, accessToken string) (string,
 }
 
 // StartAuthServer starts a local server to handle the OAuth callback
-func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*Token, error) {
+func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*config.JiraToken, error) {
 	state := fmt.Sprintf("%d", time.Now().UnixNano())
 	codeChan := make(chan string, 1)
 	errChan := make(chan error, 1)

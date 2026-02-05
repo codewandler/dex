@@ -8,11 +8,13 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/codewandler/dex/internal/config"
 )
 
 type Client struct {
-	config *Config
-	token  *Token
+	config *config.Config
+	token  *config.JiraToken
 	oauth  *OAuthFlow
 }
 
@@ -97,8 +99,12 @@ type SearchResult struct {
 }
 
 func NewClient() (*Client, error) {
-	cfg, err := LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
+		return nil, err
+	}
+
+	if err := cfg.RequireJira(); err != nil {
 		return nil, err
 	}
 
@@ -108,10 +114,7 @@ func NewClient() (*Client, error) {
 	}
 
 	// Try to load existing token
-	token, err := LoadToken()
-	if err == nil {
-		client.token = token
-	}
+	client.token = cfg.Jira.Token
 
 	return client, nil
 }
@@ -139,7 +142,7 @@ func (c *Client) EnsureAuth(ctx context.Context) error {
 			}
 		}
 		c.token = token
-		if err := SaveToken(token); err != nil {
+		if err := SaveToken(c.token); err != nil {
 			return fmt.Errorf("failed to save refreshed token: %w", err)
 		}
 	}

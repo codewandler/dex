@@ -13,14 +13,14 @@ Swiss army knife CLI for engineers. Usable standalone but primarily designed as 
 
 ```
 dex/
-├── cmd/dex/main.go                # Entry point
+├── dex.go                         # Entry point
 ├── internal/
 │   ├── cli/                       # Cobra CLI commands
 │   │   ├── root.go                # Root command
 │   │   ├── gitlab.go              # GitLab commands (gl/gitlab)
 │   │   ├── jira.go                # Jira commands
 │   │   └── k8s.go                 # Kubernetes commands
-│   ├── config/config.go           # Environment configuration
+│   ├── config/config.go           # Unified configuration (file + env)
 │   ├── gitlab/                    # GitLab API client
 │   │   ├── client.go              # Main client
 │   │   ├── commits.go             # Commit operations
@@ -48,14 +48,35 @@ task clean                          # Remove build artifacts
 
 After changes, run `task install` to install the updated binary.
 
-## Environment Variables
+## Configuration
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITLAB_URL` | For GitLab | GitLab instance URL |
-| `GITLAB_PERSONAL_TOKEN` | For GitLab | Personal access token |
-| `JIRA_CLIENT_ID` | For Jira | OAuth 2.0 client ID |
-| `JIRA_CLIENT_SECRET` | For Jira | OAuth 2.0 client secret |
+Configuration is loaded from `~/.dex/config.json` with environment variable overrides.
+
+**Config file structure:**
+```json
+{
+  "activity_days": 14,
+  "gitlab": {
+    "url": "https://gitlab.example.com",
+    "token": "your-personal-access-token"
+  },
+  "jira": {
+    "client_id": "your-oauth-client-id",
+    "client_secret": "your-oauth-client-secret",
+    "token": { ... }
+  }
+}
+```
+
+**Environment variables (override file values):**
+
+| Variable | Description |
+|----------|-------------|
+| `GITLAB_URL` | GitLab instance URL |
+| `GITLAB_PERSONAL_TOKEN` | Personal access token |
+| `JIRA_CLIENT_ID` | OAuth 2.0 client ID |
+| `JIRA_CLIENT_SECRET` | OAuth 2.0 client secret |
+| `ACTIVITY_DAYS` | Default days for activity lookback |
 
 ## Command Overview
 
@@ -80,10 +101,10 @@ This CLI ships with a Claude Code skill at `.claude/skills/dex/SKILL.md` that do
 1. Create OAuth 2.0 app at https://developer.atlassian.com/console/myapps/
 2. Add callback URL: `http://localhost:8089/callback`
 3. Add Jira API permissions: `read:jira-work`, `read:jira-user`
-4. Set `JIRA_CLIENT_ID` and `JIRA_CLIENT_SECRET`
+4. Set `JIRA_CLIENT_ID` and `JIRA_CLIENT_SECRET` (env or config file)
 5. Run `dex jira auth`
 
-Token stored at `~/.config/jira-oauth/token.json`
+Token stored in `~/.dex/config.json` under `jira.token`.
 
 ## Development
 

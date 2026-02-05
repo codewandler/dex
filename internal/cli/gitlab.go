@@ -47,13 +47,17 @@ Examples:
 			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 			os.Exit(1)
 		}
+		if err := cfg.RequireGitLab(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
 
 		// Use parsed duration or fall back to config default
 		if duration == 0 {
 			duration = time.Duration(cfg.ActivityDays) * 24 * time.Hour
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -126,7 +130,12 @@ Examples:
 			}
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		if err := cfg.RequireGitLab(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -134,7 +143,7 @@ Examples:
 
 		fmt.Println("Indexing GitLab projects...")
 
-		idx, err := client.IndexAllProjects(cfg.GitLabURL, func(completed, total int) {
+		idx, err := client.IndexAllProjects(cfg.GitLab.URL, func(completed, total int) {
 			fmt.Printf("\r  Indexed %d/%d projects...", completed, total)
 		})
 		if err != nil {
@@ -206,7 +215,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -256,7 +265,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -315,7 +324,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -406,7 +415,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -469,7 +478,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -509,7 +518,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -556,7 +565,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -633,7 +642,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -695,7 +704,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -742,7 +751,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -822,7 +831,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 			os.Exit(1)
@@ -879,7 +888,7 @@ Examples:
 
 		// Fetch from API if not in cache or --no-cache
 		if pm == nil {
-			client, err := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken)
+			client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
 				os.Exit(1)
