@@ -117,6 +117,33 @@ func (c *Client) TestUserAuth() (*slack.AuthTestResponse, error) {
 	return resp, nil
 }
 
+// GetUserPresence gets the presence status of a user (requires user token)
+func (c *Client) GetUserPresence(userID string) (*slack.UserPresence, error) {
+	if c.userAPI == nil {
+		return nil, fmt.Errorf("user token not configured")
+	}
+	presence, err := c.userAPI.GetUserPresence(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user presence: %w", err)
+	}
+	return presence, nil
+}
+
+// SetUserPresence sets the user's presence status (requires user token)
+// presence must be "auto" or "away"
+func (c *Client) SetUserPresence(presence string) error {
+	if c.userAPI == nil {
+		return fmt.Errorf("user token not configured")
+	}
+	if presence != "auto" && presence != "away" {
+		return fmt.Errorf("presence must be 'auto' or 'away'")
+	}
+	if err := c.userAPI.SetUserPresence(presence); err != nil {
+		return fmt.Errorf("failed to set user presence: %w", err)
+	}
+	return nil
+}
+
 // GetChannelInfo gets information about a channel
 func (c *Client) GetChannelInfo(channelID string) (*slack.Channel, error) {
 	channel, err := c.api.GetConversationInfo(&slack.GetConversationInfoInput{

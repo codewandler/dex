@@ -240,6 +240,17 @@ Shows authenticated identities for both tokens:
 
 Useful for understanding which identity will perform actions.
 
+### Presence
+```bash
+dex slack presence                # Show current presence (requires users:read scope)
+dex slack presence set auto       # Set to auto (online when active)
+dex slack presence set away       # Set to away
+```
+
+Requires user token. Scopes needed:
+- `users:read` - for viewing presence
+- `users:write` - for setting presence
+
 ### Index (Channels & Users)
 ```bash
 dex slack index                   # Index channels and users (cached 24h)

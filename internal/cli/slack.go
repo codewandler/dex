@@ -128,6 +128,113 @@ Examples:
 	},
 }
 
+var slackPresenceCmd = &cobra.Command{
+	Use:   "presence",
+	Short: "Show or set presence status",
+	Long: `Show your current presence status or set it.
+
+Without arguments, shows your current presence. Use 'set' subcommand to change it.
+
+Requires user token with:
+- users:read scope for viewing presence
+- users:write scope for setting presence
+
+Examples:
+  dex slack presence              # Show current presence
+  dex slack presence set auto     # Set to auto (online when active)
+  dex slack presence set away     # Set to away`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if cfg.Slack.UserToken == "" {
+			fmt.Fprintf(os.Stderr, "User token required for presence (set SLACK_USER_TOKEN)\n")
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Get user ID from user token
+		userResp, err := client.TestUserAuth()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get user info: %v\n", err)
+			os.Exit(1)
+		}
+
+		presence, err := client.GetUserPresence(userResp.UserID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get presence: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("User:     %s (%s)\n", userResp.User, userResp.UserID)
+		fmt.Printf("Presence: %s\n", presence.Presence)
+		if presence.AutoAway {
+			fmt.Println("          (auto away due to inactivity)")
+		}
+		if presence.ManualAway {
+			fmt.Println("          (manually set to away)")
+		}
+	},
+}
+
+var slackPresenceSetCmd = &cobra.Command{
+	Use:   "set <auto|away>",
+	Short: "Set presence status",
+	Long: `Set your presence status.
+
+Valid values:
+  auto  - Automatically set based on activity (online when active)
+  away  - Manually set to away
+
+Examples:
+  dex slack presence set auto     # Back to automatic presence
+  dex slack presence set away     # Set to away`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		presenceArg := args[0]
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if cfg.Slack.UserToken == "" {
+			fmt.Fprintf(os.Stderr, "User token required for presence (set SLACK_USER_TOKEN)\n")
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.SetUserPresence(presenceArg); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to set presence: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Presence set to: %s\n", presenceArg)
+	},
+}
+
 var slackIndexCmd = &cobra.Command{
 	Use:   "index",
 	Short: "Index Slack channels and users",
@@ -1031,12 +1138,15 @@ func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
 func init() {
 	slackCmd.AddCommand(slackAuthCmd)
 	slackCmd.AddCommand(slackInfoCmd)
+	slackCmd.AddCommand(slackPresenceCmd)
 	slackCmd.AddCommand(slackIndexCmd)
 	slackCmd.AddCommand(slackSendCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackUsersCmd)
 	slackCmd.AddCommand(slackMentionsCmd)
 	slackCmd.AddCommand(slackSearchCmd)
+
+	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
