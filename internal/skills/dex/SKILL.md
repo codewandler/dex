@@ -306,7 +306,8 @@ dex slack send dev-team "Message from me" --as user
 
 ### Search Mentions
 ```bash
-dex slack mentions                    # Mentions of the bot today (since midnight)
+dex slack mentions                    # My mentions today (requires user token)
+dex slack mentions --bot              # Bot mentions today
 dex slack mentions --user timo.friedl # Mentions of a specific user
 dex slack mentions --user U03HY52RQLV # By user ID
 dex slack mentions --since 1h         # Mentions from last hour
@@ -315,11 +316,14 @@ dex slack mentions --limit 50         # Show more results (default 20)
 dex slack mentions --compact          # Compact table view
 ```
 
+**Default behavior:**
+- No flags: searches for mentions of the authenticated user (from user token)
+- `--bot`: searches for mentions of the bot
+- `--user <name>`: searches for mentions of a specific user
+
 **Default time range:** Today (since midnight). Use `--since` to override.
 
-**With user token configured:** Searches all channels using Slack Search API (fast, comprehensive).
-
-**Without user token:** Falls back to scanning channel history in channels the bot is a member of.
+**Requires user token** for search API. Falls back to channel scanning with bot token only.
 
 Time filters: `1h`, `30m`, `1d`, `7d`, `2w` etc.
 

@@ -716,13 +716,13 @@ var slackMentionsCmd = &cobra.Command{
 	Short: "Search for mentions of a user",
 	Long: `Search for messages that mention a specific user.
 
-By default shows mentions of the authenticated bot from today (since midnight).
+By default shows mentions of the authenticated user (from user token) from today.
+Use --bot to search for mentions of the bot instead.
 Use --user to search for mentions of a specific user by username or ID.
 
-Scans channels the bot is a member of for messages containing @mentions.
-
 Examples:
-  dex slack mentions                    # Mentions of the bot (today)
+  dex slack mentions                    # My mentions (today)
+  dex slack mentions --bot              # Bot mentions (today)
   dex slack mentions --user timo.friedl # Mentions of a specific user
   dex slack mentions --user U03HY52RQLV # Mentions by user ID
   dex slack mentions --limit 50         # Show more results
@@ -731,6 +731,7 @@ Examples:
   dex slack mentions --compact          # Compact table view`,
 	Run: func(cmd *cobra.Command, args []string) {
 		userArg, _ := cmd.Flags().GetString("user")
+		botFlag, _ := cmd.Flags().GetBool("bot")
 		limit, _ := cmd.Flags().GetInt("limit")
 		compact, _ := cmd.Flags().GetBool("compact")
 		sinceStr, _ := cmd.Flags().GetString("since")
@@ -757,16 +758,33 @@ Examples:
 
 		// Determine user ID to search for
 		var userID string
-		if userArg == "" {
-			// Default to bot's own user ID
+		var targetDesc string
+		if userArg != "" {
+			// Explicit user specified
+			userID = slack.ResolveUser(userArg)
+			targetDesc = userID
+		} else if botFlag {
+			// Search for bot mentions
 			userID, err = client.GetBotUserID()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to get bot user ID: %v\n", err)
 				os.Exit(1)
 			}
+			targetDesc = userID + " (bot)"
 		} else {
-			// Resolve username to user ID
-			userID = slack.ResolveUser(userArg)
+			// Default: search for authenticated user's mentions (requires user token)
+			if !client.HasUserToken() {
+				fmt.Fprintf(os.Stderr, "User token required for default mentions search.\n")
+				fmt.Fprintf(os.Stderr, "Use --bot to search for bot mentions, or configure SLACK_USER_TOKEN.\n")
+				os.Exit(1)
+			}
+			userResp, err := client.TestUserAuth()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to get user identity: %v\n", err)
+				os.Exit(1)
+			}
+			userID = userResp.UserID
+			targetDesc = userID + " (me)"
 		}
 
 		// Parse since duration (defaults to today if not specified)
@@ -792,7 +810,7 @@ Examples:
 
 		// Use search API if user token available, otherwise fall back to channel scanning
 		if client.HasUserToken() {
-			fmt.Printf("Searching all channels for mentions of %s%s...\n", userID, sinceDesc)
+			fmt.Printf("Searching all channels for mentions of %s%s...\n", targetDesc, sinceDesc)
 			mentions, total, err = client.SearchMentions(userID, limit, sinceUnix)
 		} else {
 			// Fall back to scanning channels bot is a member of
@@ -813,7 +831,7 @@ Examples:
 				return
 			}
 
-			fmt.Printf("Scanning %d channels for mentions of %s%s...\n", len(channelIDs), userID, sinceDesc)
+			fmt.Printf("Scanning %d channels for mentions of %s%s...\n", len(channelIDs), targetDesc, sinceDesc)
 			mentions, err = client.GetMentionsInChannels(userID, channelIDs, limit, sinceUnix)
 			total = len(mentions)
 		}
@@ -823,7 +841,7 @@ Examples:
 		}
 
 		if len(mentions) == 0 {
-			fmt.Printf("No mentions found for %s\n", userID)
+			fmt.Printf("No mentions found for %s\n", targetDesc)
 			return
 		}
 
@@ -1213,7 +1231,8 @@ func init() {
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackUsersCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
-	slackMentionsCmd.Flags().StringP("user", "u", "", "User to search mentions for (username or ID, defaults to bot)")
+	slackMentionsCmd.Flags().StringP("user", "u", "", "User to search mentions for (username or ID)")
+	slackMentionsCmd.Flags().BoolP("bot", "b", false, "Search for bot mentions instead of your own")
 	slackMentionsCmd.Flags().IntP("limit", "l", 20, "Maximum number of results to show")
 	slackMentionsCmd.Flags().BoolP("compact", "c", false, "Compact table view")
 	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d); defaults to today")
