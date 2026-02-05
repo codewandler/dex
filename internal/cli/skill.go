@@ -5,15 +5,19 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/codewandler/dex/internal/skills"
+	"github.com/codewandler/dex/internal/skillssh"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
 var skillCmd = &cobra.Command{
-	Use:   "skill",
-	Short: "Manage dex skills",
+	Use:     "skill",
+	Aliases: []string{"skills"},
+	Short:   "Manage and search skills",
 }
 
 var skillInstallCmd = &cobra.Command{
@@ -85,7 +89,53 @@ var skillShowCmd = &cobra.Command{
 	},
 }
 
+var skillSearchLimit int
+
+var skillSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search for skills on skills.sh",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		query := args[0]
+
+		client := skillssh.NewClient()
+		result, err := client.Search(query, skillSearchLimit)
+		if err != nil {
+			return err
+		}
+
+		if len(result.Skills) == 0 {
+			fmt.Printf("No skills found for %q\n", query)
+			return nil
+		}
+
+		// Colors
+		nameColor := color.New(color.FgCyan, color.Bold)
+		sourceColor := color.New(color.FgYellow)
+		dimColor := color.New(color.FgHiBlack)
+
+		line := strings.Repeat("═", 60)
+		fmt.Println()
+		fmt.Println(line)
+		fmt.Printf("  Skills matching %q (%d results)\n", query, result.Count)
+		fmt.Println(line)
+		fmt.Println()
+
+		for _, skill := range result.Skills {
+			nameColor.Printf("  %s\n", skill.Name)
+			sourceColor.Printf("    %s", skill.Source)
+			dimColor.Printf("  (%d installs)\n", skill.Installs)
+		}
+
+		fmt.Println()
+		return nil
+	},
+}
+
 func init() {
+	skillSearchCmd.Flags().IntVarP(&skillSearchLimit, "limit", "n", 10, "Maximum number of results")
+
 	skillCmd.AddCommand(skillInstallCmd)
 	skillCmd.AddCommand(skillShowCmd)
+	skillCmd.AddCommand(skillSearchCmd)
 }
