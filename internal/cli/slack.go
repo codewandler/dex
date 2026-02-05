@@ -795,11 +795,16 @@ Examples:
 			targetDesc = userID + " (me)"
 		}
 
-		// Collect user IDs for status classification (both bot and authenticated user)
+		// Collect user IDs and bot IDs for status classification
 		var myUserIDs []string
+		var myBotIDs []string
 		botUserID, _ := client.GetBotUserID()
 		if botUserID != "" {
 			myUserIDs = append(myUserIDs, botUserID)
+		}
+		botID, _ := client.GetBotID()
+		if botID != "" {
+			myBotIDs = append(myBotIDs, botID)
 		}
 		if client.HasUserToken() {
 			if userResp, err := client.TestUserAuth(); err == nil {
@@ -870,7 +875,7 @@ Examples:
 		// Classify mention status
 		fmt.Print("Classifying mentions...")
 		for i := range mentions {
-			mentions[i].Status = client.ClassifyMentionStatus(mentions[i].ChannelID, mentions[i].Timestamp, myUserIDs)
+			mentions[i].Status = client.ClassifyMentionStatus(mentions[i].ChannelID, mentions[i].Timestamp, myUserIDs, myBotIDs)
 			fmt.Printf("\rClassifying mentions... %d/%d", i+1, len(mentions))
 		}
 		fmt.Println()

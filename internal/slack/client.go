@@ -359,6 +359,15 @@ func (c *Client) GetBotUserID() (string, error) {
 	return resp.UserID, nil
 }
 
+// GetBotID returns the bot ID (B...) of the authenticated bot
+func (c *Client) GetBotID() (string, error) {
+	resp, err := c.api.AuthTest()
+	if err != nil {
+		return "", fmt.Errorf("failed to get bot ID: %w", err)
+	}
+	return resp.BotID, nil
+}
+
 // GetReactions returns reactions on a message
 func (c *Client) GetReactions(channelID, timestamp string) ([]slack.ItemReaction, error) {
 	item := slack.NewRefToMessage(channelID, timestamp)
@@ -384,14 +393,22 @@ func (c *Client) GetThreadReplies(channelID, threadTS string) ([]slack.Message, 
 }
 
 // ClassifyMentionStatus determines the status of a mention based on reactions and replies
-// myUserIDs should include both the bot user ID and the authenticated user ID
-func (c *Client) ClassifyMentionStatus(channelID, timestamp string, myUserIDs []string) MentionStatus {
+// myUserIDs should include user IDs (U...) for the bot and authenticated user
+// myBotIDs should include bot IDs (B...) to check against message BotID field
+func (c *Client) ClassifyMentionStatus(channelID, timestamp string, myUserIDs, myBotIDs []string) MentionStatus {
 	// Check for thread replies first (takes precedence over reactions)
 	replies, err := c.GetThreadReplies(channelID, timestamp)
 	if err == nil && len(replies) > 1 { // First message is the parent, replies start from index 1
 		for _, reply := range replies[1:] {
+			// Check if reply is from one of our user IDs
 			for _, myID := range myUserIDs {
 				if reply.User == myID {
+					return MentionStatusReplied
+				}
+			}
+			// Check if reply is from one of our bot IDs
+			for _, botID := range myBotIDs {
+				if reply.BotID == botID {
 					return MentionStatusReplied
 				}
 			}
