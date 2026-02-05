@@ -28,15 +28,18 @@ Alternatively, use the `--url` flag on any command, or run `dex loki discover` t
 
 ## Query Logs
 ```bash
-dex loki query '{job="my-app"}'                    # Basic query (last 1h)
+dex loki query '{job="my-app"}'                    # Current k8s namespace (default)
+dex loki query '{job="my-app"}' -A                 # All namespaces
+dex loki query '{job="my-app"}' -n prod            # Specific namespace
 dex loki query '{job="my-app"}' --since 30m        # Last 30 minutes
 dex loki query '{job="my-app"}' --since 1d         # Last day
 dex loki query '{job="my-app"}' --limit 50         # Limit results
-dex loki query '{namespace="prod"} |= "error"'     # Filter for "error"
+dex loki query '{app="nginx"} |= "error"'          # Filter for "error"
 dex loki query '{app="nginx"} |~ "5[0-9]{2}"'      # Regex filter (5xx errors)
 dex loki query '{job="my-app"} | json'             # Parse JSON logs
-dex loki --url=http://loki:3100 query '{job="x"}'  # Override URL
 ```
+
+By default, queries are scoped to your current Kubernetes namespace. Use `-A` for all namespaces.
 
 ## Labels
 ```bash

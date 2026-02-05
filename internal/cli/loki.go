@@ -33,17 +33,22 @@ var lokiQueryCmd = &cobra.Command{
 	Short: "Query logs with LogQL",
 	Long: `Query logs from Loki using LogQL syntax.
 
+By default, queries are scoped to the current Kubernetes namespace.
+Use -A/--all-namespaces to query across all namespaces.
+
 Examples:
-  dex loki query '{job="my-app"}'
+  dex loki query '{job="my-app"}'              # Current namespace only
+  dex loki query '{job="my-app"}' -A           # All namespaces
   dex loki query '{job="my-app"}' --since 1h
   dex loki query '{job="my-app"} |= "error"' --since 30m --limit 50
-  dex loki query '{namespace="production"}' --since 1d
   dex loki --url=http://loki:3100 query '{app="nginx"}'`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		urlFlag, _ := cmd.Flags().GetString("url")
 		sinceStr, _ := cmd.Flags().GetString("since")
 		limit, _ := cmd.Flags().GetInt("limit")
+		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
+		namespace, _ := cmd.Flags().GetString("namespace")
 
 		// Get Loki URL from flag or config
 		lokiURL := urlFlag
@@ -68,13 +73,30 @@ Examples:
 			os.Exit(1)
 		}
 
+		query := args[0]
+
+		// Apply namespace filter unless --all-namespaces is set
+		if !allNamespaces {
+			ns := namespace
+			if ns == "" {
+				// Get current k8s namespace
+				k8sClient, err := k8s.NewClient("")
+				if err == nil {
+					ns = k8sClient.Namespace()
+				}
+			}
+			if ns != "" {
+				query = injectNamespaceIntoQuery(query, ns)
+				lokiTimeColor.Printf("Namespace: %s (use -A for all namespaces)\n\n", ns)
+			}
+		}
+
 		client, err := loki.NewClient(lokiURL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Loki client: %v\n", err)
 			os.Exit(1)
 		}
 
-		query := args[0]
 		results, err := client.Query(query, since, limit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
@@ -96,6 +118,37 @@ Examples:
 		fmt.Println()
 		lokiTimeColor.Printf("(%d entries)\n", len(results))
 	},
+}
+
+// injectNamespaceIntoQuery adds namespace selector to a LogQL query
+func injectNamespaceIntoQuery(query, namespace string) string {
+	// Find the opening brace of the stream selector
+	braceIdx := strings.Index(query, "{")
+	if braceIdx == -1 {
+		// No stream selector, wrap the whole query
+		return fmt.Sprintf(`{namespace="%s"} %s`, namespace, query)
+	}
+
+	// Find the closing brace
+	closeBraceIdx := strings.Index(query, "}")
+	if closeBraceIdx == -1 {
+		return query // Invalid query, return as-is
+	}
+
+	// Check if namespace is already in the selector
+	selector := query[braceIdx : closeBraceIdx+1]
+	if strings.Contains(selector, "namespace=") || strings.Contains(selector, "namespace!=") ||
+		strings.Contains(selector, "namespace~=") || strings.Contains(selector, "namespace!~") {
+		return query // Already has namespace filter
+	}
+
+	// Inject namespace into selector
+	if closeBraceIdx == braceIdx+1 {
+		// Empty selector: {}
+		return query[:braceIdx+1] + fmt.Sprintf(`namespace="%s"`, namespace) + query[closeBraceIdx:]
+	}
+	// Non-empty selector: {job="app"} -> {job="app",namespace="ns"}
+	return query[:closeBraceIdx] + fmt.Sprintf(`,namespace="%s"`, namespace) + query[closeBraceIdx:]
 }
 
 var lokiLabelsCmd = &cobra.Command{
@@ -417,6 +470,8 @@ func init() {
 	// Query command flags
 	lokiQueryCmd.Flags().StringP("since", "s", "1h", "Time range to query (e.g., 1h, 30m, 1d)")
 	lokiQueryCmd.Flags().IntP("limit", "l", 1000, "Maximum number of entries to return")
+	lokiQueryCmd.Flags().BoolP("all-namespaces", "A", false, "Query all namespaces (default: current k8s namespace)")
+	lokiQueryCmd.Flags().StringP("namespace", "n", "", "Namespace to query (default: current k8s namespace)")
 
 	// Discover command flags
 	lokiDiscoverCmd.Flags().StringP("namespace", "n", "", "Namespace to search (default: monitoring, loki, observability, logging)")

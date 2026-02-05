@@ -69,9 +69,10 @@ dex slack thread <url|ch:ts>      # View thread details
 ### Loki (`dex loki`)
 ```bash
 dex loki discover                 # Auto-discover Loki in k8s cluster
-dex loki query '{job="app"}'      # Query logs (last 1h)
-dex loki query '{job="app"}' -s 30m   # Last 30 minutes
-dex loki query '{ns="prod"} |= "error"'  # Filter logs
+dex loki query '{job="app"}'      # Query (current k8s namespace)
+dex loki query '{job="app"}' -A   # Query all namespaces
+dex loki query '{job="app"}' -n prod  # Query specific namespace
+dex loki query '{app="x"} |= "error"' -s 30m  # Filter + time range
 dex loki labels                   # List label names
 dex loki labels job               # List values for label
 dex loki test                     # Test connection
