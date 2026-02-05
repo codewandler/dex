@@ -24,7 +24,9 @@ Set `LOKI_URL` environment variable or add to `~/.dex/config.json`:
 }
 ```
 
-Alternatively, use the `--url` flag on any command, or run `dex loki discover` to find it automatically.
+Alternatively, use the `--url` flag on any command.
+
+**Auto-discovery:** If no URL is configured, commands will automatically discover Loki in the current Kubernetes cluster.
 
 ## Query Logs
 ```bash

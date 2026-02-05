@@ -16,11 +16,127 @@ import (
 )
 
 var (
-	lokiHeaderColor = color.New(color.FgCyan, color.Bold)
-	lokiLabelColor  = color.New(color.FgYellow)
-	lokiTimeColor   = color.New(color.FgHiBlack)
-	lokiLineColor   = color.New(color.FgWhite)
+	lokiHeaderColor  = color.New(color.FgCyan, color.Bold)
+	lokiLabelColor   = color.New(color.FgYellow)
+	lokiTimeColor    = color.New(color.FgHiBlack)
+	lokiLineColor    = color.New(color.FgWhite)
+	lokiSuccessColor = color.New(color.FgGreen)
+	lokiErrorColor   = color.New(color.FgRed)
 )
+
+// getLokiURL returns the Loki URL from flag, config, or auto-discovery
+func getLokiURL(urlFlag string) (string, error) {
+	// 1. Check flag
+	if urlFlag != "" {
+		return urlFlag, nil
+	}
+
+	// 2. Check config
+	cfg, err := config.Load()
+	if err == nil && cfg.Loki.URL != "" {
+		return cfg.Loki.URL, nil
+	}
+
+	// 3. Auto-discover
+	lokiTimeColor.Println("No Loki URL configured, attempting auto-discovery...")
+	url, err := discoverLokiURL()
+	if err != nil {
+		return "", fmt.Errorf("auto-discovery failed: %w\nTip: Use --url flag or set LOKI_URL environment variable", err)
+	}
+	lokiTimeColor.Printf("Auto-discovered Loki at %s\n\n", url)
+	return url, nil
+}
+
+// discoverLokiURL finds a working Loki URL in the current Kubernetes cluster
+func discoverLokiURL() (string, error) {
+	// Verify k8s connectivity first
+	if _, err := k8s.NewClient(""); err != nil {
+		return "", fmt.Errorf("failed to connect to Kubernetes: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Common namespaces to search
+	searchNamespaces := []string{"monitoring", "loki", "observability", "logging", "loki-stack"}
+
+	type candidate struct {
+		url       string
+		namespace string
+		name      string
+		podIP     string
+	}
+	var candidates []candidate
+
+	// Search for Loki pods by name pattern in each namespace
+	for _, ns := range searchNamespaces {
+		nsClient, err := k8s.NewClient(ns)
+		if err != nil {
+			continue
+		}
+
+		pods, err := nsClient.ListPods(ctx, false)
+		if err != nil {
+			continue
+		}
+
+		for _, pod := range pods {
+			nameLower := strings.ToLower(pod.Name)
+			// Match loki pods but exclude promtail/agents
+			if !strings.Contains(nameLower, "loki") || strings.Contains(nameLower, "promtail") {
+				continue
+			}
+
+			// Skip pods that aren't running
+			if pod.Status.Phase != "Running" {
+				continue
+			}
+
+			// Skip pods without an IP
+			if pod.Status.PodIP == "" {
+				continue
+			}
+
+			// Find HTTP port (usually 3100)
+			for _, container := range pod.Spec.Containers {
+				for _, port := range container.Ports {
+					if port.ContainerPort == 3100 || port.Name == "http-metrics" || port.Name == "http" {
+						url := fmt.Sprintf("http://%s:%d", pod.Status.PodIP, port.ContainerPort)
+						candidates = append(candidates, candidate{
+							url:       url,
+							namespace: pod.Namespace,
+							name:      pod.Name,
+							podIP:     pod.Status.PodIP,
+						})
+						break // Only add once per pod
+					}
+				}
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no Loki pods found in namespaces: %s", strings.Join(searchNamespaces, ", "))
+	}
+
+	// Test each candidate and return the first working one
+	for _, c := range candidates {
+		lokiClient, err := loki.NewClient(c.url)
+		if err != nil {
+			continue
+		}
+
+		// Try to get labels as a connectivity test
+		_, err = lokiClient.Labels("")
+		if err != nil {
+			continue
+		}
+
+		return c.url, nil
+	}
+
+	return "", fmt.Errorf("found %d Loki pod(s) but none are reachable", len(candidates))
+}
 
 var lokiCmd = &cobra.Command{
 	Use:   "loki",
@@ -50,20 +166,11 @@ Examples:
 		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
-		// Get Loki URL from flag or config
-		lokiURL := urlFlag
-		if lokiURL == "" {
-			cfg, err := config.Load()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				os.Exit(1)
-			}
-			if err := cfg.RequireLoki(); err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Tip: Use --url flag or set LOKI_URL environment variable\n")
-				os.Exit(1)
-			}
-			lokiURL = cfg.Loki.URL
+		// Get Loki URL from flag, config, or auto-discovery
+		lokiURL, err := getLokiURL(urlFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
 		}
 
 		// Parse since duration
@@ -170,20 +277,11 @@ Examples:
 		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
 		namespace, _ := cmd.Flags().GetString("namespace")
 
-		// Get Loki URL from flag or config
-		lokiURL := urlFlag
-		if lokiURL == "" {
-			cfg, err := config.Load()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				os.Exit(1)
-			}
-			if err := cfg.RequireLoki(); err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Tip: Use --url flag or set LOKI_URL environment variable\n")
-				os.Exit(1)
-			}
-			lokiURL = cfg.Loki.URL
+		// Get Loki URL from flag, config, or auto-discovery
+		lokiURL, err := getLokiURL(urlFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
 		}
 
 		// Build namespace filter query
@@ -271,20 +369,11 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		urlFlag, _ := cmd.Flags().GetString("url")
 
-		// Get Loki URL from flag or config
-		lokiURL := urlFlag
-		if lokiURL == "" {
-			cfg, err := config.Load()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				os.Exit(1)
-			}
-			if err := cfg.RequireLoki(); err != nil {
-				fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Tip: Use --url flag or set LOKI_URL environment variable\n")
-				os.Exit(1)
-			}
-			lokiURL = cfg.Loki.URL
+		// Get Loki URL from flag, config, or auto-discovery
+		lokiURL, err := getLokiURL(urlFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
 		}
 
 		client, err := loki.NewClient(lokiURL)
@@ -437,11 +526,6 @@ Examples:
 		lokiTimeColor.Printf("To use: export LOKI_URL=%s\n", working[0].url)
 	},
 }
-
-var (
-	lokiSuccessColor = color.New(color.FgGreen)
-	lokiErrorColor   = color.New(color.FgRed)
-)
 
 // parseLokiDuration parses human-readable durations like "1h", "30m", "1d", "2h30m"
 func parseLokiDuration(s string) (time.Duration, error) {

@@ -84,4 +84,4 @@ dex loki test                     # Test connection
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `sre/helm!2903`)
-- Loki URL: set `LOKI_URL` env var or use `--url` flag
+- Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)
