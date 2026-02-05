@@ -235,8 +235,8 @@ func (c *Client) SearchMentions(userID string, limit int, since int64) ([]Mentio
 
 	query := fmt.Sprintf("<@%s>", userID)
 	if since > 0 {
-		// Slack search uses after:YYYY-MM-DD format
-		sinceTime := time.Unix(since, 0)
+		// Slack search uses after:YYYY-MM-DD format (exclusive, so subtract a day)
+		sinceTime := time.Unix(since, 0).AddDate(0, 0, -1)
 		query += fmt.Sprintf(" after:%s", sinceTime.Format("2006-01-02"))
 	}
 
@@ -367,7 +367,8 @@ func (c *Client) Search(query string, count int, since int64) ([]SearchResult, i
 	}
 
 	if since > 0 {
-		sinceTime := time.Unix(since, 0)
+		// Slack search uses after:YYYY-MM-DD format (exclusive, so subtract a day)
+		sinceTime := time.Unix(since, 0).AddDate(0, 0, -1)
 		query += fmt.Sprintf(" after:%s", sinceTime.Format("2006-01-02"))
 	}
 
