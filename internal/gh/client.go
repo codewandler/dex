@@ -173,6 +173,7 @@ type Issue struct {
 type IssueListOptions struct {
 	State    string // open, closed, all
 	Label    string
+	NoLabel  bool   // filter for issues with no labels (client-side)
 	Assignee string
 	Limit    int
 	Repo     string // optional: owner/repo
@@ -228,17 +229,23 @@ func (c *Client) IssueList(opts IssueListOptions) ([]Issue, error) {
 		return nil, fmt.Errorf("failed to parse issues: %w", err)
 	}
 
-	issues := make([]Issue, len(rawIssues))
-	for i, raw := range rawIssues {
+	issues := make([]Issue, 0, len(rawIssues))
+	for _, raw := range rawIssues {
 		labels := make([]string, len(raw.Labels))
 		for j, l := range raw.Labels {
 			labels[j] = l.Name
 		}
+
+		// Skip issues with labels if NoLabel filter is set
+		if opts.NoLabel && len(labels) > 0 {
+			continue
+		}
+
 		assignees := make([]string, len(raw.Assignees))
 		for j, a := range raw.Assignees {
 			assignees[j] = a.Login
 		}
-		issues[i] = Issue{
+		issues = append(issues, Issue{
 			Number:    raw.Number,
 			Title:     raw.Title,
 			State:     raw.State,
@@ -247,7 +254,7 @@ func (c *Client) IssueList(opts IssueListOptions) ([]Issue, error) {
 			Assignees: assignees,
 			CreatedAt: raw.CreatedAt,
 			URL:       raw.URL,
-		}
+		})
 	}
 
 	return issues, nil
@@ -417,6 +424,37 @@ func (c *Client) IssueComment(opts IssueCommentOptions) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("gh issue comment failed: %s", string(output))
+	}
+
+	return nil
+}
+
+// IssueEditOptions contains options for editing an issue
+type IssueEditOptions struct {
+	Number       int
+	AddLabels    []string
+	RemoveLabels []string
+	Repo         string
+}
+
+// IssueEdit edits an issue (add/remove labels)
+func (c *Client) IssueEdit(opts IssueEditOptions) error {
+	args := []string{"issue", "edit", fmt.Sprintf("%d", opts.Number)}
+
+	for _, label := range opts.AddLabels {
+		args = append(args, "--add-label", label)
+	}
+	for _, label := range opts.RemoveLabels {
+		args = append(args, "--remove-label", label)
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh issue edit failed: %s", string(output))
 	}
 
 	return nil
@@ -595,6 +633,106 @@ func (c *Client) ReleaseCreate(opts ReleaseCreateOptions) (*Release, error) {
 		URL:     url,
 		IsDraft: opts.Draft,
 	}, nil
+}
+
+// Label represents a GitHub label
+type Label struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+}
+
+// LabelListOptions contains options for listing labels
+type LabelListOptions struct {
+	Limit int
+	Repo  string
+}
+
+// LabelList lists labels in a repository
+func (c *Client) LabelList(opts LabelListOptions) ([]Label, error) {
+	args := []string{"label", "list", "--json", "name,description,color"}
+
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh label list failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh label list failed: %w", err)
+	}
+
+	var labels []Label
+	if err := json.Unmarshal(output, &labels); err != nil {
+		return nil, fmt.Errorf("failed to parse labels: %w", err)
+	}
+
+	return labels, nil
+}
+
+// LabelCreateOptions contains options for creating a label
+type LabelCreateOptions struct {
+	Name        string
+	Description string
+	Color       string // hex color without # prefix
+	Repo        string
+}
+
+// LabelCreate creates a new label
+func (c *Client) LabelCreate(opts LabelCreateOptions) (*Label, error) {
+	args := []string{"label", "create", opts.Name}
+
+	if opts.Description != "" {
+		args = append(args, "--description", opts.Description)
+	}
+	if opts.Color != "" {
+		args = append(args, "--color", opts.Color)
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh label create failed: %s", string(output))
+	}
+
+	return &Label{
+		Name:        opts.Name,
+		Description: opts.Description,
+		Color:       opts.Color,
+	}, nil
+}
+
+// LabelDeleteOptions contains options for deleting a label
+type LabelDeleteOptions struct {
+	Name    string
+	Confirm bool
+	Repo    string
+}
+
+// LabelDelete deletes a label
+func (c *Client) LabelDelete(opts LabelDeleteOptions) error {
+	args := []string{"label", "delete", opts.Name, "--yes"}
+
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh label delete failed: %s", string(output))
+	}
+
+	return nil
 }
 
 // normalizeRepo converts various GitHub URL formats to owner/repo format

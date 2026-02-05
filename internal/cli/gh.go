@@ -94,6 +94,7 @@ Examples:
   dex gh issue ls
   dex gh issue list --state closed
   dex gh issue list --label bug
+  dex gh issue list --no-label
   dex gh issue list --repo owner/repo`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := gh.NewClient()
@@ -104,6 +105,7 @@ Examples:
 
 		state, _ := cmd.Flags().GetString("state")
 		label, _ := cmd.Flags().GetString("label")
+		noLabel, _ := cmd.Flags().GetBool("no-label")
 		assignee, _ := cmd.Flags().GetString("assignee")
 		limit, _ := cmd.Flags().GetInt("limit")
 		repo, _ := cmd.Flags().GetString("repo")
@@ -111,6 +113,7 @@ Examples:
 		issues, err := client.IssueList(gh.IssueListOptions{
 			State:    state,
 			Label:    label,
+			NoLabel:  noLabel,
 			Assignee: assignee,
 			Limit:    limit,
 			Repo:     repo,
@@ -312,8 +315,176 @@ Examples:
 	},
 }
 
+var ghIssueEditCmd = &cobra.Command{
+	Use:   "edit <number>",
+	Short: "Edit an issue (add/remove labels)",
+	Long: `Edit a GitHub issue to add or remove labels.
+
+Examples:
+  dex gh issue edit 123 --add-label bug
+  dex gh issue edit 123 --add-label "Feature Request" --add-label "New Integration"
+  dex gh issue edit 123 --remove-label bug
+  dex gh issue edit 123 --add-label enhancement --remove-label bug
+  dex gh issue edit 123 --add-label bug --repo owner/repo`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		var number int
+		if _, err := fmt.Sscanf(args[0], "%d", &number); err != nil {
+			return fmt.Errorf("invalid issue number: %s", args[0])
+		}
+
+		addLabels, _ := cmd.Flags().GetStringSlice("add-label")
+		removeLabels, _ := cmd.Flags().GetStringSlice("remove-label")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		if len(addLabels) == 0 && len(removeLabels) == 0 {
+			return fmt.Errorf("at least one --add-label or --remove-label is required")
+		}
+
+		if err := client.IssueEdit(gh.IssueEditOptions{
+			Number:       number,
+			AddLabels:    addLabels,
+			RemoveLabels: removeLabels,
+			Repo:         repo,
+		}); err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated issue #%d\n", number)
+		return nil
+	},
+}
+
 func joinStrings(s []string) string {
 	return strings.Join(s, ", ")
+}
+
+// Label commands
+var ghLabelCmd = &cobra.Command{
+	Use:   "label",
+	Short: "Manage GitHub labels",
+	Long:  `Create, list, and delete GitHub labels.`,
+}
+
+var ghLabelListCmd = &cobra.Command{
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List labels in a repository",
+	Long: `List labels in a GitHub repository.
+
+Examples:
+  dex gh label list
+  dex gh label ls
+  dex gh label list --limit 50
+  dex gh label list --repo owner/repo`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		limit, _ := cmd.Flags().GetInt("limit")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		labels, err := client.LabelList(gh.LabelListOptions{
+			Limit: limit,
+			Repo:  repo,
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(labels) == 0 {
+			fmt.Println("No labels found")
+			return nil
+		}
+
+		for _, label := range labels {
+			desc := ""
+			if label.Description != "" {
+				desc = fmt.Sprintf(" - %s", label.Description)
+			}
+			fmt.Printf("%-30s #%s%s\n", label.Name, label.Color, desc)
+		}
+
+		return nil
+	},
+}
+
+var ghLabelCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create a new label",
+	Long: `Create a new label in a GitHub repository.
+
+Examples:
+  dex gh label create "bug"
+  dex gh label create "Feature Request" --color ff0000
+  dex gh label create "New Integration" --color 00ff00 --description "Request for new integration"
+  dex gh label create "bug" --repo owner/repo`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		name := args[0]
+		color, _ := cmd.Flags().GetString("color")
+		description, _ := cmd.Flags().GetString("description")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		label, err := client.LabelCreate(gh.LabelCreateOptions{
+			Name:        name,
+			Color:       color,
+			Description: description,
+			Repo:        repo,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Created label: %s\n", label.Name)
+		return nil
+	},
+}
+
+var ghLabelDeleteCmd = &cobra.Command{
+	Use:   "delete <name>",
+	Short: "Delete a label",
+	Long: `Delete a label from a GitHub repository.
+
+Examples:
+  dex gh label delete "bug"
+  dex gh label delete "Feature Request" --repo owner/repo`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		name := args[0]
+		repo, _ := cmd.Flags().GetString("repo")
+
+		if err := client.LabelDelete(gh.LabelDeleteOptions{
+			Name: name,
+			Repo: repo,
+		}); err != nil {
+			return err
+		}
+
+		fmt.Printf("Deleted label: %s\n", name)
+		return nil
+	},
 }
 
 // Release commands
@@ -546,6 +717,7 @@ func init() {
 	// Issue list flags
 	ghIssueListCmd.Flags().StringP("state", "s", "", "Filter by state: open, closed, all (default: open)")
 	ghIssueListCmd.Flags().StringP("label", "l", "", "Filter by label")
+	ghIssueListCmd.Flags().Bool("no-label", false, "Filter issues with no labels")
 	ghIssueListCmd.Flags().StringP("assignee", "a", "", "Filter by assignee")
 	ghIssueListCmd.Flags().IntP("limit", "L", 30, "Maximum number of issues to fetch")
 	ghIssueListCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
@@ -569,10 +741,16 @@ func init() {
 	ghIssueCommentCmd.Flags().StringP("body", "b", "", "Comment body (required)")
 	ghIssueCommentCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
 
+	// Issue edit flags
+	ghIssueEditCmd.Flags().StringSliceP("add-label", "a", nil, "Labels to add (can be repeated)")
+	ghIssueEditCmd.Flags().StringSliceP("remove-label", "r", nil, "Labels to remove (can be repeated)")
+	ghIssueEditCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
 	// Add issue subcommands
 	ghIssueCmd.AddCommand(ghIssueCloseCmd)
 	ghIssueCmd.AddCommand(ghIssueCommentCmd)
 	ghIssueCmd.AddCommand(ghIssueCreateCmd)
+	ghIssueCmd.AddCommand(ghIssueEditCmd)
 	ghIssueCmd.AddCommand(ghIssueListCmd)
 	ghIssueCmd.AddCommand(ghIssueViewCmd)
 
@@ -601,9 +779,27 @@ func init() {
 	ghReleaseCmd.AddCommand(ghReleaseListCmd)
 	ghReleaseCmd.AddCommand(ghReleaseViewCmd)
 
+	// Label list flags
+	ghLabelListCmd.Flags().IntP("limit", "L", 30, "Maximum number of labels to fetch")
+	ghLabelListCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Label create flags
+	ghLabelCreateCmd.Flags().StringP("color", "c", "", "Label color (hex without #)")
+	ghLabelCreateCmd.Flags().StringP("description", "d", "", "Label description")
+	ghLabelCreateCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Label delete flags
+	ghLabelDeleteCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Add label subcommands
+	ghLabelCmd.AddCommand(ghLabelListCmd)
+	ghLabelCmd.AddCommand(ghLabelCreateCmd)
+	ghLabelCmd.AddCommand(ghLabelDeleteCmd)
+
 	ghCmd.AddCommand(ghAuthCmd)
 	ghCmd.AddCommand(ghCloneCmd)
 	ghCmd.AddCommand(ghIssueCmd)
+	ghCmd.AddCommand(ghLabelCmd)
 	ghCmd.AddCommand(ghReleaseCmd)
 	ghCmd.AddCommand(ghTestCmd)
 	rootCmd.AddCommand(ghCmd)

@@ -29,6 +29,7 @@ dex gh issue ls                   # Alias for list
 dex gh issue list -s closed       # List closed issues
 dex gh issue list -s all          # List all issues
 dex gh issue list -l bug          # Filter by label
+dex gh issue list --no-label      # Filter issues with no labels
 dex gh issue list -a @me          # Filter by assignee
 dex gh issue list -L 50           # Limit results (default 30)
 dex gh issue list -R owner/repo   # List issues in different repo
@@ -39,6 +40,7 @@ dex gh issue list -R owner/repo   # List issues in different repo
 |------|-------|-------------|
 | `--state` | `-s` | Filter by state: `open`, `closed`, `all` (default: open) |
 | `--label` | `-l` | Filter by label |
+| `--no-label` | | Filter issues with no labels (client-side) |
 | `--assignee` | `-a` | Filter by assignee |
 | `--limit` | `-L` | Maximum issues to fetch (default 30) |
 | `--repo` | `-R` | Repository in `owner/repo` format |
@@ -82,6 +84,24 @@ dex gh issue comment 123 -b "Comment" -R owner/repo # In different repo
 | `--body` | `-b` | Comment body (required) |
 | `--repo` | `-R` | Repository in `owner/repo` format |
 
+### Edit Issue (Labels)
+```bash
+dex gh issue edit 123 --add-label bug               # Add a label
+dex gh issue edit 123 -a "Feature Request"          # Add label (short form)
+dex gh issue edit 123 -a bug -a urgent              # Add multiple labels
+dex gh issue edit 123 --remove-label bug            # Remove a label
+dex gh issue edit 123 -r bug                        # Remove label (short form)
+dex gh issue edit 123 -a enhancement -r bug         # Add and remove labels
+dex gh issue edit 123 -a bug -R owner/repo          # In different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--add-label` | `-a` | Labels to add (repeatable) |
+| `--remove-label` | `-r` | Labels to remove (repeatable) |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
 ### Close Issue
 ```bash
 dex gh issue close 123                              # Close issue #123
@@ -95,6 +115,48 @@ dex gh issue close 123 -R owner/repo                # In different repo
 |------|-------|-------------|
 | `--comment` | `-c` | Leave a closing comment |
 | `--reason` | `-r` | Reason: `completed` or `not planned` |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
+## Label Management
+
+### List Labels
+```bash
+dex gh label list                 # List labels in current repo
+dex gh label ls                   # Alias for list
+dex gh label list -L 50           # Limit results (default 30)
+dex gh label list -R owner/repo   # List labels in different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--limit` | `-L` | Maximum labels to fetch (default 30) |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
+### Create Label
+```bash
+dex gh label create "bug"                           # Create label with default color
+dex gh label create "Feature Request" -c ff0000    # With custom color (hex)
+dex gh label create "New Integration" -c 00ff00 -d "Request for new integration"
+dex gh label create "bug" -R owner/repo            # In different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--color` | `-c` | Label color (hex without #) |
+| `--description` | `-d` | Label description |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
+### Delete Label
+```bash
+dex gh label delete "bug"                           # Delete label
+dex gh label delete "Feature Request" -R owner/repo # In different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
 | `--repo` | `-R` | Repository in `owner/repo` format |
 
 ## Release Management

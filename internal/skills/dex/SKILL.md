@@ -79,10 +79,16 @@ dex gh auth                       # Interactive GitHub authentication
 dex gh test                       # Test gh CLI authentication
 dex gh clone <repo> [dest]        # Clone repo (uses gh CLI)
 dex gh issue ls                   # List open issues
+dex gh issue ls --no-label        # List issues without labels
 dex gh issue view <number>        # View issue details
 dex gh issue create -t "title"    # Create new issue
+dex gh issue edit <num> -a "label"    # Add label to issue
+dex gh issue edit <num> -r "label"    # Remove label from issue
 dex gh issue comment <num> -b "text"  # Comment on issue
 dex gh issue close <number>       # Close an issue
+dex gh label ls                   # List labels
+dex gh label create "name"        # Create a label
+dex gh label delete "name"        # Delete a label
 dex gh release ls                 # List releases
 dex gh release view [tag]         # View release (latest if no tag)
 dex gh release create <tag> -n "notes"  # Create release
