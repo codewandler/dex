@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"dex/internal/skills"
+	"github.com/codewandler/dex/internal/skills"
 
 	"github.com/spf13/cobra"
 )

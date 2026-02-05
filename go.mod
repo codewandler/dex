@@ -1,4 +1,4 @@
-module dex
+module github.com/codewandler/dex
 
 go 1.25.0
 

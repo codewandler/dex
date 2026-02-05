@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"dex/internal/jira"
+	"github.com/codewandler/dex/internal/jira"
 
 	"github.com/spf13/cobra"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"dex/internal/models"
+	"github.com/codewandler/dex/internal/models"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/fatih/color"

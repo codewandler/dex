@@ -3,7 +3,7 @@ package gitlab
 import (
 	"time"
 
-	"dex/internal/models"
+	"github.com/codewandler/dex/internal/models"
 
 	"github.com/xanzy/go-gitlab"
 )

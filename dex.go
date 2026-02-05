@@ -1,6 +1,6 @@
 package main
 
-import "dex/internal/cli"
+import "github.com/codewandler/dex/internal/cli"
 
 // Version is set at build time via ldflags
 var Version = "dev"
