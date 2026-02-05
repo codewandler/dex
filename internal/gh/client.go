@@ -398,6 +398,181 @@ func (c *Client) IssueClose(opts IssueCloseOptions) error {
 	return nil
 }
 
+// Release represents a GitHub release
+type Release struct {
+	TagName     string `json:"tagName"`
+	Name        string `json:"name"`
+	Body        string `json:"body"`
+	IsDraft     bool   `json:"isDraft"`
+	IsPrerelease bool  `json:"isPrerelease"`
+	IsLatest    bool   `json:"isLatest"`
+	CreatedAt   string `json:"createdAt"`
+	PublishedAt string `json:"publishedAt"`
+	Author      string `json:"author"`
+	URL         string `json:"url"`
+}
+
+// ReleaseListOptions contains options for listing releases
+type ReleaseListOptions struct {
+	Limit              int
+	ExcludeDrafts      bool
+	ExcludePrereleases bool
+	Repo               string
+}
+
+// ReleaseList lists releases in a repository
+func (c *Client) ReleaseList(opts ReleaseListOptions) ([]Release, error) {
+	args := []string{"release", "list", "--json", "tagName,name,isDraft,isPrerelease,isLatest,publishedAt"}
+
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+	if opts.ExcludeDrafts {
+		args = append(args, "--exclude-drafts")
+	}
+	if opts.ExcludePrereleases {
+		args = append(args, "--exclude-pre-releases")
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh release list failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh release list failed: %w", err)
+	}
+
+	var releases []Release
+	if err := json.Unmarshal(output, &releases); err != nil {
+		return nil, fmt.Errorf("failed to parse releases: %w", err)
+	}
+
+	return releases, nil
+}
+
+// ReleaseView retrieves a single release by tag (or latest if tag is empty)
+func (c *Client) ReleaseView(tag string, repo string) (*Release, error) {
+	args := []string{"release", "view", "--json", "tagName,name,body,isDraft,isPrerelease,createdAt,publishedAt,author,url"}
+
+	if tag != "" {
+		args = append(args, tag)
+	}
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh release view failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("gh release view failed: %w", err)
+	}
+
+	var raw struct {
+		TagName      string `json:"tagName"`
+		Name         string `json:"name"`
+		Body         string `json:"body"`
+		IsDraft      bool   `json:"isDraft"`
+		IsPrerelease bool   `json:"isPrerelease"`
+		CreatedAt    string `json:"createdAt"`
+		PublishedAt  string `json:"publishedAt"`
+		Author       struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		URL string `json:"url"`
+	}
+
+	if err := json.Unmarshal(output, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse release: %w", err)
+	}
+
+	return &Release{
+		TagName:      raw.TagName,
+		Name:         raw.Name,
+		Body:         raw.Body,
+		IsDraft:      raw.IsDraft,
+		IsPrerelease: raw.IsPrerelease,
+		CreatedAt:    raw.CreatedAt,
+		PublishedAt:  raw.PublishedAt,
+		Author:       raw.Author.Login,
+		URL:          raw.URL,
+	}, nil
+}
+
+// ReleaseCreateOptions contains options for creating a release
+type ReleaseCreateOptions struct {
+	Tag           string
+	Title         string
+	Notes         string
+	NotesFile     string
+	GenerateNotes bool
+	Draft         bool
+	Prerelease    bool
+	Latest        *bool // nil = auto, true = mark as latest, false = don't mark
+	Target        string
+	Repo          string
+}
+
+// ReleaseCreate creates a new release
+func (c *Client) ReleaseCreate(opts ReleaseCreateOptions) (*Release, error) {
+	args := []string{"release", "create", opts.Tag}
+
+	if opts.Title != "" {
+		args = append(args, "--title", opts.Title)
+	}
+	if opts.Notes != "" {
+		args = append(args, "--notes", opts.Notes)
+	}
+	if opts.NotesFile != "" {
+		args = append(args, "--notes-file", opts.NotesFile)
+	}
+	if opts.GenerateNotes {
+		args = append(args, "--generate-notes")
+	}
+	if opts.Draft {
+		args = append(args, "--draft")
+	}
+	if opts.Prerelease {
+		args = append(args, "--prerelease")
+	}
+	if opts.Latest != nil {
+		if *opts.Latest {
+			args = append(args, "--latest")
+		} else {
+			args = append(args, "--latest=false")
+		}
+	}
+	if opts.Target != "" {
+		args = append(args, "--target", opts.Target)
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh release create failed: %s", string(output))
+	}
+
+	// gh release create returns the URL of the created release
+	url := strings.TrimSpace(string(output))
+
+	return &Release{
+		TagName: opts.Tag,
+		Name:    opts.Title,
+		Body:    opts.Notes,
+		URL:     url,
+		IsDraft: opts.Draft,
+	}, nil
+}
+
 // normalizeRepo converts various GitHub URL formats to owner/repo format
 func normalizeRepo(repoURL string) string {
 	// Remove trailing .git

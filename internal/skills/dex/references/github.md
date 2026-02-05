@@ -84,9 +84,65 @@ dex gh issue close 123 -R owner/repo                # In different repo
 | `--reason` | `-r` | Reason: `completed` or `not planned` |
 | `--repo` | `-R` | Repository in `owner/repo` format |
 
+## Release Management
+
+### List Releases
+```bash
+dex gh release list               # List releases in current repo
+dex gh release ls                 # Alias for list
+dex gh release list -L 5          # Limit results
+dex gh release list --exclude-drafts       # Exclude draft releases
+dex gh release list --exclude-pre-releases # Exclude pre-releases
+dex gh release list -R owner/repo # List releases in different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--limit` | `-L` | Maximum releases to fetch (default 30) |
+| `--exclude-drafts` | | Exclude draft releases |
+| `--exclude-pre-releases` | | Exclude pre-releases |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
+### View Release
+```bash
+dex gh release view               # View latest release
+dex gh release view v1.0.0        # View specific release
+dex gh release view v1.0.0 -R owner/repo  # View release in different repo
+```
+
+Output includes: tag, name, status (draft/prerelease/published), author, published date, URL, and body.
+
+### Create Release
+```bash
+dex gh release create v1.0.0 -n "Release notes here"   # With inline notes
+dex gh release create v1.0.0 --generate-notes          # Auto-generate from PRs
+dex gh release create v1.0.0 -F CHANGELOG.md           # Notes from file
+dex gh release create v1.0.0 -n "Notes" -d             # Create as draft
+dex gh release create v1.0.0 -n "Notes" -p             # Mark as prerelease
+dex gh release create v1.0.0 -n "Notes" -t "My Title"  # Custom title
+dex gh release create v1.0.0 --generate-notes --target main  # From specific branch
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--notes` | `-n` | Release notes (inline) |
+| `--notes-file` | `-F` | Read notes from file |
+| `--generate-notes` | | Auto-generate notes from merged PRs |
+| `--title` | `-t` | Release title (defaults to tag) |
+| `--draft` | `-d` | Save as draft instead of publishing |
+| `--prerelease` | `-p` | Mark as prerelease |
+| `--latest` | | Mark as latest (`true`/`false`) |
+| `--target` | | Target branch or commit SHA |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
+**Note:** One of `--notes`, `--notes-file`, or `--generate-notes` is required.
+
 ## Tips
 
 - Command aliases: `gh` = `github`
 - All commands support `-R owner/repo` for cross-repo operations
 - Issue list output shows issue number, title, and first label
+- Release list shows tag, date, name, and status (latest/draft/prerelease)
 - The `gh` CLI must be authenticated (`dex gh auth` or `gh auth login`)

@@ -274,6 +274,208 @@ func joinStrings(s []string) string {
 	return strings.Join(s, ", ")
 }
 
+// Release commands
+var ghReleaseCmd = &cobra.Command{
+	Use:   "release",
+	Short: "Manage GitHub releases",
+	Long:  `Create, list, and view GitHub releases.`,
+}
+
+var ghReleaseListCmd = &cobra.Command{
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List releases in a repository",
+	Long: `List releases in a GitHub repository.
+
+By default, lists the most recent releases.
+
+Examples:
+  dex gh release list
+  dex gh release ls
+  dex gh release list --limit 5
+  dex gh release list --exclude-drafts
+  dex gh release list --repo owner/repo`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		limit, _ := cmd.Flags().GetInt("limit")
+		excludeDrafts, _ := cmd.Flags().GetBool("exclude-drafts")
+		excludePrereleases, _ := cmd.Flags().GetBool("exclude-pre-releases")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		releases, err := client.ReleaseList(gh.ReleaseListOptions{
+			Limit:              limit,
+			ExcludeDrafts:      excludeDrafts,
+			ExcludePrereleases: excludePrereleases,
+			Repo:               repo,
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(releases) == 0 {
+			fmt.Println("No releases found")
+			return nil
+		}
+
+		for _, release := range releases {
+			flags := ""
+			if release.IsLatest {
+				flags = " (latest)"
+			}
+			if release.IsDraft {
+				flags = " (draft)"
+			}
+			if release.IsPrerelease {
+				flags = " (prerelease)"
+			}
+
+			name := release.Name
+			if name == "" {
+				name = release.TagName
+			}
+
+			date := ""
+			if release.PublishedAt != "" && len(release.PublishedAt) >= 10 {
+				date = release.PublishedAt[:10]
+			}
+
+			fmt.Printf("%-12s  %s  %s%s\n", release.TagName, date, name, flags)
+		}
+
+		return nil
+	},
+}
+
+var ghReleaseViewCmd = &cobra.Command{
+	Use:   "view [tag]",
+	Short: "View a specific release",
+	Long: `View details of a GitHub release.
+
+If no tag is specified, shows the latest release.
+
+Examples:
+  dex gh release view
+  dex gh release view v1.0.0
+  dex gh release view v1.0.0 --repo owner/repo`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		tag := ""
+		if len(args) > 0 {
+			tag = args[0]
+		}
+
+		repo, _ := cmd.Flags().GetString("repo")
+
+		release, err := client.ReleaseView(tag, repo)
+		if err != nil {
+			return err
+		}
+
+		name := release.Name
+		if name == "" {
+			name = release.TagName
+		}
+		fmt.Printf("%s - %s\n", release.TagName, name)
+
+		status := "published"
+		if release.IsDraft {
+			status = "draft"
+		} else if release.IsPrerelease {
+			status = "prerelease"
+		}
+
+		date := release.PublishedAt
+		if date != "" && len(date) >= 10 {
+			date = date[:10]
+		}
+
+		fmt.Printf("Status: %s | Author: @%s | Published: %s\n", status, release.Author, date)
+		fmt.Printf("URL: %s\n", release.URL)
+
+		if release.Body != "" {
+			fmt.Printf("\n%s\n", release.Body)
+		}
+
+		return nil
+	},
+}
+
+var ghReleaseCreateCmd = &cobra.Command{
+	Use:   "create <tag>",
+	Short: "Create a new release",
+	Long: `Create a new GitHub release.
+
+If the tag doesn't exist, it will be created from the default branch.
+
+Examples:
+  dex gh release create v1.0.0 --notes "First release"
+  dex gh release create v1.0.0 --generate-notes
+  dex gh release create v1.0.0 --notes-file CHANGELOG.md
+  dex gh release create v1.0.0 --draft
+  dex gh release create v1.0.0 --prerelease --title "Beta Release"`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		tag := args[0]
+		title, _ := cmd.Flags().GetString("title")
+		notes, _ := cmd.Flags().GetString("notes")
+		notesFile, _ := cmd.Flags().GetString("notes-file")
+		generateNotes, _ := cmd.Flags().GetBool("generate-notes")
+		draft, _ := cmd.Flags().GetBool("draft")
+		prerelease, _ := cmd.Flags().GetBool("prerelease")
+		latest, _ := cmd.Flags().GetString("latest")
+		target, _ := cmd.Flags().GetString("target")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		// Validate: need either notes, notes-file, or generate-notes
+		if notes == "" && notesFile == "" && !generateNotes {
+			return fmt.Errorf("one of --notes, --notes-file, or --generate-notes is required")
+		}
+
+		opts := gh.ReleaseCreateOptions{
+			Tag:           tag,
+			Title:         title,
+			Notes:         notes,
+			NotesFile:     notesFile,
+			GenerateNotes: generateNotes,
+			Draft:         draft,
+			Prerelease:    prerelease,
+			Target:        target,
+			Repo:          repo,
+		}
+
+		// Handle --latest flag
+		if latest != "" {
+			latestBool := latest == "true"
+			opts.Latest = &latestBool
+		}
+
+		release, err := client.ReleaseCreate(opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Created release %s: %s\n", release.TagName, release.URL)
+		return nil
+	},
+}
+
 var ghTestCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Test GitHub CLI authentication",
@@ -327,9 +529,35 @@ func init() {
 	ghIssueCmd.AddCommand(ghIssueListCmd)
 	ghIssueCmd.AddCommand(ghIssueViewCmd)
 
+	// Release list flags
+	ghReleaseListCmd.Flags().IntP("limit", "L", 30, "Maximum number of releases to fetch")
+	ghReleaseListCmd.Flags().Bool("exclude-drafts", false, "Exclude draft releases")
+	ghReleaseListCmd.Flags().Bool("exclude-pre-releases", false, "Exclude pre-releases")
+	ghReleaseListCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Release view flags
+	ghReleaseViewCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Release create flags
+	ghReleaseCreateCmd.Flags().StringP("title", "t", "", "Release title")
+	ghReleaseCreateCmd.Flags().StringP("notes", "n", "", "Release notes")
+	ghReleaseCreateCmd.Flags().StringP("notes-file", "F", "", "Read release notes from file")
+	ghReleaseCreateCmd.Flags().Bool("generate-notes", false, "Automatically generate release notes")
+	ghReleaseCreateCmd.Flags().BoolP("draft", "d", false, "Save as draft instead of publishing")
+	ghReleaseCreateCmd.Flags().BoolP("prerelease", "p", false, "Mark as prerelease")
+	ghReleaseCreateCmd.Flags().String("latest", "", "Mark as latest release (true/false)")
+	ghReleaseCreateCmd.Flags().String("target", "", "Target branch or commit SHA")
+	ghReleaseCreateCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
+	// Add release subcommands
+	ghReleaseCmd.AddCommand(ghReleaseCreateCmd)
+	ghReleaseCmd.AddCommand(ghReleaseListCmd)
+	ghReleaseCmd.AddCommand(ghReleaseViewCmd)
+
 	ghCmd.AddCommand(ghAuthCmd)
 	ghCmd.AddCommand(ghCloneCmd)
 	ghCmd.AddCommand(ghIssueCmd)
+	ghCmd.AddCommand(ghReleaseCmd)
 	ghCmd.AddCommand(ghTestCmd)
 	rootCmd.AddCommand(ghCmd)
 }

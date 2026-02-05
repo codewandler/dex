@@ -82,6 +82,10 @@ dex gh issue ls                   # List open issues
 dex gh issue view <number>        # View issue details
 dex gh issue create -t "title"    # Create new issue
 dex gh issue close <number>       # Close an issue
+dex gh release ls                 # List releases
+dex gh release view [tag]         # View release (latest if no tag)
+dex gh release create <tag> -n "notes"  # Create release
+dex gh release create <tag> --generate-notes  # Auto-generate notes
 ```
 
 ### Loki (`dex loki`)
