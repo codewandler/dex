@@ -123,6 +123,10 @@ Token stored in `~/.dex/config.json` under `jira.token`.
 
 ## Development
 
+### Git Workflow
+
+**NEVER commit without explicit user instruction.** Wait for the user to say "commit" before running `git commit`. Completing a task does not imply permission to commit.
+
 ### Documentation Sync
 
 When adding new features or commands, **always update all documentation**:
