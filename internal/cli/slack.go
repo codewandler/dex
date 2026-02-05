@@ -872,13 +872,32 @@ Examples:
 			return
 		}
 
-		// Classify mention status
+		// Classify mention status (with caching)
+		statusCache, _ := slack.LoadMentionStatusCache()
+		cacheHits := 0
 		fmt.Print("Classifying mentions...")
 		for i := range mentions {
-			mentions[i].Status = client.ClassifyMentionStatus(mentions[i].ChannelID, mentions[i].Timestamp, myUserIDs, myBotIDs)
+			// Use parent thread timestamp if this is a thread reply, otherwise use message timestamp
+			classifyTS := mentions[i].Timestamp
+			if mentions[i].ThreadTS != "" {
+				classifyTS = mentions[i].ThreadTS
+			}
+
+			// Check cache first (only Replied/Acked are cached)
+			if cached := statusCache.Get(mentions[i].ChannelID, classifyTS); cached != "" {
+				mentions[i].Status = cached
+				cacheHits++
+			} else {
+				mentions[i].Status = client.ClassifyMentionStatus(mentions[i].ChannelID, classifyTS, myUserIDs, myBotIDs)
+				statusCache.Set(mentions[i].ChannelID, classifyTS, mentions[i].Status)
+			}
 			fmt.Printf("\rClassifying mentions... %d/%d", i+1, len(mentions))
 		}
 		fmt.Println()
+		if cacheHits > 0 {
+			fmt.Printf("(%d cached, %d checked)\n", cacheHits, len(mentions)-cacheHits)
+		}
+		_ = slack.SaveMentionStatusCache(statusCache)
 
 		// Filter if --unhandled is set
 		if unhandled {
@@ -1248,6 +1267,169 @@ Examples:
 	},
 }
 
+var slackThreadCmd = &cobra.Command{
+	Use:   "thread <url-or-timestamp>",
+	Short: "Show a thread and debug mention classification",
+	Long: `Fetch and display a Slack thread with classification debug info.
+
+Accepts either a Slack URL or channel:timestamp format.
+
+Examples:
+  dex slack thread https://babelforce.slack.com/archives/C03JDUBJD0D/p1769777574026209
+  dex slack thread C03JDUBJD0D:1769777574.026209`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		input := args[0]
+
+		// Parse input - either URL or channel:timestamp
+		var channelID, threadTS string
+		if strings.HasPrefix(input, "http") {
+			// Parse URL: https://babelforce.slack.com/archives/C03JDUBJD0D/p1769777574026209
+			parts := strings.Split(input, "/")
+			for i, part := range parts {
+				if part == "archives" && i+2 < len(parts) {
+					channelID = parts[i+1]
+					// Convert p1769777574026209 to 1769777574.026209
+					tsRaw := parts[i+2]
+					// Remove query params if present
+					if idx := strings.Index(tsRaw, "?"); idx != -1 {
+						tsRaw = tsRaw[:idx]
+					}
+					if strings.HasPrefix(tsRaw, "p") {
+						tsRaw = tsRaw[1:]
+					}
+					if len(tsRaw) > 10 {
+						threadTS = tsRaw[:10] + "." + tsRaw[10:]
+					} else {
+						threadTS = tsRaw
+					}
+					break
+				}
+			}
+		} else if strings.Contains(input, ":") {
+			// Parse channel:timestamp format
+			parts := strings.SplitN(input, ":", 2)
+			channelID = parts[0]
+			threadTS = parts[1]
+		}
+
+		if channelID == "" || threadTS == "" {
+			fmt.Fprintf(os.Stderr, "Could not parse input. Use URL or channel:timestamp format.\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Load index for username resolution
+		idx, _ := slack.LoadIndex()
+
+		// Collect user IDs for classification
+		var myUserIDs []string
+		var myBotIDs []string
+		botUserID, _ := client.GetBotUserID()
+		if botUserID != "" {
+			myUserIDs = append(myUserIDs, botUserID)
+		}
+		botID, _ := client.GetBotID()
+		if botID != "" {
+			myBotIDs = append(myBotIDs, botID)
+		}
+		if client.HasUserToken() {
+			if userResp, err := client.TestUserAuth(); err == nil {
+				if userResp.UserID != botUserID {
+					myUserIDs = append(myUserIDs, userResp.UserID)
+				}
+			}
+		}
+
+		fmt.Printf("Channel: %s\n", channelID)
+		fmt.Printf("Thread:  %s\n", threadTS)
+		fmt.Printf("My User IDs: %v\n", myUserIDs)
+		fmt.Printf("My Bot IDs:  %v\n", myBotIDs)
+		fmt.Println()
+
+		// Fetch thread
+		replies, err := client.GetThreadReplies(channelID, threadTS)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get thread: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(replies) == 0 {
+			fmt.Println("No messages found in thread.")
+			return
+		}
+
+		// Display each message
+		fmt.Printf("Thread has %d messages:\n", len(replies))
+		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+
+		for i, msg := range replies {
+			username := msg.User
+			if u := idx.FindUser(msg.User); u != nil {
+				username = u.Username
+			}
+
+			ts := parseSlackTimestamp(msg.Timestamp)
+			label := "Reply"
+			if i == 0 {
+				label = "Parent"
+			}
+
+			// Check if this message is from "me"
+			isMe := false
+			for _, myID := range myUserIDs {
+				if msg.User == myID {
+					isMe = true
+					break
+				}
+			}
+			for _, myBotID := range myBotIDs {
+				if msg.BotID == myBotID {
+					isMe = true
+					break
+				}
+			}
+
+			meMarker := ""
+			if isMe {
+				meMarker = " [ME]"
+			}
+
+			fmt.Printf("\n[%d] %s - %s - @%s (User:%s Bot:%s)%s\n", i, label, ts, username, msg.User, msg.BotID, meMarker)
+			text := resolveUserMentions(msg.Text, idx)
+			fmt.Printf("    %s\n", truncateText(text, 100))
+		}
+
+		fmt.Println()
+		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+
+		// Run classifier
+		status := client.ClassifyMentionStatus(channelID, threadTS, myUserIDs, myBotIDs)
+		fmt.Printf("\nClassification result: %s\n", status)
+
+		// Explain the result
+		switch status {
+		case slack.MentionStatusReplied:
+			fmt.Println("  → Found a reply from one of your user/bot IDs")
+		case slack.MentionStatusAcked:
+			fmt.Println("  → Found a reaction from you, but no reply")
+		case slack.MentionStatusPending:
+			fmt.Println("  → No reply or reaction from you found")
+		}
+	},
+}
+
 func printSearchHeader() {
 	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
 	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
@@ -1279,6 +1461,7 @@ func init() {
 	slackCmd.AddCommand(slackUsersCmd)
 	slackCmd.AddCommand(slackMentionsCmd)
 	slackCmd.AddCommand(slackSearchCmd)
+	slackCmd.AddCommand(slackThreadCmd)
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 

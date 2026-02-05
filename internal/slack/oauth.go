@@ -57,6 +57,10 @@ var botScopes = []string{
 // User scopes (what actions can be performed as the user)
 var userScopes = []string{
 	"bookmarks:read",
+	"channels:history",
+	"groups:history",
+	"im:history",
+	"mpim:history",
 	"search:read",
 	"users:write",
 }

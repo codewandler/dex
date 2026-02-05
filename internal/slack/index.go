@@ -222,3 +222,76 @@ func ResolveMentions(text string) string {
 
 	return result
 }
+
+// MentionStatusCache caches classification results for mentions
+// Only "Replied" and "Acked" statuses are cached (they're stable)
+// "Pending" is not cached as it may change when user replies
+type MentionStatusCache struct {
+	// Key format: "channelID:timestamp" -> status
+	Statuses map[string]MentionStatus `json:"statuses"`
+}
+
+func mentionCacheFilePath() (string, error) {
+	dir, err := indexDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "mention_status_cache.json"), nil
+}
+
+// LoadMentionStatusCache loads the cache from disk
+func LoadMentionStatusCache() (*MentionStatusCache, error) {
+	path, err := mentionCacheFilePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return &MentionStatusCache{Statuses: make(map[string]MentionStatus)}, nil
+		}
+		return nil, err
+	}
+
+	var cache MentionStatusCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return &MentionStatusCache{Statuses: make(map[string]MentionStatus)}, nil
+	}
+	if cache.Statuses == nil {
+		cache.Statuses = make(map[string]MentionStatus)
+	}
+	return &cache, nil
+}
+
+// SaveMentionStatusCache saves the cache to disk
+func SaveMentionStatusCache(cache *MentionStatusCache) error {
+	path, err := mentionCacheFilePath()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0600)
+}
+
+// cacheKey generates a cache key for a mention
+func cacheKey(channelID, timestamp string) string {
+	return channelID + ":" + timestamp
+}
+
+// Get returns the cached status for a mention, or empty string if not cached
+func (c *MentionStatusCache) Get(channelID, timestamp string) MentionStatus {
+	return c.Statuses[cacheKey(channelID, timestamp)]
+}
+
+// Set caches a status (only Replied and Acked are cached)
+func (c *MentionStatusCache) Set(channelID, timestamp string, status MentionStatus) {
+	if status == MentionStatusReplied || status == MentionStatusAcked {
+		c.Statuses[cacheKey(channelID, timestamp)] = status
+	}
+}

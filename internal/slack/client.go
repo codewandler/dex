@@ -3,6 +3,7 @@ package slack
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -235,7 +236,8 @@ func (c *Client) SearchMentions(userID string, limit int, since int64) ([]Mentio
 
 	query := fmt.Sprintf("<@%s>", userID)
 	if since > 0 {
-		// Slack search uses after:YYYY-MM-DD format (exclusive, so subtract a day)
+		// Slack search after: is exclusive, so subtract a day to include target date
+		// Client-side filtering below handles exact timestamp precision
 		sinceTime := time.Unix(since, 0).AddDate(0, 0, -1)
 		query += fmt.Sprintf(" after:%s", sinceTime.Format("2006-01-02"))
 	}
@@ -254,18 +256,26 @@ func (c *Client) SearchMentions(userID string, limit int, since int64) ([]Mentio
 
 	var mentions []Mention
 	for _, msg := range result.Matches {
+		// Filter by exact timestamp since search API is date-based
+		if since > 0 {
+			msgTime := parseTimestamp(msg.Timestamp)
+			if msgTime < since {
+				continue
+			}
+		}
 		mentions = append(mentions, Mention{
 			ChannelID:   msg.Channel.ID,
 			ChannelName: msg.Channel.Name,
 			UserID:      msg.User,
 			Username:    msg.Username,
 			Timestamp:   msg.Timestamp,
+			ThreadTS:    extractThreadTS(msg.Permalink),
 			Text:        msg.Text,
 			Permalink:   msg.Permalink,
 		})
 	}
 
-	return mentions, result.Total, nil
+	return mentions, len(mentions), nil
 }
 
 // MentionStatus indicates whether a mention has been handled
@@ -284,9 +294,24 @@ type Mention struct {
 	UserID      string
 	Username    string
 	Timestamp   string
+	ThreadTS    string // Parent thread timestamp (if this is a reply)
 	Text        string
 	Permalink   string
 	Status      MentionStatus
+}
+
+// extractThreadTS extracts thread_ts from a Slack permalink if present
+// Permalink format: https://...slack.com/archives/CHANNEL/pTIMESTAMP?thread_ts=PARENT_TS
+func extractThreadTS(permalink string) string {
+	if idx := strings.Index(permalink, "thread_ts="); idx != -1 {
+		ts := permalink[idx+10:]
+		// Remove any trailing query params
+		if end := strings.Index(ts, "&"); end != -1 {
+			ts = ts[:end]
+		}
+		return ts
+	}
+	return ""
 }
 
 // GetMentionsInChannels scans channel history for mentions of a user (works with bot tokens)
@@ -369,8 +394,19 @@ func (c *Client) GetBotID() (string, error) {
 }
 
 // GetReactions returns reactions on a message
+// Uses user token if available (for channels bot isn't a member of), falls back to bot token
 func (c *Client) GetReactions(channelID, timestamp string) ([]slack.ItemReaction, error) {
 	item := slack.NewRefToMessage(channelID, timestamp)
+
+	// Try user API first if available
+	if c.userAPI != nil {
+		reactions, err := c.userAPI.GetReactions(item, slack.NewGetReactionsParameters())
+		if err == nil {
+			return reactions, nil
+		}
+	}
+
+	// Fall back to bot API
 	reactions, err := c.api.GetReactions(item, slack.NewGetReactionsParameters())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reactions: %w", err)
@@ -379,14 +415,30 @@ func (c *Client) GetReactions(channelID, timestamp string) ([]slack.ItemReaction
 }
 
 // GetThreadReplies returns replies in a thread
+// Uses user token if available (for channels bot isn't a member of), falls back to bot token
 func (c *Client) GetThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
 	params := &slack.GetConversationRepliesParameters{
 		ChannelID: channelID,
 		Timestamp: threadTS,
 		Limit:     100,
 	}
+
+	// Try user API first if available (has access to more channels)
+	var userAPIErr error
+	if c.userAPI != nil {
+		msgs, _, _, err := c.userAPI.GetConversationReplies(params)
+		if err == nil {
+			return msgs, nil
+		}
+		userAPIErr = err
+	}
+
+	// Fall back to bot API
 	msgs, _, _, err := c.api.GetConversationReplies(params)
 	if err != nil {
+		if userAPIErr != nil {
+			return nil, fmt.Errorf("failed to get thread replies: user API: %v, bot API: %w", userAPIErr, err)
+		}
 		return nil, fmt.Errorf("failed to get thread replies: %w", err)
 	}
 	return msgs, nil
@@ -482,6 +534,13 @@ func (c *Client) Search(query string, count int, since int64) ([]SearchResult, i
 	}
 
 	return results, result.Total, nil
+}
+
+// parseTimestamp extracts Unix seconds from a Slack timestamp (e.g., "1612345678.123456")
+func parseTimestamp(ts string) int64 {
+	var sec int64
+	fmt.Sscanf(ts, "%d", &sec)
+	return sec
 }
 
 // ExtractTickets extracts ticket references from text given a list of project keys.
