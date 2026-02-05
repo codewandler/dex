@@ -1,9 +1,11 @@
 package jira
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -193,6 +195,31 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 	return http.DefaultClient.Do(req)
 }
 
+func (c *Client) doRequestWithBody(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+	if err := c.EnsureAuth(ctx); err != nil {
+		return nil, err
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	baseURL := fmt.Sprintf("https://api.atlassian.com/ex/jira/%s/rest/api/3", c.token.CloudID)
+	fullURL := baseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token.AccessToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	return http.DefaultClient.Do(req)
+}
+
 // GetIssue fetches a single issue by key (e.g., "TEL-117")
 func (c *Client) GetIssue(ctx context.Context, issueKey string) (*Issue, error) {
 	query := url.Values{
@@ -302,6 +329,197 @@ func (c *Client) GetSiteURL() string {
 		return c.token.SiteURL
 	}
 	return ""
+}
+
+// CreateIssueRequest contains the parameters for creating a new issue
+type CreateIssueRequest struct {
+	ProjectKey  string   // Required: project key (e.g., "DEV")
+	IssueType   string   // Required: issue type (e.g., "Task", "Bug", "Story", "Sub-task")
+	Summary     string   // Required: issue summary/title
+	Description string   // Optional: plain text description
+	Labels      []string // Optional: labels to apply
+	Assignee    string   // Optional: account ID or email
+	Priority    string   // Optional: "Lowest", "Low", "Medium", "High", "Highest"
+	Parent      string   // Optional: parent issue key for subtasks (e.g., "DEV-123")
+}
+
+// CreateIssue creates a new Jira issue
+func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (*Issue, error) {
+	// Build the issue fields
+	fields := map[string]interface{}{
+		"project": map[string]string{
+			"key": req.ProjectKey,
+		},
+		"issuetype": map[string]string{
+			"name": req.IssueType,
+		},
+		"summary": req.Summary,
+	}
+
+	// Add description in ADF format if provided
+	if req.Description != "" {
+		fields["description"] = buildADF(req.Description)
+	}
+
+	// Add labels if provided
+	if len(req.Labels) > 0 {
+		fields["labels"] = req.Labels
+	}
+
+	// Add priority if provided
+	if req.Priority != "" {
+		fields["priority"] = map[string]string{
+			"name": req.Priority,
+		}
+	}
+
+	// Add parent for subtasks
+	if req.Parent != "" {
+		fields["parent"] = map[string]string{
+			"key": req.Parent,
+		}
+	}
+
+	// Resolve assignee (could be email or account ID)
+	if req.Assignee != "" {
+		accountID := req.Assignee
+		// If it looks like an email, look up the user
+		if strings.Contains(req.Assignee, "@") {
+			users, err := c.FindUser(ctx, req.Assignee)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find user %q: %w", req.Assignee, err)
+			}
+			if len(users) == 0 {
+				return nil, fmt.Errorf("no user found with email %q", req.Assignee)
+			}
+			accountID = users[0].AccountID
+		}
+		fields["assignee"] = map[string]string{
+			"id": accountID,
+		}
+	}
+
+	body := map[string]interface{}{
+		"fields": fields,
+	}
+
+	resp, err := c.doRequestWithBody(ctx, "POST", "/issue", body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create issue (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	// Parse the response to get the created issue key
+	var createResp struct {
+		ID   string `json:"id"`
+		Key  string `json:"key"`
+		Self string `json:"self"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+		return nil, fmt.Errorf("failed to parse create response: %w", err)
+	}
+
+	// Fetch the full issue to return
+	return c.GetIssue(ctx, createResp.Key)
+}
+
+// DeleteIssue deletes an issue by key. If deleteSubtasks is true, subtasks are also deleted.
+func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
+	query := url.Values{}
+	if deleteSubtasks {
+		query.Set("deleteSubtasks", "true")
+	}
+	resp, err := c.doRequest(ctx, "DELETE", "/issue/"+issueKey, query)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete issue (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// FindUser searches for users by query (email, name, etc.)
+func (c *Client) FindUser(ctx context.Context, query string) ([]User, error) {
+	params := url.Values{
+		"query": {query},
+	}
+	resp, err := c.doRequest(ctx, "GET", "/user/search", params)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]any
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("user search failed %d: %v", resp.StatusCode, errResp)
+	}
+
+	var users []User
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// buildADF creates a minimal Atlassian Document Format structure from plain text
+func buildADF(text string) map[string]interface{} {
+	// Split text into paragraphs
+	paragraphs := strings.Split(text, "\n\n")
+	content := make([]interface{}, 0, len(paragraphs))
+
+	for _, para := range paragraphs {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		// Handle single newlines within a paragraph as hard breaks
+		lines := strings.Split(para, "\n")
+		paraContent := make([]interface{}, 0)
+		for i, line := range lines {
+			if i > 0 {
+				paraContent = append(paraContent, map[string]string{"type": "hardBreak"})
+			}
+			paraContent = append(paraContent, map[string]interface{}{
+				"type": "text",
+				"text": line,
+			})
+		}
+		content = append(content, map[string]interface{}{
+			"type":    "paragraph",
+			"content": paraContent,
+		})
+	}
+
+	// If no content, create an empty paragraph
+	if len(content) == 0 {
+		content = append(content, map[string]interface{}{
+			"type": "paragraph",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": text,
+				},
+			},
+		})
+	}
+
+	return map[string]interface{}{
+		"version": 1,
+		"type":    "doc",
+		"content": content,
+	}
 }
 
 // User represents the authenticated Jira user

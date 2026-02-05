@@ -190,6 +190,108 @@ var jiraLookupCmd = &cobra.Command{
 	},
 }
 
+var jiraDeleteCmd = &cobra.Command{
+	Use:   "delete <ISSUE-KEY> [ISSUE-KEY...]",
+	Short: "Delete one or more Jira issues",
+	Long: `Delete Jira issues by key. Supports deleting multiple issues at once.
+
+Examples:
+  dex jira delete DEV-123
+  dex jira delete DEV-400 DEV-401 DEV-402`,
+	Args: cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		for _, key := range args {
+			if err := client.DeleteIssue(ctx, key, true); err != nil {
+				fmt.Fprintf(os.Stderr, "Error deleting %s: %v\n", key, err)
+				continue
+			}
+			fmt.Printf("Deleted %s\n", key)
+		}
+	},
+}
+
+var jiraCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new Jira issue",
+	Long: `Create a new Jira issue with specified fields.
+
+Examples:
+  dex jira create -p DEV -t Task -s "Update API documentation"
+  dex jira create -p DEV -t Bug -s "Login fails" -d "Users report 500 error on login"
+  dex jira create -p TEL -t Story -s "Add dark mode" -l ui,enhancement
+  dex jira create -p DEV -t Task -s "Fix tests" -a user@example.com --priority High
+  dex jira create -p DEV -t Sub-task -s "Write unit tests" --parent DEV-123`,
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		project, _ := cmd.Flags().GetString("project")
+		issueType, _ := cmd.Flags().GetString("type")
+		summary, _ := cmd.Flags().GetString("summary")
+		description, _ := cmd.Flags().GetString("description")
+		labelsStr, _ := cmd.Flags().GetString("labels")
+		assignee, _ := cmd.Flags().GetString("assignee")
+		priority, _ := cmd.Flags().GetString("priority")
+		parent, _ := cmd.Flags().GetString("parent")
+
+		// Validate required fields
+		if project == "" || issueType == "" || summary == "" {
+			fmt.Fprintf(os.Stderr, "Error: --project, --type, and --summary are required\n")
+			os.Exit(1)
+		}
+
+		// Parse labels
+		var labels []string
+		if labelsStr != "" {
+			for _, l := range strings.Split(labelsStr, ",") {
+				l = strings.TrimSpace(l)
+				if l != "" {
+					labels = append(labels, l)
+				}
+			}
+		}
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		req := jira.CreateIssueRequest{
+			ProjectKey:  project,
+			IssueType:   issueType,
+			Summary:     summary,
+			Description: description,
+			Labels:      labels,
+			Assignee:    assignee,
+			Priority:    priority,
+			Parent:      parent,
+		}
+
+		issue, err := client.CreateIssue(ctx, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating issue: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Print the created issue
+		siteURL := client.GetSiteURL()
+		fmt.Printf("Created %s: %s\n", issue.Key, issue.Fields.Summary)
+		if siteURL != "" {
+			fmt.Printf("URL: %s/browse/%s\n", siteURL, issue.Key)
+		}
+	},
+}
+
 var jiraProjectsCmd = &cobra.Command{
 	Use:   "projects",
 	Short: "List all accessible Jira projects",
@@ -271,12 +373,27 @@ func init() {
 	jiraCmd.AddCommand(jiraMyCmd)
 	jiraCmd.AddCommand(jiraLookupCmd)
 	jiraCmd.AddCommand(jiraProjectsCmd)
+	jiraCmd.AddCommand(jiraCreateCmd)
+	jiraCmd.AddCommand(jiraDeleteCmd)
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().StringP("status", "s", "", "Filter by status (e.g., 'In Progress', 'Review')")
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
+
+	// Create command flags
+	jiraCreateCmd.Flags().StringP("project", "p", "", "Project key (e.g., DEV, TEL)")
+	jiraCreateCmd.Flags().StringP("type", "t", "", "Issue type (Task, Bug, Story, Sub-task)")
+	jiraCreateCmd.Flags().StringP("summary", "s", "", "Issue summary/title")
+	jiraCreateCmd.Flags().StringP("description", "d", "", "Issue description (plain text)")
+	jiraCreateCmd.Flags().StringP("labels", "l", "", "Comma-separated labels")
+	jiraCreateCmd.Flags().StringP("assignee", "a", "", "Assignee (email or account ID)")
+	jiraCreateCmd.Flags().String("priority", "", "Priority (Lowest, Low, Medium, High, Highest)")
+	jiraCreateCmd.Flags().String("parent", "", "Parent issue key for subtasks (e.g., DEV-123)")
+	jiraCreateCmd.MarkFlagRequired("project")
+	jiraCreateCmd.MarkFlagRequired("type")
+	jiraCreateCmd.MarkFlagRequired("summary")
 }
 
 func truncate(s string, maxLen int) string {

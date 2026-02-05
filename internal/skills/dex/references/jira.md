@@ -15,6 +15,56 @@ dex jira projects --archived      # Include archived projects
 Project keys (e.g., DEV, TEL, SRE) are the prefixes used in issue keys like DEV-123.
 Archived projects (names starting with "z[archive]") are hidden by default.
 
+## Create Issue
+```bash
+dex jira create -p <project> -t <type> -s "<summary>" [options]
+```
+
+### Required Flags
+- `-p, --project` - Project key (e.g., DEV, TEL)
+- `-t, --type` - Issue type (Task, Bug, Story, Sub-task)
+- `-s, --summary` - Issue summary/title
+
+### Optional Flags
+- `-d, --description` - Issue description (plain text)
+- `-l, --labels` - Comma-separated labels
+- `-a, --assignee` - Assignee (email or account ID)
+- `--priority` - Priority (Lowest, Low, Medium, High, Highest)
+- `--parent` - Parent issue key for subtasks (e.g., DEV-123)
+
+### Examples
+```bash
+# Basic task
+dex jira create -p DEV -t Task -s "Update API documentation"
+
+# Bug with description
+dex jira create -p DEV -t Bug -s "Login fails" -d "Users report 500 error on login"
+
+# Story with labels
+dex jira create -p TEL -t Story -s "Add dark mode" -l ui,enhancement
+
+# Task with assignee and priority
+dex jira create -p DEV -t Task -s "Fix tests" -a user@example.com --priority High
+
+# Subtask under a parent issue
+dex jira create -p DEV -t Sub-task -s "Write unit tests" --parent DEV-123
+```
+
+**Note:** After adding `write:jira-work` scope, users need to re-authenticate with `dex jira auth`.
+
+## Delete Issue
+```bash
+dex jira delete <ISSUE-KEY> [ISSUE-KEY...]
+```
+
+Delete one or more Jira issues. Subtasks are automatically deleted with their parent.
+
+### Examples
+```bash
+dex jira delete DEV-123
+dex jira delete DEV-400 DEV-401 DEV-402
+```
+
 ## View Issue (Full Details)
 ```bash
 dex jira view <KEY>               # View issue with description, comments, links, subtasks

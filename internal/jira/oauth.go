@@ -16,7 +16,7 @@ const (
 	authURL     = "https://auth.atlassian.com/authorize"
 	tokenURL    = "https://auth.atlassian.com/oauth/token"
 	redirectURI = "http://localhost:8089/callback"
-	scopes      = "read:jira-work read:jira-user offline_access"
+	scopes      = "read:jira-work read:jira-user write:jira-work offline_access"
 )
 
 type OAuthFlow struct {
