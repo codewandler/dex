@@ -37,6 +37,12 @@ type Config struct {
 	GitLab GitLabConfig `json:"gitlab,omitempty"`
 	Jira   JiraConfig   `json:"jira,omitempty"`
 	Slack  SlackConfig  `json:"slack,omitempty"`
+	Loki   LokiConfig   `json:"loki,omitempty"`
+}
+
+// LokiConfig holds Loki-specific configuration
+type LokiConfig struct {
+	URL string `json:"url,omitempty" envconfig:"LOKI_URL"`
 }
 
 // GitLabConfig holds GitLab-specific configuration
@@ -189,6 +195,14 @@ func (c *Config) RequireJira() error {
 func (c *Config) RequireSlack() error {
 	if c.Slack.BotToken == "" {
 		return errors.New("Slack bot token not configured. Set SLACK_BOT_TOKEN or add to ~/.dex/config.json")
+	}
+	return nil
+}
+
+// RequireLoki validates that Loki URL is configured
+func (c *Config) RequireLoki() error {
+	if c.Loki.URL == "" {
+		return errors.New("Loki URL not configured. Set LOKI_URL or add to ~/.dex/config.json")
 	}
 	return nil
 }

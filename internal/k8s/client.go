@@ -192,3 +192,25 @@ func (c *Client) GetPodLogs(ctx context.Context, name string, opts PodLogsOption
 
 	return stream, nil
 }
+
+// FindServicesAllNamespaces searches all namespaces for services matching a label selector
+func (c *Client) FindServicesAllNamespaces(ctx context.Context, labelSelector string) ([]corev1.Service, error) {
+	list, err := c.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find services: %w", err)
+	}
+	return list.Items, nil
+}
+
+// FindPodsAllNamespaces searches all namespaces for pods matching a label selector
+func (c *Client) FindPodsAllNamespaces(ctx context.Context, labelSelector string) ([]corev1.Pod, error) {
+	list, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find pods: %w", err)
+	}
+	return list.Items, nil
+}

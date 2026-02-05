@@ -17,7 +17,7 @@ Unified access to your engineering tools:
   - GitLab (activity, repos)
   - Jira (issues, search)
   - Slack (messaging)
-  - Loki, Grafana (coming soon)`,
+  - Loki (log querying)`,
 }
 
 func Execute() {
