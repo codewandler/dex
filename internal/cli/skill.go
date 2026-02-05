@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -19,9 +20,9 @@ var skillInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install dex skill to ~/.claude/skills/dex/",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		content, err := skills.DexSkill()
+		skillFS, err := skills.DexSkillFS()
 		if err != nil {
-			return fmt.Errorf("failed to read embedded skill: %w", err)
+			return fmt.Errorf("failed to get embedded skill filesystem: %w", err)
 		}
 
 		homeDir, err := os.UserHomeDir()
@@ -30,16 +31,42 @@ var skillInstallCmd = &cobra.Command{
 		}
 
 		skillDir := filepath.Join(homeDir, ".claude", "skills", "dex")
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			return fmt.Errorf("failed to create skill directory: %w", err)
+
+		// Walk and install all files from embedded FS
+		var installed int
+		err = fs.WalkDir(skillFS, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+
+			destPath := filepath.Join(skillDir, path)
+
+			if d.IsDir() {
+				return os.MkdirAll(destPath, 0755)
+			}
+
+			content, err := fs.ReadFile(skillFS, path)
+			if err != nil {
+				return fmt.Errorf("failed to read %s: %w", path, err)
+			}
+
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return fmt.Errorf("failed to create directory for %s: %w", path, err)
+			}
+
+			if err := os.WriteFile(destPath, content, 0644); err != nil {
+				return fmt.Errorf("failed to write %s: %w", path, err)
+			}
+
+			installed++
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to install skill files: %w", err)
 		}
 
-		skillPath := filepath.Join(skillDir, "SKILL.md")
-		if err := os.WriteFile(skillPath, content, 0644); err != nil {
-			return fmt.Errorf("failed to write skill file: %w", err)
-		}
-
-		fmt.Printf("Installed dex skill to %s\n", skillPath)
+		fmt.Printf("Installed %d files to %s\n", installed, skillDir)
 		return nil
 	},
 }
