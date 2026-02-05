@@ -71,6 +71,17 @@ dex gh issue create -t "Bug" -R owner/repo                   # In different repo
 | `--assignee` | `-a` | Assignee username |
 | `--repo` | `-R` | Repository in `owner/repo` format |
 
+**Workflow: Label Inference**
+
+When creating issues, try to apply relevant labels from the repository:
+
+1. List available labels: `dex gh label ls`
+2. If labels exist, review the issue title and body to infer matching labels
+3. Apply matching labels using the `-l` flag (repeatable)
+4. If no labels match or the repo has no labels, create the issue without labels
+
+Labels are optional — not every repository uses them.
+
 ### Comment on Issue
 ```bash
 dex gh issue comment 123 -b "Working on this"       # Add comment
