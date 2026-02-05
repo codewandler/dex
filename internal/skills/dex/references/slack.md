@@ -71,6 +71,13 @@ Notes:
 - Use `-t <ts>` to continue a thread (ts returned from previous send)
 - Use `--as user` to send as yourself instead of the bot
 
+**Important:** When mentioning users, always use the exact username from `dex slack users`. For example:
+```bash
+dex slack users | grep -i john    # → john.doe
+dex slack send dev-team "Hey @john.doe check this out"
+```
+Partial names like `@john` won't resolve - use the full handle like `@john.doe`.
+
 ## Search Mentions
 ```bash
 dex slack mentions                    # My mentions today (requires user token)
