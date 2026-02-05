@@ -175,3 +175,22 @@ Refs: DEV-123
 - Title: imperative mood, lowercase after prefix
 - Body: explain what and why (not how)
 - `Refs:` tagline for ticket numbers (not in title)
+
+### Release Process
+
+When the user asks to "release" or "publish" the current changes:
+
+1. **Fetch remote tags**: `git fetch --tags`
+2. **Find the latest tag**: `git describe --tags --abbrev=0`
+3. **Review changes since last tag**: `git log <last-tag>..HEAD --oneline`
+4. **Determine next version** using semver:
+   - `feat:` commits → bump minor version (e.g., v0.1.0 → v0.2.0)
+   - `fix:` commits only → bump patch version (e.g., v0.1.0 → v0.1.1)
+   - Breaking changes → bump major version
+5. **Create annotated tag**: `git tag -a v0.X.Y -m "Release v0.X.Y"`
+6. **Push commits and tag**: `git push && git push --tags`
+7. **Announce in `#dex-tests`**: Send a Slack message with:
+   - The new version number
+   - Short changelog summary (bullet points of main changes)
+   - Explanation of new features: what they do and why they're useful
+   - Install command: `go install github.com/codewandler/dex@latest`
