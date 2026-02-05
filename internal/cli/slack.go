@@ -215,19 +215,22 @@ The target can be:
 - User ID: U03HY52RQLV
 
 Use --thread/-t to reply to a specific thread.
+Use --as to choose the sender identity (bot or user).
 @mentions in the message body are auto-resolved to Slack user mentions.
 
 Examples:
   dex slack send dev-team "Hello from dex!"
   dex slack send dev-team "Hey @timo.friedl check this!"  # @mention in message
   dex slack send dev-team "Follow up" -t 1770257991.873399  # Reply to thread
-  dex slack send @timo.friedl "Hey, check this out!"      # DM (requires im:write)`,
+  dex slack send @timo.friedl "Hey, check this out!"      # DM (requires im:write)
+  dex slack send dev-team "Message as me" --as user       # Send as user (not bot)`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completeSlackTargets,
 	Run: func(cmd *cobra.Command, args []string) {
 		targetArg := args[0]
 		message := args[1]
 		threadTS, _ := cmd.Flags().GetString("thread")
+		sendAs, _ := cmd.Flags().GetString("as")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -239,7 +242,23 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := slack.NewClient(cfg.Slack.BotToken)
+		// Validate --as flag
+		if sendAs != "bot" && sendAs != "user" {
+			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
+			os.Exit(1)
+		}
+
+		// Create client with appropriate token
+		var client *slack.Client
+		if sendAs == "user" {
+			if cfg.Slack.UserToken == "" {
+				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
+				os.Exit(1)
+			}
+			client, err = slack.NewClient(cfg.Slack.UserToken)
+		} else {
+			client, err = slack.NewClient(cfg.Slack.BotToken)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
 			os.Exit(1)
@@ -1021,6 +1040,7 @@ func init() {
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
+	slackSendCmd.Flags().String("as", "bot", "Send as 'bot' (default) or 'user'")
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackUsersCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")

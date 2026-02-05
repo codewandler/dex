@@ -279,11 +279,15 @@ dex slack send dev-team "Another reply" --thread 1770257991.873399
 
 # To user DM (requires im:write scope)
 dex slack send @timo.friedl "Hey, check this out!"
+
+# Send as user instead of bot (requires user token with chat:write scope)
+dex slack send dev-team "Message from me" --as user
 ```
 
 - Channel names and @usernames autocomplete from index
 - @mentions in message body are auto-converted to `<@USER_ID>` format
 - Use `-t <ts>` to continue a thread (ts returned from previous send)
+- Use `--as user` to send as yourself instead of the bot (requires SLACK_USER_TOKEN)
 
 ### Search Mentions
 ```bash
