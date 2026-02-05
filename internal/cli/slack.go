@@ -716,13 +716,13 @@ var slackMentionsCmd = &cobra.Command{
 	Short: "Search for mentions of a user",
 	Long: `Search for messages that mention a specific user.
 
-By default shows mentions of the authenticated bot. Use --user to search
-for mentions of a specific user by username or ID.
+By default shows mentions of the authenticated bot from today (since midnight).
+Use --user to search for mentions of a specific user by username or ID.
 
 Scans channels the bot is a member of for messages containing @mentions.
 
 Examples:
-  dex slack mentions                    # Mentions of the bot
+  dex slack mentions                    # Mentions of the bot (today)
   dex slack mentions --user timo.friedl # Mentions of a specific user
   dex slack mentions --user U03HY52RQLV # Mentions by user ID
   dex slack mentions --limit 50         # Show more results
@@ -769,7 +769,7 @@ Examples:
 			userID = slack.ResolveUser(userArg)
 		}
 
-		// Parse since duration
+		// Parse since duration (defaults to today if not specified)
 		var sinceUnix int64
 		var sinceDesc string
 		if sinceStr != "" {
@@ -779,6 +779,12 @@ Examples:
 				sinceUnix = sinceTime.Unix()
 				sinceDesc = fmt.Sprintf(" since %s", formatSlackSinceTime(sinceTime, duration))
 			}
+		} else {
+			// Default to today (midnight)
+			now := time.Now()
+			midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			sinceUnix = midnight.Unix()
+			sinceDesc = " since today"
 		}
 
 		var mentions []slack.Mention
@@ -1210,7 +1216,7 @@ func init() {
 	slackMentionsCmd.Flags().StringP("user", "u", "", "User to search mentions for (username or ID, defaults to bot)")
 	slackMentionsCmd.Flags().IntP("limit", "l", 20, "Maximum number of results to show")
 	slackMentionsCmd.Flags().BoolP("compact", "c", false, "Compact table view")
-	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d)")
+	slackMentionsCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d); defaults to today")
 	_ = slackMentionsCmd.RegisterFlagCompletionFunc("user", completeSlackUsers)
 
 	slackSearchCmd.Flags().IntP("limit", "l", 50, "Maximum number of results")
