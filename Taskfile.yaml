@@ -16,10 +16,10 @@ tasks:
       - "{{.BUILD_DIR}}/{{.BINARY}}"
 
   install:
-    desc: Install dex to $GOPATH/bin and install skills
+    desc: Install dex to $GOPATH/bin and install dex skill
     cmds:
       - go install .
-      - dex skill install
+      - dex install
 
   clean:
     desc: Remove build artifacts

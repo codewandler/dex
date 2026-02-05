@@ -19,8 +19,11 @@ dex upgrade                       # Upgrade to latest version
 dex upgrade -v v0.2.0             # Upgrade to specific version
 dex version                       # Print version information
 dex completion bash|zsh|fish      # Generate shell completions
-dex skill install                 # Install skill to ~/.claude/skills/dex/
-dex skill show                    # Print skill content to stdout
+dex install                       # Install dex skill to ~/.claude/skills/dex/
+dex skill show                    # Print dex skill content to stdout
+dex skill search <query>          # Search for skills on skills.sh
+dex skill install <name>          # Install skill from skills.sh (local: ./.claude/skills/)
+dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 ```
 
 ## Integrations

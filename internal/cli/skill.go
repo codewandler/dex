@@ -20,9 +20,118 @@ var skillCmd = &cobra.Command{
 	Short:   "Manage and search skills",
 }
 
+var skillInstallGlobal bool
+var skillInstallSource string
+
 var skillInstallCmd = &cobra.Command{
+	Use:   "install <skill-name>",
+	Short: "Install a skill from skills.sh",
+	Long: `Install a skill from skills.sh to your local or global Claude skills directory.
+
+By default, skills are installed to ./.claude/skills/ (local project).
+Use --global to install to ~/.claude/skills/ instead.
+
+Examples:
+  dex skill install kubernetes-specialist
+  dex skill install kubernetes-specialist --global
+  dex skill install kubernetes-specialist --source jeffallan/claude-skills`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: skillNameCompletion,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		skillName := args[0]
+
+		client := skillssh.NewClient()
+		installer := skillssh.NewInstaller()
+
+		// Resolve skill from skills.sh or use provided source
+		var skill *skillssh.Skill
+		if skillInstallSource != "" {
+			skill = &skillssh.Skill{
+				Name:   skillName,
+				Source: skillInstallSource,
+			}
+		} else {
+			var err error
+			skill, err = client.Resolve(skillName)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Determine target directory
+		var targetDir string
+		if skillInstallGlobal {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to get home directory: %w", err)
+			}
+			targetDir = filepath.Join(homeDir, ".claude", "skills")
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current directory: %w", err)
+			}
+			targetDir = filepath.Join(cwd, ".claude", "skills")
+		}
+
+		fmt.Printf("Installing %s from %s...\n", skill.Name, skill.Source)
+
+		installed, err := installer.Install(skill, targetDir)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Installed %d files to %s/%s\n", installed, targetDir, skill.Name)
+		return nil
+	},
+}
+
+// skillNameCompletion provides tab completion for skill names
+func skillNameCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	client := skillssh.NewClient()
+
+	// If user is typing, search for matching skills
+	if toComplete != "" {
+		result, err := client.Search(toComplete, 10)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		var completions []string
+		seen := make(map[string]bool)
+		for _, skill := range result.Skills {
+			if !seen[skill.Name] {
+				completions = append(completions, fmt.Sprintf("%s\t%s (%d installs)", skill.Name, skill.Source, skill.Installs))
+				seen[skill.Name] = true
+			}
+		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	// Show popular skills when no input yet
+	skills, err := client.ListPopular(20)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	seen := make(map[string]bool)
+	for _, skill := range skills {
+		if !seen[skill.Name] {
+			completions = append(completions, fmt.Sprintf("%s\t%s (%d installs)", skill.Name, skill.Source, skill.Installs))
+			seen[skill.Name] = true
+		}
+	}
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+var dexInstallCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install dex skill to ~/.claude/skills/dex/",
+	Short: "Install the dex skill to ~/.claude/skills/dex/",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillFS, err := skills.DexSkillFS()
 		if err != nil {
@@ -123,7 +232,11 @@ var skillSearchCmd = &cobra.Command{
 
 		for _, skill := range result.Skills {
 			nameColor.Printf("  %s\n", skill.Name)
-			sourceColor.Printf("    %s", skill.Source)
+			// OSC 8 hyperlink: \033]8;;URL\007TEXT\033]8;;\007
+			githubURL := fmt.Sprintf("https://github.com/%s", skill.Source)
+			fmt.Printf("    \033]8;;%s\007", githubURL)
+			sourceColor.Printf("%s", skill.Source)
+			fmt.Print("\033]8;;\007")
 			dimColor.Printf("  (%d installs)\n", skill.Installs)
 		}
 
@@ -135,7 +248,12 @@ var skillSearchCmd = &cobra.Command{
 func init() {
 	skillSearchCmd.Flags().IntVarP(&skillSearchLimit, "limit", "n", 10, "Maximum number of results")
 
+	skillInstallCmd.Flags().BoolVarP(&skillInstallGlobal, "global", "g", false, "Install to ~/.claude/skills/ instead of ./.claude/skills/")
+	skillInstallCmd.Flags().StringVarP(&skillInstallSource, "source", "s", "", "GitHub source (owner/repo) to install from")
+
 	skillCmd.AddCommand(skillInstallCmd)
 	skillCmd.AddCommand(skillShowCmd)
 	skillCmd.AddCommand(skillSearchCmd)
+
+	rootCmd.AddCommand(dexInstallCmd)
 }
