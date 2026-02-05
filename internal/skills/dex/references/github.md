@@ -69,6 +69,19 @@ dex gh issue create -t "Bug" -R owner/repo                   # In different repo
 | `--assignee` | `-a` | Assignee username |
 | `--repo` | `-R` | Repository in `owner/repo` format |
 
+### Comment on Issue
+```bash
+dex gh issue comment 123 -b "Working on this"       # Add comment
+dex gh issue comment 123 --body "Status update"     # Long form
+dex gh issue comment 123 -b "Comment" -R owner/repo # In different repo
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--body` | `-b` | Comment body (required) |
+| `--repo` | `-R` | Repository in `owner/repo` format |
+
 ### Close Issue
 ```bash
 dex gh issue close 123                              # Close issue #123

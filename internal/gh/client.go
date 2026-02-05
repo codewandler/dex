@@ -398,6 +398,30 @@ func (c *Client) IssueClose(opts IssueCloseOptions) error {
 	return nil
 }
 
+// IssueCommentOptions contains options for commenting on an issue
+type IssueCommentOptions struct {
+	Number int
+	Body   string
+	Repo   string
+}
+
+// IssueComment adds a comment to an issue
+func (c *Client) IssueComment(opts IssueCommentOptions) error {
+	args := []string{"issue", "comment", fmt.Sprintf("%d", opts.Number), "--body", opts.Body}
+
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh issue comment failed: %s", string(output))
+	}
+
+	return nil
+}
+
 // Release represents a GitHub release
 type Release struct {
 	TagName     string `json:"tagName"`

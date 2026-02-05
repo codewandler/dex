@@ -270,6 +270,48 @@ Examples:
 	},
 }
 
+var ghIssueCommentCmd = &cobra.Command{
+	Use:   "comment <number>",
+	Short: "Add a comment to an issue",
+	Long: `Add a comment to a GitHub issue.
+
+Examples:
+  dex gh issue comment 123 --body "This is fixed in the latest release"
+  dex gh issue comment 123 -b "Working on this now"
+  dex gh issue comment 123 -b "Comment" --repo owner/repo`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		var number int
+		if _, err := fmt.Sscanf(args[0], "%d", &number); err != nil {
+			return fmt.Errorf("invalid issue number: %s", args[0])
+		}
+
+		body, _ := cmd.Flags().GetString("body")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		if body == "" {
+			return fmt.Errorf("--body is required")
+		}
+
+		if err := client.IssueComment(gh.IssueCommentOptions{
+			Number: number,
+			Body:   body,
+			Repo:   repo,
+		}); err != nil {
+			return err
+		}
+
+		fmt.Printf("Commented on issue #%d\n", number)
+		return nil
+	},
+}
+
 func joinStrings(s []string) string {
 	return strings.Join(s, ", ")
 }
@@ -523,8 +565,13 @@ func init() {
 	ghIssueCloseCmd.Flags().StringP("reason", "r", "", "Reason for closing: completed, not planned")
 	ghIssueCloseCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
 
+	// Issue comment flags
+	ghIssueCommentCmd.Flags().StringP("body", "b", "", "Comment body (required)")
+	ghIssueCommentCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
 	// Add issue subcommands
 	ghIssueCmd.AddCommand(ghIssueCloseCmd)
+	ghIssueCmd.AddCommand(ghIssueCommentCmd)
 	ghIssueCmd.AddCommand(ghIssueCreateCmd)
 	ghIssueCmd.AddCommand(ghIssueListCmd)
 	ghIssueCmd.AddCommand(ghIssueViewCmd)

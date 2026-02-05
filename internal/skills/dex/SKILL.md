@@ -81,6 +81,7 @@ dex gh clone <repo> [dest]        # Clone repo (uses gh CLI)
 dex gh issue ls                   # List open issues
 dex gh issue view <number>        # View issue details
 dex gh issue create -t "title"    # Create new issue
+dex gh issue comment <num> -b "text"  # Comment on issue
 dex gh issue close <number>       # Close an issue
 dex gh release ls                 # List releases
 dex gh release view [tag]         # View release (latest if no tag)
