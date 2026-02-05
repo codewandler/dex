@@ -73,9 +73,16 @@ echo "Long comment" | dex gl mr comment sbf/services!2483 -  # From stdin
 dex gl mr comment <project!iid> "reply" --reply-to <discussion-id>
 dex gl mr comment proj!123 "Fixed!" --reply-to abc123def456...
 
-# Add inline comment on file/line
+# Add inline comment on file/line (requires line to be in the diff)
 dex gl mr comment <project!iid> "comment" --file <path> --line <n>
 dex gl mr comment proj!123 "Use a constant" --file src/main.go --line 42
+
+# IMPORTANT for inline comments:
+# - The --line number is the NEW file line number (right side of diff)
+# - You can only comment on lines that appear in the diff hunks
+# - Use `dex gl mr show <ref> --show-diff` to see line numbers in context
+# - Verify the file actually contains the code you want to reference
+# - Look at the @@ -old,count +new,count @@ headers to find line ranges
 ```
 
 ### Reactions

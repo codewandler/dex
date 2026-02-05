@@ -457,7 +457,21 @@ func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts 
 		return err
 	}
 
-	// Get the diff version info first
+	// Auto-detect old_line/new_line mapping if only new_line is provided
+	// This handles context lines which require BOTH old_line and new_line
+	if opts.NewLine > 0 && opts.OldLine == 0 {
+		parsedDiff, err := c.GetParsedDiffForFile(projectID, mrIID, opts.NewPath)
+		if err == nil {
+			if line, found := parsedDiff.FindLineByNew(opts.NewLine); found {
+				// For context lines, set the old_line
+				// For added lines, OldLine will be 0 (which is correct)
+				opts.OldLine = line.OldLine
+			}
+		}
+		// If parsing fails, continue with original behavior (works for added lines)
+	}
+
+	// Get the diff version info
 	diffVersion, err := c.GetMergeRequestDiffVersions(pid, mrIID)
 	if err != nil {
 		return fmt.Errorf("failed to get diff versions: %w", err)
@@ -512,6 +526,25 @@ func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.
 		BaseCommitSHA:  v.BaseCommitSHA,
 		StartCommitSHA: v.StartCommitSHA,
 	}, nil
+}
+
+// GetParsedDiffForFile fetches and parses the diff for a specific file in an MR
+func (c *Client) GetParsedDiffForFile(projectID any, mrIID int, filePath string) (*ParsedDiff, error) {
+	files, err := c.GetMergeRequestChanges(projectID, mrIID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, f := range files {
+		if f.NewPath == filePath || f.OldPath == filePath {
+			parsed := ParseUnifiedDiff(f.Diff)
+			parsed.OldPath = f.OldPath
+			parsed.NewPath = f.NewPath
+			return parsed, nil
+		}
+	}
+
+	return nil, fmt.Errorf("file %q not found in merge request diff", filePath)
 }
 
 // CreateMergeRequestReaction adds an emoji reaction to a merge request
