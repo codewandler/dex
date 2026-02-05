@@ -32,6 +32,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 |-------------|---------|-----------|
 | Kubernetes | `dex k8s` | [references/kubernetes.md](references/kubernetes.md) |
 | GitLab | `dex gl` | [references/gitlab.md](references/gitlab.md) |
+| GitHub | `dex gh` | [references/github.md](references/github.md) |
 | Jira | `dex jira` | [references/jira.md](references/jira.md) |
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
@@ -74,10 +75,13 @@ dex slack thread <url|ch:ts>      # View thread details
 
 ### GitHub (`dex gh`)
 ```bash
+dex gh auth                       # Interactive GitHub authentication
 dex gh test                       # Test gh CLI authentication
 dex gh clone <repo> [dest]        # Clone repo (uses gh CLI)
-dex gh clone owner/repo           # Clone using short form
-dex gh clone https://github.com/owner/repo ./dir  # Clone to specific directory
+dex gh issue ls                   # List open issues
+dex gh issue view <number>        # View issue details
+dex gh issue create -t "title"    # Create new issue
+dex gh issue close <number>       # Close an issue
 ```
 
 ### Loki (`dex loki`)
