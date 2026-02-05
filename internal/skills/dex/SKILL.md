@@ -8,6 +8,13 @@ user-invocable: true
 
 Use `dex` for Kubernetes, GitLab, Jira, and Slack operations. Run commands via Bash tool.
 
+## Setup & Diagnostics
+
+```bash
+dex setup                         # Interactive setup wizard (only prompts for unconfigured integrations)
+dex doctor                        # Check health of all configured integrations
+```
+
 ## Kubernetes (`dex k8s`)
 
 ### Contexts

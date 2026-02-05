@@ -18,3 +18,12 @@ func NewClient(url, token string) (*Client, error) {
 
 	return &Client{gl: gl}, nil
 }
+
+// TestAuth verifies the token works and returns current user info
+func (c *Client) TestAuth() (*gitlab.User, error) {
+	user, _, err := c.gl.Users.CurrentUser()
+	if err != nil {
+		return nil, fmt.Errorf("auth test failed: %w", err)
+	}
+	return user, nil
+}

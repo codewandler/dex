@@ -304,6 +304,35 @@ func (c *Client) GetSiteURL() string {
 	return ""
 }
 
+// User represents the authenticated Jira user
+type User struct {
+	AccountID    string `json:"accountId"`
+	DisplayName  string `json:"displayName"`
+	EmailAddress string `json:"emailAddress"`
+}
+
+// GetCurrentUser fetches the authenticated user's info
+func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
+	resp, err := c.doRequest(ctx, "GET", "/myself", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]any
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("failed to get current user %d: %v", resp.StatusCode, errResp)
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 // FormatIssue returns a formatted string representation of an issue
 func FormatIssue(issue *Issue) string {
 	var result strings.Builder

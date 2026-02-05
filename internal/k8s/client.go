@@ -132,6 +132,15 @@ func (c *Client) Namespace() string {
 	return c.namespace
 }
 
+// TestConnection attempts to connect and returns server version
+func (c *Client) TestConnection(ctx context.Context) (string, error) {
+	version, err := c.clientset.Discovery().ServerVersion()
+	if err != nil {
+		return "", fmt.Errorf("failed to connect: %w", err)
+	}
+	return version.GitVersion, nil
+}
+
 // GetPod returns a single pod by name
 func (c *Client) GetPod(ctx context.Context, name string) (*corev1.Pod, error) {
 	pod, err := c.clientset.CoreV1().Pods(c.namespace).Get(ctx, name, metav1.GetOptions{})

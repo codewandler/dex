@@ -14,7 +14,12 @@
 
 ```bash
 # Install
-task install
+go install github.com/codewandler/dex@latest
+
+# Get started
+dex -h                         # Show help
+dex setup                      # Configure integrations
+dex doctor                     # Check integration health
 
 # Examples
 dex k8s pod ls -A              # List all pods
