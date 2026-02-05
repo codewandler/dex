@@ -1,12 +1,12 @@
 ---
 name: dex
-description: Run dex CLI commands for Kubernetes, GitLab, and Jira operations
+description: Run dex CLI commands for Kubernetes, GitLab, Jira, and Slack operations
 user-invocable: true
 ---
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, and Jira operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, and Slack operations. Run commands via Bash tool.
 
 ## Kubernetes (`dex k8s`)
 
@@ -212,11 +212,49 @@ dex jira search "summary ~ 'performance' ORDER BY updated DESC"
 dex jira search "text ~ 'database index' ORDER BY updated DESC"
 ```
 
+## Slack (`dex slack`)
+
+### Authentication
+```bash
+dex slack auth                    # Test authentication, show bot info
+```
+
+### Channel Index
+```bash
+dex slack index                   # Index all visible channels (cached 24h)
+dex slack index --force           # Force re-index
+```
+
+Index stored at `~/.dex/slack/index.json`. Required for channel name autocomplete.
+
+### List Channels
+```bash
+dex slack channels                # List all indexed channels
+dex slack channels --member       # Only channels bot is a member of (can post to)
+dex slack channels --no-cache     # Fetch from API instead of index
+```
+
+### Send Message
+```bash
+dex slack send <channel> "message"           # Send message to channel
+dex slack send dev-team "Hello from dex!"    # By channel name (requires index)
+dex slack send C03JDUBJD0D "Hello!"          # By channel ID
+```
+
+Channel names autocomplete to channels the bot is a member of.
+
+### Reply to Thread
+```bash
+dex slack reply <channel> <thread_ts> "message"
+dex slack reply dev-team 1234567890.123456 "Thanks!"
+```
+
 ## Tips
 
 - All k8s commands support shell completion for resource names
 - Pod logs `-c` flag autocompletes container names
 - GitLab project names autocomplete from local index
+- Slack channel names autocomplete from local index (member channels only)
 - Use `-n` for namespace, `-A` for all namespaces in k8s commands
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `mr`=`merge-request`
 - Generate shell completions: `dex completion bash|zsh|fish|powershell`

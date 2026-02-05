@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 Unified access to your engineering tools:
   - GitLab (activity, repos)
   - Jira (issues, search)
-  - Slack (coming soon)
+  - Slack (messaging)
   - Loki, Grafana (coming soon)`,
 }
 
@@ -45,6 +45,7 @@ func getVersion() string {
 func init() {
 	rootCmd.AddCommand(jiraCmd)
 	rootCmd.AddCommand(gitlabCmd)
+	rootCmd.AddCommand(slackCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(skillCmd)
 }

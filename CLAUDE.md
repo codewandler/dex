@@ -2,12 +2,13 @@
 
 ## Overview
 
-Swiss army knife CLI for engineers. Usable standalone but primarily designed as a tool for AI agents via the Claude skill at `.claude/skills/dex`.
+Swiss army knife CLI for engineers. Usable standalone but primarily designed as a tool for AI agents via the Claude skill at `internal/skills/dex/SKILL.md`.
 
 **Integrations:**
 - **Kubernetes** - Cluster management (contexts, namespaces, pods, services, logs)
 - **GitLab** - Activity tracking, MRs, commits, project management
 - **Jira** - Issue management (OAuth)
+- **Slack** - Messaging (send, reply, channel index)
 
 ## Project Structure
 
@@ -19,7 +20,8 @@ dex/
 │   │   ├── root.go                # Root command
 │   │   ├── gitlab.go              # GitLab commands (gl/gitlab)
 │   │   ├── jira.go                # Jira commands
-│   │   └── k8s.go                 # Kubernetes commands
+│   │   ├── k8s.go                 # Kubernetes commands
+│   │   └── slack.go               # Slack commands
 │   ├── config/config.go           # Unified configuration (file + env)
 │   ├── gitlab/                    # GitLab API client
 │   │   ├── client.go              # Main client
@@ -30,9 +32,12 @@ dex/
 │   │   └── tags.go                # Tag operations
 │   ├── jira/                      # Jira OAuth client
 │   ├── k8s/                       # Kubernetes client
+│   ├── slack/                     # Slack API client
+│   │   ├── client.go              # Main client
+│   │   └── index.go               # Channel index
 │   ├── models/                    # Data structures
-│   └── output/                    # Terminal formatting
-├── .claude/skills/dex/            # Claude skill definition
+│   ├── output/                    # Terminal formatting
+│   └── skills/dex/                # Claude skill definition
 └── templates/                     # Templates
 ```
 
@@ -64,6 +69,10 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
     "client_id": "your-oauth-client-id",
     "client_secret": "your-oauth-client-secret",
     "token": { ... }
+  },
+  "slack": {
+    "bot_token": "xoxb-...",
+    "app_token": "xapp-..."
   }
 }
 ```
@@ -76,6 +85,8 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 | `GITLAB_PERSONAL_TOKEN` | Personal access token |
 | `JIRA_CLIENT_ID` | OAuth 2.0 client ID |
 | `JIRA_CLIENT_SECRET` | OAuth 2.0 client secret |
+| `SLACK_BOT_TOKEN` | Slack bot token (xoxb-...) |
+| `SLACK_APP_TOKEN` | Slack app token for Socket Mode (xapp-...) |
 | `ACTIVITY_DAYS` | Default days for activity lookback |
 
 ## Command Overview
@@ -84,17 +95,19 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 dex k8s ...    # Kubernetes (aliases: kube, kubernetes)
 dex gl ...     # GitLab (aliases: gitlab)
 dex jira ...   # Jira
+dex slack ...  # Slack
 ```
 
-For full command reference, see `.claude/skills/dex/SKILL.md`.
+For full command reference, see `internal/skills/dex/SKILL.md`.
 
 ## Claude Skill
 
-This CLI ships with a Claude Code skill at `.claude/skills/dex/SKILL.md` that documents all commands for AI agent use. The skill enables AI assistants to:
+This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that documents all commands for AI agent use. The skill enables AI assistants to:
 - Query Kubernetes clusters
 - Browse GitLab activity and MRs
 - Look up Jira issues
 - Interact with MRs (comment, react, view diffs)
+- Send Slack messages and reply to threads
 
 ## Jira OAuth Setup
 
@@ -111,7 +124,7 @@ Token stored in `~/.dex/config.json` under `jira.token`.
 ### Documentation Sync
 
 When adding new features or commands, **always update all documentation**:
-1. `.claude/skills/dex/SKILL.md` - Full command reference for AI agents
+1. `internal/skills/dex/SKILL.md` - Full command reference for AI agents
 2. `CLAUDE.md` - Project structure and dev info
 3. `README.md` - Keep examples current
 

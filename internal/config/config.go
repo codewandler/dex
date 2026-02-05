@@ -36,6 +36,7 @@ type Config struct {
 	// Integration configs (embedded)
 	GitLab GitLabConfig `json:"gitlab,omitempty"`
 	Jira   JiraConfig   `json:"jira,omitempty"`
+	Slack  SlackConfig  `json:"slack,omitempty"`
 }
 
 // GitLabConfig holds GitLab-specific configuration
@@ -51,6 +52,12 @@ type JiraConfig struct {
 	BaseURL      string     `json:"base_url,omitempty" envconfig:"JIRA_BASE_URL"`
 	CloudID      string     `json:"cloud_id,omitempty"`
 	Token        *JiraToken `json:"token,omitempty"`
+}
+
+// SlackConfig holds Slack-specific configuration
+type SlackConfig struct {
+	BotToken string `json:"bot_token,omitempty" envconfig:"SLACK_BOT_TOKEN"`
+	AppToken string `json:"app_token,omitempty" envconfig:"SLACK_APP_TOKEN"` // For Socket Mode
 }
 
 // JiraToken holds Jira OAuth tokens
@@ -156,6 +163,14 @@ func (c *Config) RequireGitLab() error {
 func (c *Config) RequireJira() error {
 	if c.Jira.ClientID == "" || c.Jira.ClientSecret == "" {
 		return errors.New("Jira OAuth not configured. Set JIRA_CLIENT_ID and JIRA_CLIENT_SECRET or add to ~/.dex/config.json")
+	}
+	return nil
+}
+
+// RequireSlack validates that Slack bot token is present
+func (c *Config) RequireSlack() error {
+	if c.Slack.BotToken == "" {
+		return errors.New("Slack bot token not configured. Set SLACK_BOT_TOKEN or add to ~/.dex/config.json")
 	}
 	return nil
 }
