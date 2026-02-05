@@ -3,16 +3,10 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
-
-var version = "dev"
-
-// SetVersion sets the version string (called from main)
-func SetVersion(v string) {
-	version = v
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "dex",
@@ -36,8 +30,16 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(version)
+		fmt.Println(getVersion())
 	},
+}
+
+func getVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "(unknown)"
+	}
+	return info.Main.Version
 }
 
 func init() {
