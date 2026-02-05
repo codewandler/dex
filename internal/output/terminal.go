@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	gl "github.com/codewandler/dex/internal/gitlab"
 	"github.com/codewandler/dex/internal/models"
 
 	"github.com/charmbracelet/glamour"
@@ -652,27 +653,77 @@ func printMRFile(f models.MRFile) {
 	}
 }
 
-// printDiff renders a unified diff with syntax highlighting
+// printDiff renders a unified diff with syntax highlighting and line numbers
 func printDiff(diff string) {
-	lines := strings.Split(diff, "\n")
 	addColor := color.New(color.FgGreen)
 	delColor := color.New(color.FgRed)
 	hunkColor := color.New(color.FgCyan)
+	lineNumColor := color.New(color.FgHiBlack)
 
-	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
-			addColor.Printf("      %s\n", line)
-		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
-			delColor.Printf("      %s\n", line)
-		case strings.HasPrefix(line, "@@"):
-			hunkColor.Printf("      %s\n", line)
-		case strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++"):
-			// Skip file headers - we already show the path
-			continue
-		default:
-			fmt.Printf("      %s\n", line)
+	// Collect hunk headers from original diff
+	var hunkHeaders []string
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			hunkHeaders = append(hunkHeaders, line)
 		}
+	}
+
+	parsed := gl.ParseUnifiedDiff(diff)
+
+	// Track which hunk we're in by detecting line number jumps
+	hunkIdx := 0
+	lastNewLine := 0
+	printedFirstHunk := false
+
+	for _, line := range parsed.Lines {
+		// Detect new hunk: line number jumped significantly or first line
+		currentNewLine := line.NewLine
+		if line.Type == gl.LineDeleted {
+			currentNewLine = line.OldLine // Use old line for deleted lines
+		}
+
+		if !printedFirstHunk || (lastNewLine > 0 && currentNewLine > 0 && currentNewLine > lastNewLine+1) {
+			// Print hunk header if we have one
+			if hunkIdx < len(hunkHeaders) {
+				hunkColor.Printf("      %s\n", hunkHeaders[hunkIdx])
+				hunkIdx++
+			}
+			printedFirstHunk = true
+		}
+
+		if line.NewLine > 0 {
+			lastNewLine = line.NewLine
+		}
+
+		// Format: "  123 +content" or "      -content" (deleted lines have no new line number)
+		var lineNum string
+		if line.NewLine > 0 {
+			lineNum = fmt.Sprintf("%4d", line.NewLine)
+		} else {
+			lineNum = "    "
+		}
+
+		prefix := " "
+		content := line.Content
+		printFn := fmt.Printf
+
+		switch line.Type {
+		case gl.LineAdded:
+			prefix = "+"
+			printFn = func(format string, a ...interface{}) (int, error) {
+				addColor.Printf(format, a...)
+				return 0, nil
+			}
+		case gl.LineDeleted:
+			prefix = "-"
+			printFn = func(format string, a ...interface{}) (int, error) {
+				delColor.Printf(format, a...)
+				return 0, nil
+			}
+		}
+
+		lineNumColor.Printf("      %s ", lineNum)
+		printFn("%s %s\n", prefix, content)
 	}
 }
 
