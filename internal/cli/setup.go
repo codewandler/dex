@@ -158,11 +158,11 @@ func setupGitLab(_ context.Context, cfg *config.Config, reader *bufio.Reader) bo
 	if defaultURL == "" {
 		defaultURL = "https://gitlab.com"
 	}
-	cfg.GitLab.URL = promptString(reader, fmt.Sprintf("  GitLab URL [%s]", defaultURL), defaultURL)
+	cfg.GitLab.URL = strings.TrimSuffix(promptString(reader, fmt.Sprintf("  GitLab URL [%s]", defaultURL), defaultURL), "/")
 
 	// Token
 	setupDim.Println("  Create a Personal Access Token at: " + cfg.GitLab.URL + "/-/user_settings/personal_access_tokens")
-	setupDim.Println("  Required scopes: read_api, read_user")
+	setupDim.Println("  Required scopes: api, read_user")
 	cfg.GitLab.Token = promptString(reader, "  Personal Access Token", "")
 
 	if cfg.GitLab.Token == "" {
