@@ -38,7 +38,22 @@ type Config struct {
 	Jira       JiraConfig       `json:"jira,omitempty"`
 	Slack      SlackConfig      `json:"slack,omitempty"`
 	Loki       LokiConfig       `json:"loki,omitempty"`
+	SQL        SQLConfig        `json:"sql,omitempty"`
 	StatusLine StatusLineConfig `json:"status_line,omitempty"`
+}
+
+// SQLConfig holds SQL datasource configuration
+type SQLConfig struct {
+	Datasources map[string]SQLDatasource `json:"datasources,omitempty"`
+}
+
+// SQLDatasource holds connection info for a single datasource
+type SQLDatasource struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port,omitempty"` // Default: 3306 for MySQL
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Database string `json:"database"`
 }
 
 // StatusLineConfig holds status line configuration for Claude Code

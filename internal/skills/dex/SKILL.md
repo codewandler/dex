@@ -6,7 +6,7 @@ user-invocable: true
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, and Loki operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, and SQL operations. Run commands via Bash tool.
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
@@ -36,6 +36,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 | Jira | `dex jira` | [references/jira.md](references/jira.md) |
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
+| SQL | `dex sql` | [references/sql.md](references/sql.md) |
 | Claude Code | `dex claude` | [references/claude.md](references/claude.md) |
 
 ## Quick Reference
@@ -107,6 +108,12 @@ dex loki labels                   # List labels (current namespace)
 dex loki labels -A                # List labels (all namespaces)
 dex loki labels job               # List values for label
 dex loki test                     # Test connection
+```
+
+### SQL (`dex sql`)
+```bash
+dex sql datasources               # List configured datasources
+dex sql query -d <ds> "<query>"   # Execute SQL query
 ```
 
 ### Claude Code (`dex claude`)

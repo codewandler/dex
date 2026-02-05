@@ -51,4 +51,5 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(skillCmd)
 	rootCmd.AddCommand(upgradeCmd)
+	rootCmd.AddCommand(sqlCmd)
 }
