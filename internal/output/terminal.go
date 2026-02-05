@@ -727,6 +727,57 @@ func printDiff(diff string) {
 	}
 }
 
+// PrintParsedDiff displays a diff with explicit line number columns
+func PrintParsedDiff(filePath string, diff *gl.ParsedDiff) {
+	addColor := color.New(color.FgGreen)
+	delColor := color.New(color.FgRed)
+	ctxColor := color.New(color.FgWhite)
+	hdrColor := color.New(color.FgCyan)
+
+	// Header
+	fmt.Printf("%s\n\n", filePath)
+	hdrColor.Printf("  %5s  %5s  %-4s  %s\n", "new", "old", "type", "content")
+	hdrColor.Printf("  %5s  %5s  %-4s  %s\n", "---", "---", "----", strings.Repeat("-", 50))
+
+	for _, line := range diff.Lines {
+		// Format line numbers
+		newNum := "    -"
+		oldNum := "    -"
+		if line.NewLine > 0 {
+			newNum = fmt.Sprintf("%5d", line.NewLine)
+		}
+		if line.OldLine > 0 {
+			oldNum = fmt.Sprintf("%5d", line.OldLine)
+		}
+
+		// Determine type label and color
+		var typeLabel string
+		var printFn func(format string, a ...interface{})
+
+		switch line.Type {
+		case gl.LineAdded:
+			typeLabel = "add"
+			printFn = func(format string, a ...interface{}) {
+				addColor.Printf(format, a...)
+			}
+		case gl.LineDeleted:
+			typeLabel = "del"
+			printFn = func(format string, a ...interface{}) {
+				delColor.Printf(format, a...)
+			}
+		default:
+			typeLabel = "ctx"
+			printFn = func(format string, a ...interface{}) {
+				ctxColor.Printf(format, a...)
+			}
+		}
+
+		printFn("  %s  %s  %-4s  %s\n", newNum, oldNum, typeLabel, line.Content)
+	}
+
+	fmt.Println()
+}
+
 // PrintCommitDetails displays full commit information
 func PrintCommitDetails(c *models.CommitDetail) {
 	line := strings.Repeat("═", 60)

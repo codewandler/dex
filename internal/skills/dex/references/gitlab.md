@@ -57,6 +57,27 @@ dex gl mr show sre/helm!2903         # Example
 dex gl mr show sre/helm!2903 --show-diff  # Include file diffs in output
 ```
 
+### View File Diff
+```bash
+dex gl mr diff <project!iid>              # List all changed files in MR
+dex gl mr diff proj!123 --file path       # Show raw diff for specific file
+dex gl mr diff proj!123 -f src/main.go    # Short flag
+dex gl mr diff proj!123 -f path --parsed  # Show with line number columns
+dex gl mr diff proj!123 -f path -p        # Short flag for --parsed
+```
+
+The `--parsed` flag shows a table with explicit line numbers:
+```
+    new    old  type  content
+    ---    ---  ----  --------
+    606    606  ctx       createWidget: 'Create Widget',
+    607    607  ctx       selectWidget: 'Select existing widget',
+    608      -  add       removeWidget: 'Remove widget from board',
+    609    608  ctx       widgetManagement: 'Manage widgets',
+```
+
+Use this to inspect diff contents before adding inline comments. The `new` column shows the line number to use with `--line`.
+
 ### Open in Browser
 ```bash
 dex gl mr open <project!iid>         # Open MR in default browser
@@ -80,7 +101,7 @@ dex gl mr comment proj!123 "Use a constant" --file src/main.go --line 42
 # IMPORTANT for inline comments:
 # - The --line number is the NEW file line number (right side of diff)
 # - You can only comment on lines that appear in the diff hunks
-# - Use `dex gl mr show <ref> --show-diff` to see line numbers in context
+# - Use `dex gl mr diff <ref> --file <path>` to inspect the raw diff first
 # - Verify the file actually contains the code you want to reference
 # - Look at the @@ -old,count +new,count @@ headers to find line ranges
 ```

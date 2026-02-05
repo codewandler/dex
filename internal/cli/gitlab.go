@@ -667,6 +667,99 @@ Examples:
 	},
 }
 
+var gitlabMRDiffCmd = &cobra.Command{
+	Use:   "diff <project!iid>",
+	Short: "Show diff for a specific file in an MR",
+	Long: `Show the diff content for a merge request, optionally filtered to a single file.
+
+Without --file, lists all files changed in the MR.
+With --file, shows the raw diff content for that file.
+With --parsed, shows a table with line numbers and line types.
+
+Examples:
+  dex gl mr diff project!123                      # List all changed files
+  dex gl mr diff project!123 --file src/main.go   # Show raw diff
+  dex gl mr diff project!123 -f src/main.go -p    # Show parsed with line numbers`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		filePath, _ := cmd.Flags().GetString("file")
+		parsed, _ := cmd.Flags().GetBool("parsed")
+
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Always fetch diffs
+		files, err := client.GetMergeRequestChanges(projectID, mrIID, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get MR changes: %v\n", err)
+			os.Exit(1)
+		}
+
+		if filePath == "" {
+			// No file specified: list all changed files
+			fmt.Printf("Changed files in %s!%d:\n\n", projectID, mrIID)
+			for _, f := range files {
+				status := " "
+				if f.IsNew {
+					status = "A"
+				} else if f.IsDeleted {
+					status = "D"
+				} else if f.IsRenamed {
+					status = "R"
+				} else {
+					status = "M"
+				}
+				fmt.Printf("  %s %s\n", status, f.NewPath)
+			}
+			fmt.Printf("\nUse --file <path> to view a specific file's diff.\n")
+			return
+		}
+
+		// Find the specified file
+		var targetFile *models.MRFile
+		for i := range files {
+			if files[i].NewPath == filePath || files[i].OldPath == filePath {
+				targetFile = &files[i]
+				break
+			}
+		}
+
+		if targetFile == nil {
+			fmt.Fprintf(os.Stderr, "File %q not found in MR diff.\n", filePath)
+			fmt.Fprintf(os.Stderr, "\nAvailable files:\n")
+			for _, f := range files {
+				fmt.Fprintf(os.Stderr, "  %s\n", f.NewPath)
+			}
+			os.Exit(1)
+		}
+
+		if parsed {
+			// Parse and display with line numbers
+			diff := gitlab.ParseUnifiedDiff(targetFile.Diff)
+			output.PrintParsedDiff(targetFile.NewPath, diff)
+		} else {
+			// Output the raw diff
+			fmt.Print(targetFile.Diff)
+		}
+	},
+}
+
 var gitlabMRReactCmd = &cobra.Command{
 	Use:   "react <project!iid> <emoji>",
 	Short: "Add a reaction to a merge request or comment",
@@ -1048,6 +1141,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRShowCmd)
 	gitlabMRCmd.AddCommand(gitlabMROpenCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCommentCmd)
+	gitlabMRCmd.AddCommand(gitlabMRDiffCmd)
 	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCloseCmd)
 	gitlabMRCmd.AddCommand(gitlabMRApproveCmd)
@@ -1070,6 +1164,9 @@ func init() {
 	gitlabMRLsCmd.Flags().Bool("conflicts-only", false, "Only show MRs with merge conflicts")
 
 	gitlabMRShowCmd.Flags().Bool("show-diff", false, "Show file diffs")
+
+	gitlabMRDiffCmd.Flags().StringP("file", "f", "", "File path to show diff for")
+	gitlabMRDiffCmd.Flags().BoolP("parsed", "p", false, "Show parsed diff with line numbers")
 
 	gitlabMRCommentCmd.Flags().String("reply-to", "", "Reply to an existing discussion thread (discussion ID)")
 	gitlabMRCommentCmd.Flags().String("file", "", "File path for inline comment")
