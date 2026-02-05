@@ -56,9 +56,25 @@ type JiraConfig struct {
 
 // SlackConfig holds Slack-specific configuration
 type SlackConfig struct {
+	// OAuth credentials (for `dex slack auth`)
+	ClientID     string      `json:"client_id,omitempty" envconfig:"SLACK_CLIENT_ID"`
+	ClientSecret string      `json:"client_secret,omitempty" envconfig:"SLACK_CLIENT_SECRET"`
+	Token        *SlackToken `json:"token,omitempty"`
+
+	// Manual tokens (legacy, can be set directly or via OAuth)
 	BotToken  string `json:"bot_token,omitempty" envconfig:"SLACK_BOT_TOKEN"`
 	AppToken  string `json:"app_token,omitempty" envconfig:"SLACK_APP_TOKEN"`   // For Socket Mode
 	UserToken string `json:"user_token,omitempty" envconfig:"SLACK_USER_TOKEN"` // For search API
+}
+
+// SlackToken holds Slack OAuth tokens
+type SlackToken struct {
+	AccessToken  string `json:"access_token"`            // Bot token (xoxb-...)
+	UserToken    string `json:"user_token,omitempty"`    // User token (xoxp-...) if user scopes requested
+	RefreshToken string `json:"refresh_token,omitempty"` // For token rotation
+	TeamID       string `json:"team_id"`
+	TeamName     string `json:"team_name"`
+	BotUserID    string `json:"bot_user_id"`
 }
 
 // JiraToken holds Jira OAuth tokens

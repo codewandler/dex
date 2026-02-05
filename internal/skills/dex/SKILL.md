@@ -226,8 +226,12 @@ dex jira search "text ~ 'database index' ORDER BY updated DESC"
 
 ### Authentication
 ```bash
-dex slack auth                    # Test authentication, show bot info
+dex slack auth                    # Authenticate via OAuth (opens browser)
+dex slack test                    # Test current authentication
 ```
+
+OAuth requires `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` configured.
+Callback URL: `https://localhost:8089/callback`
 
 ### Identity Info
 ```bash

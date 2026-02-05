@@ -86,9 +86,11 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 | `GITLAB_PERSONAL_TOKEN` | Personal access token |
 | `JIRA_CLIENT_ID` | OAuth 2.0 client ID |
 | `JIRA_CLIENT_SECRET` | OAuth 2.0 client secret |
+| `SLACK_CLIENT_ID` | Slack OAuth client ID |
+| `SLACK_CLIENT_SECRET` | Slack OAuth client secret |
 | `SLACK_BOT_TOKEN` | Slack bot token (xoxb-...) |
 | `SLACK_APP_TOKEN` | Slack app token for Socket Mode (xapp-...) |
-| `SLACK_USER_TOKEN` | Slack user token for search API (xoxp-..., requires search:read scope) |
+| `SLACK_USER_TOKEN` | Slack user token for search API (xoxp-...) |
 | `ACTIVITY_DAYS` | Default days for activity lookback |
 
 ## Command Overview
@@ -120,6 +122,17 @@ This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that d
 5. Run `dex jira auth`
 
 Token stored in `~/.dex/config.json` under `jira.token`.
+
+## Slack OAuth Setup
+
+1. Create Slack app at https://api.slack.com/apps
+2. Add OAuth redirect URL: `https://localhost:8089/callback`
+3. Add Bot Token Scopes: `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`, `users:read`
+4. Add User Token Scopes: `search:read`, `users:read`, `users:write`, `chat:write`
+5. Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` (env or config file)
+6. Run `dex slack auth`
+
+Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, and `slack.user_token`.
 
 ## Development
 

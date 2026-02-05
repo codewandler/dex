@@ -24,7 +24,59 @@ var slackCmd = &cobra.Command{
 
 var slackAuthCmd = &cobra.Command{
 	Use:   "auth",
+	Short: "Authenticate with Slack (opens browser)",
+	Long: `Authenticate with Slack using OAuth.
+
+Requires SLACK_CLIENT_ID and SLACK_CLIENT_SECRET to be configured.
+Opens your browser to authorize the app, then saves the tokens.
+
+Configure the callback URL in your Slack app: https://localhost:8089/callback
+
+Examples:
+  dex slack auth`,
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if cfg.Slack.ClientID == "" || cfg.Slack.ClientSecret == "" {
+			fmt.Fprintf(os.Stderr, "Slack OAuth not configured.\n")
+			fmt.Fprintf(os.Stderr, "Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET or add to ~/.dex/config.json\n")
+			os.Exit(1)
+		}
+
+		oauth := slack.NewOAuthFlow(cfg)
+		token, err := oauth.StartAuthServer(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Authentication failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("Authentication successful!")
+		fmt.Printf("  Team:      %s (%s)\n", token.TeamName, token.TeamID)
+		fmt.Printf("  Bot Token: %s...%s\n", token.AccessToken[:10], token.AccessToken[len(token.AccessToken)-4:])
+		if token.UserToken != "" {
+			fmt.Printf("  User Token: %s...%s\n", token.UserToken[:10], token.UserToken[len(token.UserToken)-4:])
+		}
+		fmt.Println("\nTokens saved to ~/.dex/config.json")
+	},
+}
+
+var slackTestCmd = &cobra.Command{
+	Use:   "test",
 	Short: "Test Slack authentication",
+	Long: `Test the current Slack authentication.
+
+Verifies that the configured tokens are valid and shows identity info.
+
+Examples:
+  dex slack test`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.Load()
 		if err != nil {
@@ -1137,6 +1189,7 @@ func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
 
 func init() {
 	slackCmd.AddCommand(slackAuthCmd)
+	slackCmd.AddCommand(slackTestCmd)
 	slackCmd.AddCommand(slackInfoCmd)
 	slackCmd.AddCommand(slackPresenceCmd)
 	slackCmd.AddCommand(slackIndexCmd)
