@@ -204,7 +204,7 @@ func setupJira(ctx context.Context, cfg *config.Config, reader *bufio.Reader) bo
 	}
 
 	setupDim.Println("  Create an OAuth 2.0 app at: https://developer.atlassian.com/console/myapps/")
-	setupDim.Println("  Add callback URL: http://localhost:8089/callback")
+	setupDim.Println("  Add callback URL: http://localhost:8089/callback (HTTP, not HTTPS!)")
 	setupDim.Println("  Required scopes: read:jira-work, read:jira-user")
 
 	cfg.Jira.ClientID = promptString(reader, "  OAuth Client ID", cfg.Jira.ClientID)
@@ -271,7 +271,7 @@ func setupSlack(ctx context.Context, cfg *config.Config, reader *bufio.Reader) b
 
 func setupSlackOAuth(ctx context.Context, cfg *config.Config, reader *bufio.Reader) bool {
 	setupDim.Println("  Create a Slack app at: https://api.slack.com/apps")
-	setupDim.Println("  Add OAuth redirect URL: https://localhost:8089/callback")
+	setupDim.Println("  Add OAuth redirect URL: https://localhost:8089/callback (HTTPS, not HTTP!)")
 	setupDim.Println("  Bot scopes: channels:history, channels:read, chat:write, groups:history, groups:read, im:history, im:read, im:write, users:read")
 	setupDim.Println("  User scopes: search:read, users:read")
 
