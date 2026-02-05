@@ -196,10 +196,32 @@ When the user asks to "release" or "publish" the current changes:
    - `feat:` commits → bump minor version (e.g., v0.1.0 → v0.2.0)
    - `fix:` commits only → bump patch version (e.g., v0.1.0 → v0.1.1)
    - Breaking changes → bump major version
-5. **Create annotated tag**: `git tag -a v0.X.Y -m "Release v0.X.Y"`
-6. **Push commits and tag**: `git push && git push --tags`
-7. **Announce in `#dex-tests`**: Send a Slack message with:
+5. **Generate changelog** from commits since last tag:
+   - Group by type: Features (`feat:`), Fixes (`fix:`), Other
+   - Format as markdown with commit links: `- Description ([abc1234](https://github.com/codewandler/dex/commit/abc1234))`
+   - Example:
+     ```markdown
+     ## Features
+     - Add GitHub release management ([5fb4a46](https://github.com/codewandler/dex/commit/5fb4a46))
+
+     ## Fixes
+     - Fix pod log streaming ([abc1234](https://github.com/codewandler/dex/commit/abc1234))
+     ```
+6. **Create annotated tag** with summary:
+   ```bash
+   git tag -a v0.X.Y -m "Release v0.X.Y
+
+   - Feature 1
+   - Feature 2
+   - Fix 1"
+   ```
+7. **Push commits and tag**: `git push && git push --tags`
+8. **Create GitHub release** with rich changelog:
+   ```bash
+   dex gh release create v0.X.Y --notes "<markdown changelog from step 5>"
+   ```
+9. **Announce in `#dex-tests`**: Send a Slack message with:
    - The new version number
-   - Short changelog summary (bullet points of main changes)
-   - Explanation of new features: what they do and why they're useful
+   - Link to the GitHub release
+   - Brief summary of key changes
    - Install command: `go install github.com/codewandler/dex@latest`
