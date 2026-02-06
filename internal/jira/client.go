@@ -8,16 +8,19 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/codewandler/dex/internal/config"
+	"github.com/codewandler/md2adf"
 )
 
 type Client struct {
-	config *config.Config
-	token  *config.JiraToken
-	oauth  *OAuthFlow
+	config      *config.Config
+	token       *config.JiraToken
+	oauth       *OAuthFlow
+	projectKeys []string // cached project keys for issue linkification
 }
 
 type Issue struct {
@@ -331,6 +334,48 @@ func (c *Client) GetSiteURL() string {
 	return ""
 }
 
+// markdownToADF converts markdown to ADF, linkifying any Jira issue keys.
+// Issue keys matching known project prefixes are converted to clickable links.
+func (c *Client) markdownToADF(ctx context.Context, markdown string) md2adf.Node {
+	// Linkify issue keys before converting
+	linked := c.linkifyIssueKeys(ctx, markdown)
+	return md2adf.Convert(linked)
+}
+
+// linkifyIssueKeys replaces issue keys (e.g., DEV-123) with markdown links.
+// Only keys matching known project prefixes are linkified.
+func (c *Client) linkifyIssueKeys(ctx context.Context, text string) string {
+	siteURL := c.GetSiteURL()
+	if siteURL == "" {
+		return text
+	}
+
+	// Ensure we have project keys cached
+	if c.projectKeys == nil {
+		keys, err := c.GetProjectKeys(ctx)
+		if err != nil {
+			// If we can't get keys, just return text as-is
+			return text
+		}
+		c.projectKeys = keys
+	}
+
+	if len(c.projectKeys) == 0 {
+		return text
+	}
+
+	// Build regex pattern for known project keys: (DEV|TEL|ABC)-\d+
+	pattern := `\b(` + strings.Join(c.projectKeys, "|") + `)-(\d+)\b`
+	re := regexp.MustCompile(pattern)
+
+	// Replace issue keys with URLs (md2adf converts these to inlineCard nodes)
+	result := re.ReplaceAllStringFunc(text, func(match string) string {
+		return fmt.Sprintf("%s/browse/%s", siteURL, match)
+	})
+
+	return result
+}
+
 // CreateIssueRequest contains the parameters for creating a new issue
 type CreateIssueRequest struct {
 	ProjectKey  string   // Required: project key (e.g., "DEV")
@@ -358,7 +403,7 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (*Issu
 
 	// Add description in ADF format if provided
 	if req.Description != "" {
-		fields["description"] = buildADF(req.Description)
+		fields["description"] = c.markdownToADF(ctx, req.Description)
 	}
 
 	// Add labels if provided
@@ -517,7 +562,7 @@ func (c *Client) UpdateIssue(ctx context.Context, issueKey string, req UpdateIss
 		if *req.Description == "" {
 			fields["description"] = nil
 		} else {
-			fields["description"] = buildADF(*req.Description)
+			fields["description"] = c.markdownToADF(ctx, *req.Description)
 		}
 	}
 
@@ -663,7 +708,7 @@ func (c *Client) TransitionIssue(ctx context.Context, issueKey string, transitio
 // AddComment adds a comment to an issue
 func (c *Client) AddComment(ctx context.Context, issueKey string, body string) (*Comment, error) {
 	reqBody := map[string]interface{}{
-		"body": buildADF(body),
+		"body": c.markdownToADF(ctx, body),
 	}
 
 	resp, err := c.doRequestWithBody(ctx, "POST", "/issue/"+issueKey+"/comment", reqBody)
@@ -728,55 +773,6 @@ func (c *Client) FindUser(ctx context.Context, query string) ([]User, error) {
 	}
 
 	return users, nil
-}
-
-// buildADF creates a minimal Atlassian Document Format structure from plain text
-func buildADF(text string) map[string]interface{} {
-	// Split text into paragraphs
-	paragraphs := strings.Split(text, "\n\n")
-	content := make([]interface{}, 0, len(paragraphs))
-
-	for _, para := range paragraphs {
-		para = strings.TrimSpace(para)
-		if para == "" {
-			continue
-		}
-		// Handle single newlines within a paragraph as hard breaks
-		lines := strings.Split(para, "\n")
-		paraContent := make([]interface{}, 0)
-		for i, line := range lines {
-			if i > 0 {
-				paraContent = append(paraContent, map[string]string{"type": "hardBreak"})
-			}
-			paraContent = append(paraContent, map[string]interface{}{
-				"type": "text",
-				"text": line,
-			})
-		}
-		content = append(content, map[string]interface{}{
-			"type":    "paragraph",
-			"content": paraContent,
-		})
-	}
-
-	// If no content, create an empty paragraph
-	if len(content) == 0 {
-		content = append(content, map[string]interface{}{
-			"type": "paragraph",
-			"content": []interface{}{
-				map[string]interface{}{
-					"type": "text",
-					"text": text,
-				},
-			},
-		})
-	}
-
-	return map[string]interface{}{
-		"version": 1,
-		"type":    "doc",
-		"content": content,
-	}
 }
 
 // User represents the authenticated Jira user
