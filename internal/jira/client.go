@@ -428,6 +428,72 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (*Issu
 	return c.GetIssue(ctx, createResp.Key)
 }
 
+// LinkIssuesRequest contains the parameters for linking two issues
+type LinkIssuesRequest struct {
+	InwardIssue  string // The issue that is the source of the link (e.g., "DEV-123")
+	OutwardIssue string // The issue that is the target of the link (e.g., "DEV-456")
+	LinkType     string // The type of link (e.g., "Relates", "Blocks", "Duplicates")
+}
+
+// LinkIssues creates a link between two issues
+func (c *Client) LinkIssues(ctx context.Context, req LinkIssuesRequest) error {
+	body := map[string]interface{}{
+		"type": map[string]string{
+			"name": req.LinkType,
+		},
+		"inwardIssue": map[string]string{
+			"key": req.InwardIssue,
+		},
+		"outwardIssue": map[string]string{
+			"key": req.OutwardIssue,
+		},
+	}
+
+	resp, err := c.doRequestWithBody(ctx, "POST", "/issueLink", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to link issues (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// IssueLinkType represents a type of link between issues
+type IssueLinkType struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Inward  string `json:"inward"`
+	Outward string `json:"outward"`
+}
+
+// ListLinkTypes returns all available issue link types
+func (c *Client) ListLinkTypes(ctx context.Context) ([]IssueLinkType, error) {
+	resp, err := c.doRequest(ctx, "GET", "/issueLinkType", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to list link types (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		IssueLinkTypes []IssueLinkType `json:"issueLinkTypes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse link types: %w", err)
+	}
+
+	return result.IssueLinkTypes, nil
+}
+
 // DeleteIssue deletes an issue by key. If deleteSubtasks is true, subtasks are also deleted.
 func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
 	query := url.Values{}

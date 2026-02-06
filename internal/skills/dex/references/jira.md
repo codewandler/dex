@@ -65,6 +65,43 @@ dex jira delete DEV-123
 dex jira delete DEV-400 DEV-401 DEV-402
 ```
 
+## Link Issues
+```bash
+dex jira link <SOURCE-KEY> <TARGET-KEY> [TARGET-KEY...] [-t <type>]
+```
+
+Create links between Jira issues. The first issue is the source, subsequent issues are linked to it.
+
+### Flags
+- `-t, --type` - Link type (default: "Relates")
+- `--list-types` - List available link types in your Jira instance
+
+### Common Link Types
+| Type | Outward | Inward |
+|------|---------|--------|
+| Relates | relates to | relates to |
+| Blocks | blocks | is blocked by |
+| Cloners | clones | is cloned by |
+| Duplicate | duplicates | is duplicated by |
+
+### Examples
+```bash
+# List available link types
+dex jira link --list-types
+
+# Link two issues (default: Relates)
+dex jira link DEV-123 DEV-456
+
+# Link multiple issues to a source
+dex jira link DEV-123 DEV-456 DEV-789
+
+# DEV-123 blocks DEV-456
+dex jira link DEV-123 DEV-456 -t Blocks
+
+# DEV-123 duplicates DEV-456
+dex jira link DEV-123 DEV-456 -t Duplicate
+```
+
 ## View Issue (Full Details)
 ```bash
 dex jira view <KEY>               # View issue with description, comments, links, subtasks

@@ -219,6 +219,81 @@ Examples:
 	},
 }
 
+var jiraLinkCmd = &cobra.Command{
+	Use:   "link <ISSUE-KEY> <ISSUE-KEY> [ISSUE-KEY...]",
+	Short: "Link issues together",
+	Long: `Create links between Jira issues.
+
+The first issue is the source, subsequent issues are linked to it.
+Default link type is "Relates" (symmetric relationship).
+
+Common link types:
+  Relates     - Generic relationship (symmetric)
+  Blocks      - First issue blocks the others
+  Cloners     - First issue clones the others
+  Duplicate   - First issue duplicates the others
+
+Use --list-types to see all available link types in your Jira instance.
+
+Examples:
+  dex jira link DEV-123 DEV-456                    # Link two issues (Relates)
+  dex jira link DEV-123 DEV-456 DEV-789            # Link multiple issues to DEV-123
+  dex jira link DEV-123 DEV-456 -t Blocks          # DEV-123 blocks DEV-456
+  dex jira link DEV-123 DEV-456 -t Duplicate       # DEV-123 duplicates DEV-456
+  dex jira link --list-types                       # Show available link types`,
+	Args: cobra.MinimumNArgs(0),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		listTypes, _ := cmd.Flags().GetBool("list-types")
+		linkType, _ := cmd.Flags().GetString("type")
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// List available link types
+		if listTypes {
+			types, err := client.ListLinkTypes(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("%-15s %-25s %s\n", "NAME", "OUTWARD", "INWARD")
+			fmt.Println("─────────────────────────────────────────────────────────────")
+			for _, t := range types {
+				fmt.Printf("%-15s %-25s %s\n", t.Name, t.Outward, t.Inward)
+			}
+			return
+		}
+
+		// Require at least 2 issues for linking
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Error: at least two issue keys required\n")
+			os.Exit(1)
+		}
+
+		sourceIssue := args[0]
+		targetIssues := args[1:]
+
+		for _, target := range targetIssues {
+			req := jira.LinkIssuesRequest{
+				InwardIssue:  sourceIssue,
+				OutwardIssue: target,
+				LinkType:     linkType,
+			}
+			if err := client.LinkIssues(ctx, req); err != nil {
+				fmt.Fprintf(os.Stderr, "Error linking %s -> %s: %v\n", sourceIssue, target, err)
+				continue
+			}
+			fmt.Printf("Linked %s -> %s (%s)\n", sourceIssue, target, linkType)
+		}
+	},
+}
+
 var jiraCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new Jira issue",
@@ -375,6 +450,7 @@ func init() {
 	jiraCmd.AddCommand(jiraProjectsCmd)
 	jiraCmd.AddCommand(jiraCreateCmd)
 	jiraCmd.AddCommand(jiraDeleteCmd)
+	jiraCmd.AddCommand(jiraLinkCmd)
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
@@ -394,6 +470,10 @@ func init() {
 	jiraCreateCmd.MarkFlagRequired("project")
 	jiraCreateCmd.MarkFlagRequired("type")
 	jiraCreateCmd.MarkFlagRequired("summary")
+
+	// Link command flags
+	jiraLinkCmd.Flags().StringP("type", "t", "Relates", "Link type (Relates, Blocks, Duplicate, etc.)")
+	jiraLinkCmd.Flags().Bool("list-types", false, "List available link types")
 }
 
 func truncate(s string, maxLen int) string {
