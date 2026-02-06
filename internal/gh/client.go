@@ -981,6 +981,85 @@ func (c *Client) PRList(opts PRListOptions) ([]PR, error) {
 	return prs, nil
 }
 
+// Repo represents a GitHub repository
+type Repo struct {
+	Name        string `json:"name"`
+	FullName    string `json:"fullName"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	CloneURL    string `json:"cloneURL"`
+	Private     bool   `json:"private"`
+}
+
+// RepoCreateOptions contains options for creating a repository
+type RepoCreateOptions struct {
+	Name        string // repo name or owner/name
+	Description string
+	Private     bool
+	Public      bool
+	Internal    bool
+	Clone       bool   // clone the repo locally after creation
+	Source      string // path to local source to push
+	GitIgnore   string // gitignore template (e.g., Go, Node, Python)
+	License     string // license template (e.g., MIT, Apache-2.0)
+	AddReadme   bool
+	DisableWiki bool
+	DisableIssues bool
+}
+
+// RepoCreate creates a new GitHub repository
+func (c *Client) RepoCreate(opts RepoCreateOptions) (*Repo, error) {
+	args := []string{"repo", "create", opts.Name}
+
+	// Visibility (mutually exclusive)
+	if opts.Private {
+		args = append(args, "--private")
+	} else if opts.Internal {
+		args = append(args, "--internal")
+	} else if opts.Public {
+		args = append(args, "--public")
+	}
+
+	if opts.Description != "" {
+		args = append(args, "--description", opts.Description)
+	}
+	if opts.Clone {
+		args = append(args, "--clone")
+	}
+	if opts.Source != "" {
+		args = append(args, "--source", opts.Source)
+	}
+	if opts.GitIgnore != "" {
+		args = append(args, "--gitignore", opts.GitIgnore)
+	}
+	if opts.License != "" {
+		args = append(args, "--license", opts.License)
+	}
+	if opts.AddReadme {
+		args = append(args, "--add-readme")
+	}
+	if opts.DisableWiki {
+		args = append(args, "--disable-wiki")
+	}
+	if opts.DisableIssues {
+		args = append(args, "--disable-issues")
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh repo create failed: %s", string(output))
+	}
+
+	// gh repo create returns the URL of the created repo
+	url := strings.TrimSpace(string(output))
+
+	return &Repo{
+		Name: opts.Name,
+		URL:  url,
+	}, nil
+}
+
 // normalizeRepo converts various GitHub URL formats to owner/repo format
 func normalizeRepo(repoURL string) string {
 	// Remove trailing .git

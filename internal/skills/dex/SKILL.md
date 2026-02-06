@@ -84,6 +84,8 @@ dex slack thread <url|ch:ts>      # View thread details
 dex gh auth                       # Interactive GitHub authentication
 dex gh test                       # Test gh CLI authentication
 dex gh clone <repo> [dest]        # Clone repo (uses gh CLI)
+dex gh repo create <name> --public    # Create public repository
+dex gh repo create <name> --private   # Create private repository
 dex gh issue ls                   # List open issues
 dex gh issue ls --no-label        # List issues without labels
 dex gh issue view <number>        # View issue details

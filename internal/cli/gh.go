@@ -689,6 +689,79 @@ Examples:
 	},
 }
 
+// Repo commands
+var ghRepoCmd = &cobra.Command{
+	Use:   "repo",
+	Short: "Manage GitHub repositories",
+	Long:  `Create and manage GitHub repositories.`,
+}
+
+var ghRepoCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create a new repository",
+	Long: `Create a new GitHub repository.
+
+The name can be just a repo name (creates under your account) or owner/name format.
+
+Examples:
+  dex gh repo create my-new-repo --public
+  dex gh repo create my-org/my-repo --private
+  dex gh repo create my-repo --private --description "My awesome project"
+  dex gh repo create my-repo --public --clone
+  dex gh repo create my-repo --public --gitignore Go --license MIT
+  dex gh repo create my-repo --public --add-readme`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		name := args[0]
+		description, _ := cmd.Flags().GetString("description")
+		private, _ := cmd.Flags().GetBool("private")
+		public, _ := cmd.Flags().GetBool("public")
+		internal, _ := cmd.Flags().GetBool("internal")
+		clone, _ := cmd.Flags().GetBool("clone")
+		source, _ := cmd.Flags().GetString("source")
+		gitignore, _ := cmd.Flags().GetString("gitignore")
+		license, _ := cmd.Flags().GetString("license")
+		addReadme, _ := cmd.Flags().GetBool("add-readme")
+		disableWiki, _ := cmd.Flags().GetBool("disable-wiki")
+		disableIssues, _ := cmd.Flags().GetBool("disable-issues")
+
+		// Require at least one visibility flag
+		if !private && !public && !internal {
+			return fmt.Errorf("visibility required: --public, --private, or --internal")
+		}
+
+		repo, err := client.RepoCreate(gh.RepoCreateOptions{
+			Name:          name,
+			Description:   description,
+			Private:       private,
+			Public:        public,
+			Internal:      internal,
+			Clone:         clone,
+			Source:        source,
+			GitIgnore:     gitignore,
+			License:       license,
+			AddReadme:     addReadme,
+			DisableWiki:   disableWiki,
+			DisableIssues: disableIssues,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Created repository: %s\n", repo.URL)
+		if clone {
+			fmt.Println("Cloned to local directory")
+		}
+		return nil
+	},
+}
+
 var ghTestCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Test GitHub CLI authentication",
@@ -796,11 +869,28 @@ func init() {
 	ghLabelCmd.AddCommand(ghLabelCreateCmd)
 	ghLabelCmd.AddCommand(ghLabelDeleteCmd)
 
+	// Repo create flags
+	ghRepoCreateCmd.Flags().StringP("description", "d", "", "Repository description")
+	ghRepoCreateCmd.Flags().Bool("public", false, "Make the repository public")
+	ghRepoCreateCmd.Flags().Bool("private", false, "Make the repository private")
+	ghRepoCreateCmd.Flags().Bool("internal", false, "Make the repository internal (organization only)")
+	ghRepoCreateCmd.Flags().BoolP("clone", "c", false, "Clone the repository locally after creation")
+	ghRepoCreateCmd.Flags().StringP("source", "s", "", "Path to local source to push")
+	ghRepoCreateCmd.Flags().String("gitignore", "", "Gitignore template (e.g., Go, Node, Python)")
+	ghRepoCreateCmd.Flags().StringP("license", "l", "", "License template (e.g., MIT, Apache-2.0)")
+	ghRepoCreateCmd.Flags().Bool("add-readme", false, "Add a README file")
+	ghRepoCreateCmd.Flags().Bool("disable-wiki", false, "Disable wiki for the repository")
+	ghRepoCreateCmd.Flags().Bool("disable-issues", false, "Disable issues for the repository")
+
+	// Add repo subcommands
+	ghRepoCmd.AddCommand(ghRepoCreateCmd)
+
 	ghCmd.AddCommand(ghAuthCmd)
 	ghCmd.AddCommand(ghCloneCmd)
 	ghCmd.AddCommand(ghIssueCmd)
 	ghCmd.AddCommand(ghLabelCmd)
 	ghCmd.AddCommand(ghReleaseCmd)
+	ghCmd.AddCommand(ghRepoCmd)
 	ghCmd.AddCommand(ghTestCmd)
 	rootCmd.AddCommand(ghCmd)
 }

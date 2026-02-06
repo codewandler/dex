@@ -20,6 +20,36 @@ dex gh clone owner/repo ./mydir   # Clone to specific directory
 dex gh clone https://github.com/owner/repo  # Clone using full URL
 ```
 
+## Repository Management
+
+### Create Repository
+```bash
+dex gh repo create my-repo --public           # Create public repo (under your account)
+dex gh repo create my-repo --private          # Create private repo
+dex gh repo create my-org/my-repo --private   # Create in organization
+dex gh repo create my-repo --public -d "Description"  # With description
+dex gh repo create my-repo --public --clone   # Create and clone locally
+dex gh repo create my-repo --public --gitignore Go --license MIT  # With templates
+dex gh repo create my-repo --public --add-readme  # Include README
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--public` | | Make the repository public |
+| `--private` | | Make the repository private |
+| `--internal` | | Make the repository internal (organization only) |
+| `--description` | `-d` | Repository description |
+| `--clone` | `-c` | Clone the repository locally after creation |
+| `--source` | `-s` | Path to local source to push |
+| `--gitignore` | | Gitignore template (e.g., Go, Node, Python) |
+| `--license` | `-l` | License template (e.g., MIT, Apache-2.0) |
+| `--add-readme` | | Add a README file |
+| `--disable-wiki` | | Disable wiki for the repository |
+| `--disable-issues` | | Disable issues for the repository |
+
+**Note:** One of `--public`, `--private`, or `--internal` is required.
+
 ## Issue Management
 
 ### List Issues
