@@ -52,4 +52,5 @@ func init() {
 	rootCmd.AddCommand(skillCmd)
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(sqlCmd)
+	rootCmd.AddCommand(todoCmd)
 }

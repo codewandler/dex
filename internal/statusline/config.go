@@ -7,7 +7,7 @@ import (
 )
 
 // Default format template - includes Claude metrics at the end
-const defaultFormat = `{{if .Claude}}{{.Claude}} | {{end}}{{if .K8s}}☸ {{.K8s}}{{end}}{{if .GitLab}}{{if .K8s}} | {{end}}🦊 {{.GitLab}}{{end}}{{if .GitHub}}{{if or .K8s .GitLab}} | {{end}}{{.GitHub}}{{end}}{{if .Jira}}{{if or .K8s .GitLab .GitHub}} | {{end}}📋 {{.Jira}}{{end}}{{if .Slack}}{{if or .K8s .GitLab .GitHub .Jira}} | {{end}}💬 {{.Slack}}{{end}}`
+const defaultFormat = `{{if .Claude}}{{.Claude}} | {{end}}{{if .K8s}}☸ {{.K8s}}{{end}}{{if .GitLab}}{{if .K8s}} | {{end}}🦊 {{.GitLab}}{{end}}{{if .GitHub}}{{if or .K8s .GitLab}} | {{end}}{{.GitHub}}{{end}}{{if .Jira}}{{if or .K8s .GitLab .GitHub}} | {{end}}📋 {{.Jira}}{{end}}{{if .Slack}}{{if or .K8s .GitLab .GitHub .Jira}} | {{end}}💬 {{.Slack}}{{end}}{{if .Todo}}{{if or .K8s .GitLab .GitHub .Jira .Slack}} | {{end}}✅ {{.Todo}}{{end}}`
 
 // Default segment configurations
 var defaultSegments = map[string]segmentDefaults{
@@ -34,6 +34,10 @@ var defaultSegments = map[string]segmentDefaults{
 	"slack": {
 		format:   `@{{.Mentions}}`,
 		cacheTTL: 1 * time.Minute,
+	},
+	"todo": {
+		format:   `{{if .InProgress}}{{.InProgress}} active{{end}}{{if and .InProgress .Pending}}, {{end}}{{if .Pending}}{{.Pending}} pending{{end}}`,
+		cacheTTL: 10 * time.Second,
 	},
 }
 

@@ -123,6 +123,15 @@ dex sql datasources               # List configured datasources
 dex sql query -d <ds> "<query>"   # Execute SQL query
 ```
 
+### Todo (`dex todo`)
+```bash
+dex todo add <TITLE> <DESC>       # Add a new todo
+dex todo ls [--state STATE]       # List todos (filter: pending, in_progress, on_hold, done)
+dex todo update <ID> [--flags]    # Update todo (--state, --title, --desc)
+dex todo ref add <ID> <TYPE> <VAL>  # Add reference to todo
+dex todo ref del <ID> <REF_ID>    # Remove reference from todo
+```
+
 ### Claude Code (`dex claude`)
 ```bash
 dex claude statusline             # Generate status line for Claude Code

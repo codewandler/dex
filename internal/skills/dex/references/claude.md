@@ -13,7 +13,7 @@ dex claude statusline
 ### Output Example
 
 ```
-Opus 42% $0.05 | ☸ prod/api | 🦊 3 assigned, 1 reviewing | 📋 5 open | 💬 @2
+Opus 42% $0.05 | ☸ prod/api | 🦊 3 assigned, 1 reviewing | 📋 5 open | 💬 @2 | ✅ 2 active, 3 pending
 ```
 
 ### How It Works
@@ -60,6 +60,11 @@ Configure in `~/.dex/config.json` under `status_line`:
         "enabled": true,
         "format": "@{{.Mentions}}",
         "cache_ttl": "1m"
+      },
+      "todo": {
+        "enabled": true,
+        "format": "{{.InProgress}} active{{if .Pending}}, {{.Pending}} pending{{end}}",
+        "cache_ttl": "10s"
       }
     }
   }
@@ -78,6 +83,7 @@ Each segment provides different template variables:
 | **github** | `PRs`, `Issues` | Open PRs and issues assigned to you |
 | **jira** | `Open` | Open issues assigned to you |
 | **slack** | `Mentions` | Pending mentions in the last 24 hours |
+| **todo** | `Total`, `Pending`, `InProgress`, `OnHold` | Local todo counts (non-done items) |
 
 ### Claude Code Setup
 
@@ -105,6 +111,7 @@ Data is cached to disk at `~/.dex/claude/statusline/{session_id}.json`:
 | **github** | 2 minutes |
 | **jira** | 2 minutes |
 | **slack** | 1 minute |
+| **todo** | 10 seconds |
 
 Cache is per-session, so different Claude windows have independent caches.
 
@@ -124,3 +131,4 @@ To disable a segment, set `enabled: false`:
 ```
 
 Segments are also automatically disabled if their integration is not configured.
+The **todo** segment is always enabled (reads from local `~/.dex/todos.json`, no external config needed).

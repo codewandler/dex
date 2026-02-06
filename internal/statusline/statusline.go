@@ -40,6 +40,7 @@ func Run(ctx context.Context, cfg *config.Config) (string, error) {
 		providers.NewGitHubProvider(),
 		providers.NewJiraProvider(),
 		providers.NewSlackProvider(cfg),
+		providers.NewTodoProvider(),
 	}
 
 	// Filter to enabled and configured providers
@@ -131,6 +132,7 @@ func runWithoutCache(ctx context.Context, cfg *config.Config, resolvedCfg *Resol
 		providers.NewGitHubProvider(),
 		providers.NewJiraProvider(),
 		providers.NewSlackProvider(cfg),
+		providers.NewTodoProvider(),
 	}
 
 	segmentOutputs := make(map[string]string)
@@ -217,6 +219,7 @@ func RefreshCache(ctx context.Context, cfg *config.Config, sessionID string, seg
 		providers.NewGitHubProvider(),
 		providers.NewJiraProvider(),
 		providers.NewSlackProvider(cfg),
+		providers.NewTodoProvider(),
 	}
 
 	for _, p := range allProviders {

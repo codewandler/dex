@@ -57,6 +57,8 @@ func capitalizeSegmentName(name string) string {
 		return "Jira"
 	case "slack":
 		return "Slack"
+	case "todo":
+		return "Todo"
 	default:
 		if len(name) > 0 {
 			return strings.ToUpper(name[:1]) + name[1:]
