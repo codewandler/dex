@@ -730,6 +730,22 @@ func (c *Client) AddComment(ctx context.Context, issueKey string, body string) (
 	return &comment, nil
 }
 
+// DeleteComment deletes a comment from an issue.
+func (c *Client) DeleteComment(ctx context.Context, issueKey string, commentID string) error {
+	resp, err := c.doRequest(ctx, "DELETE", "/issue/"+issueKey+"/comment/"+commentID, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete comment (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
 // DeleteIssue deletes an issue by key. If deleteSubtasks is true, subtasks are also deleted.
 func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
 	query := url.Values{}

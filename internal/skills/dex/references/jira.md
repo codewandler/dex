@@ -173,6 +173,18 @@ dex jira comment DEV-123 --body "Multi-line comment
 with more details here"
 ```
 
+## Delete Comment
+```bash
+dex jira comment-delete <ISSUE-KEY> <COMMENT-ID>
+```
+
+Delete a comment from an issue. The comment ID is shown when adding a comment or visible in `dex jira view`.
+
+### Examples
+```bash
+dex jira comment-delete DEV-123 10042
+```
+
 ## View Issue (Full Details)
 ```bash
 dex jira view <KEY>               # View issue with description, comments, links, subtasks

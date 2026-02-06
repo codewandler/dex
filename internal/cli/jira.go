@@ -479,6 +479,36 @@ with more details here"`,
 	},
 }
 
+var jiraCommentDeleteCmd = &cobra.Command{
+	Use:   "comment-delete <ISSUE-KEY> <COMMENT-ID>",
+	Short: "Delete a comment from an issue",
+	Long: `Delete a comment from a Jira issue.
+
+Examples:
+  dex jira comment-delete DEV-123 10042`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		issueKey := args[0]
+		commentID := args[1]
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := client.DeleteComment(ctx, issueKey, commentID); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Deleted comment %s from %s\n", commentID, issueKey)
+	},
+}
+
 var jiraCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new Jira issue",
@@ -639,6 +669,7 @@ func init() {
 	jiraCmd.AddCommand(jiraUpdateCmd)
 	jiraCmd.AddCommand(jiraTransitionCmd)
 	jiraCmd.AddCommand(jiraCommentCmd)
+	jiraCmd.AddCommand(jiraCommentDeleteCmd)
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
