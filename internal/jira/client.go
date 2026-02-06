@@ -494,6 +494,197 @@ func (c *Client) ListLinkTypes(ctx context.Context) ([]IssueLinkType, error) {
 	return result.IssueLinkTypes, nil
 }
 
+// UpdateIssueRequest contains the parameters for updating an issue
+type UpdateIssueRequest struct {
+	Summary     *string  // New summary/title (nil = don't change)
+	Description *string  // New description (nil = don't change)
+	Assignee    *string  // New assignee email or account ID (nil = don't change, empty string = unassign)
+	Priority    *string  // New priority name (nil = don't change)
+	AddLabels   []string // Labels to add
+	RemoveLabels []string // Labels to remove
+}
+
+// UpdateIssue updates an existing issue's fields
+func (c *Client) UpdateIssue(ctx context.Context, issueKey string, req UpdateIssueRequest) error {
+	fields := make(map[string]interface{})
+	update := make(map[string]interface{})
+
+	if req.Summary != nil {
+		fields["summary"] = *req.Summary
+	}
+
+	if req.Description != nil {
+		if *req.Description == "" {
+			fields["description"] = nil
+		} else {
+			fields["description"] = buildADF(*req.Description)
+		}
+	}
+
+	if req.Priority != nil {
+		fields["priority"] = map[string]string{"name": *req.Priority}
+	}
+
+	if req.Assignee != nil {
+		if *req.Assignee == "" {
+			fields["assignee"] = nil
+		} else {
+			accountID := *req.Assignee
+			// If it looks like an email, look up the user
+			if strings.Contains(*req.Assignee, "@") {
+				users, err := c.FindUser(ctx, *req.Assignee)
+				if err != nil {
+					return fmt.Errorf("failed to find user %q: %w", *req.Assignee, err)
+				}
+				if len(users) == 0 {
+					return fmt.Errorf("no user found with email %q", *req.Assignee)
+				}
+				accountID = users[0].AccountID
+			}
+			fields["assignee"] = map[string]string{"id": accountID}
+		}
+	}
+
+	// Handle label updates via the update field
+	if len(req.AddLabels) > 0 || len(req.RemoveLabels) > 0 {
+		labelOps := make([]map[string]string, 0)
+		for _, label := range req.AddLabels {
+			labelOps = append(labelOps, map[string]string{"add": label})
+		}
+		for _, label := range req.RemoveLabels {
+			labelOps = append(labelOps, map[string]string{"remove": label})
+		}
+		update["labels"] = labelOps
+	}
+
+	if len(fields) == 0 && len(update) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	body := make(map[string]interface{})
+	if len(fields) > 0 {
+		body["fields"] = fields
+	}
+	if len(update) > 0 {
+		body["update"] = update
+	}
+
+	resp, err := c.doRequestWithBody(ctx, "PUT", "/issue/"+issueKey, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update issue (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// Transition represents an available workflow transition
+type Transition struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	To   struct {
+		Name string `json:"name"`
+	} `json:"to"`
+}
+
+// ListTransitions returns available transitions for an issue
+func (c *Client) ListTransitions(ctx context.Context, issueKey string) ([]Transition, error) {
+	resp, err := c.doRequest(ctx, "GET", "/issue/"+issueKey+"/transitions", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to list transitions (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Transitions []Transition `json:"transitions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse transitions: %w", err)
+	}
+
+	return result.Transitions, nil
+}
+
+// TransitionIssue moves an issue to a new status
+func (c *Client) TransitionIssue(ctx context.Context, issueKey string, transitionNameOrID string) error {
+	// First, get available transitions
+	transitions, err := c.ListTransitions(ctx, issueKey)
+	if err != nil {
+		return err
+	}
+
+	// Find matching transition (by name or ID)
+	var transitionID string
+	for _, t := range transitions {
+		if strings.EqualFold(t.Name, transitionNameOrID) || t.ID == transitionNameOrID {
+			transitionID = t.ID
+			break
+		}
+	}
+
+	if transitionID == "" {
+		available := make([]string, len(transitions))
+		for i, t := range transitions {
+			available[i] = t.Name
+		}
+		return fmt.Errorf("transition %q not found, available: %v", transitionNameOrID, available)
+	}
+
+	body := map[string]interface{}{
+		"transition": map[string]string{
+			"id": transitionID,
+		},
+	}
+
+	resp, err := c.doRequestWithBody(ctx, "POST", "/issue/"+issueKey+"/transitions", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to transition issue (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// AddComment adds a comment to an issue
+func (c *Client) AddComment(ctx context.Context, issueKey string, body string) (*Comment, error) {
+	reqBody := map[string]interface{}{
+		"body": buildADF(body),
+	}
+
+	resp, err := c.doRequestWithBody(ctx, "POST", "/issue/"+issueKey+"/comment", reqBody)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to add comment (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var comment Comment
+	if err := json.NewDecoder(resp.Body).Decode(&comment); err != nil {
+		return nil, fmt.Errorf("failed to parse comment response: %w", err)
+	}
+
+	return &comment, nil
+}
+
 // DeleteIssue deletes an issue by key. If deleteSubtasks is true, subtasks are also deleted.
 func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
 	query := url.Values{}

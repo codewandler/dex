@@ -294,6 +294,191 @@ Examples:
 	},
 }
 
+var jiraUpdateCmd = &cobra.Command{
+	Use:   "update <ISSUE-KEY>",
+	Short: "Update issue fields",
+	Long: `Update fields on a Jira issue.
+
+Examples:
+  dex jira update DEV-123 --summary "New title"
+  dex jira update DEV-123 --assignee user@example.com
+  dex jira update DEV-123 --assignee ""                  # Unassign
+  dex jira update DEV-123 --priority High
+  dex jira update DEV-123 --add-label urgent
+  dex jira update DEV-123 --remove-label backlog
+  dex jira update DEV-123 --description "New description"
+  dex jira update DEV-123 --assignee me@example.com --priority High --add-label urgent`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		issueKey := args[0]
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		req := jira.UpdateIssueRequest{}
+		hasUpdates := false
+
+		if cmd.Flags().Changed("summary") {
+			v, _ := cmd.Flags().GetString("summary")
+			req.Summary = &v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("description") {
+			v, _ := cmd.Flags().GetString("description")
+			req.Description = &v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("assignee") {
+			v, _ := cmd.Flags().GetString("assignee")
+			req.Assignee = &v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("priority") {
+			v, _ := cmd.Flags().GetString("priority")
+			req.Priority = &v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("add-label") {
+			v, _ := cmd.Flags().GetStringSlice("add-label")
+			req.AddLabels = v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("remove-label") {
+			v, _ := cmd.Flags().GetStringSlice("remove-label")
+			req.RemoveLabels = v
+			hasUpdates = true
+		}
+
+		if !hasUpdates {
+			fmt.Fprintf(os.Stderr, "Error: no updates specified\n")
+			os.Exit(1)
+		}
+
+		if err := client.UpdateIssue(ctx, issueKey, req); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Updated %s\n", issueKey)
+	},
+}
+
+var jiraTransitionCmd = &cobra.Command{
+	Use:   "transition <ISSUE-KEY> [STATUS]",
+	Short: "Transition issue to a new status",
+	Long: `Move an issue through its workflow to a new status.
+
+Use --list to see available transitions for an issue.
+
+Examples:
+  dex jira transition DEV-123 --list           # Show available transitions
+  dex jira transition DEV-123 "In Progress"    # Move to In Progress
+  dex jira transition DEV-123 Done             # Move to Done
+  dex jira transition DEV-123 Review           # Move to Review`,
+	Args: cobra.RangeArgs(1, 2),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		issueKey := args[0]
+		listTransitions, _ := cmd.Flags().GetBool("list")
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// List available transitions
+		if listTransitions {
+			transitions, err := client.ListTransitions(ctx, issueKey)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			if len(transitions) == 0 {
+				fmt.Println("No transitions available")
+				return
+			}
+			fmt.Printf("Available transitions for %s:\n", issueKey)
+			for _, t := range transitions {
+				fmt.Printf("  • %s → %s\n", t.Name, t.To.Name)
+			}
+			return
+		}
+
+		// Require status argument for transition
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Error: status argument required (or use --list)\n")
+			os.Exit(1)
+		}
+
+		targetStatus := args[1]
+		if err := client.TransitionIssue(ctx, issueKey, targetStatus); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Fetch updated issue to show new status
+		issue, err := client.GetIssue(ctx, issueKey)
+		if err != nil {
+			fmt.Printf("Transitioned %s\n", issueKey)
+			return
+		}
+		fmt.Printf("Transitioned %s → %s\n", issueKey, issue.Fields.Status.Name)
+	},
+}
+
+var jiraCommentCmd = &cobra.Command{
+	Use:   "comment <ISSUE-KEY> <MESSAGE>",
+	Short: "Add a comment to an issue",
+	Long: `Add a comment to a Jira issue.
+
+The message can be provided as an argument or via --body flag for longer text.
+
+Examples:
+  dex jira comment DEV-123 "Working on this now"
+  dex jira comment DEV-123 --body "Multi-line comment
+with more details here"`,
+	Args: cobra.RangeArgs(1, 2),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		issueKey := args[0]
+		body, _ := cmd.Flags().GetString("body")
+
+		// Get body from args or flag
+		if len(args) > 1 {
+			body = args[1]
+		}
+		if body == "" {
+			fmt.Fprintf(os.Stderr, "Error: comment message required\n")
+			os.Exit(1)
+		}
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		comment, err := client.AddComment(ctx, issueKey, body)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Added comment to %s (id: %s)\n", issueKey, comment.ID)
+	},
+}
+
 var jiraCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new Jira issue",
@@ -451,6 +636,9 @@ func init() {
 	jiraCmd.AddCommand(jiraCreateCmd)
 	jiraCmd.AddCommand(jiraDeleteCmd)
 	jiraCmd.AddCommand(jiraLinkCmd)
+	jiraCmd.AddCommand(jiraUpdateCmd)
+	jiraCmd.AddCommand(jiraTransitionCmd)
+	jiraCmd.AddCommand(jiraCommentCmd)
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
@@ -474,6 +662,20 @@ func init() {
 	// Link command flags
 	jiraLinkCmd.Flags().StringP("type", "t", "Relates", "Link type (Relates, Blocks, Duplicate, etc.)")
 	jiraLinkCmd.Flags().Bool("list-types", false, "List available link types")
+
+	// Update command flags
+	jiraUpdateCmd.Flags().StringP("summary", "s", "", "New summary/title")
+	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description")
+	jiraUpdateCmd.Flags().StringP("assignee", "a", "", "New assignee (email or account ID, empty to unassign)")
+	jiraUpdateCmd.Flags().StringP("priority", "p", "", "New priority (Lowest, Low, Medium, High, Highest)")
+	jiraUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (can specify multiple)")
+	jiraUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (can specify multiple)")
+
+	// Transition command flags
+	jiraTransitionCmd.Flags().BoolP("list", "l", false, "List available transitions")
+
+	// Comment command flags
+	jiraCommentCmd.Flags().StringP("body", "b", "", "Comment body (alternative to positional argument)")
 }
 
 func truncate(s string, maxLen int) string {

@@ -102,6 +102,77 @@ dex jira link DEV-123 DEV-456 -t Blocks
 dex jira link DEV-123 DEV-456 -t Duplicate
 ```
 
+## Update Issue
+```bash
+dex jira update <ISSUE-KEY> [flags]
+```
+
+Update fields on an existing issue.
+
+### Flags
+- `-s, --summary` - New summary/title
+- `-d, --description` - New description
+- `-a, --assignee` - New assignee (email or account ID, empty string to unassign)
+- `-p, --priority` - New priority (Lowest, Low, Medium, High, Highest)
+- `--add-label` - Labels to add (can specify multiple)
+- `--remove-label` - Labels to remove (can specify multiple)
+
+### Examples
+```bash
+# Update summary
+dex jira update DEV-123 --summary "New title"
+
+# Update multiple fields
+dex jira update DEV-123 --assignee user@example.com --priority High
+
+# Manage labels
+dex jira update DEV-123 --add-label urgent --add-label critical
+dex jira update DEV-123 --remove-label backlog
+
+# Unassign an issue
+dex jira update DEV-123 --assignee ""
+```
+
+## Transition Issue
+```bash
+dex jira transition <ISSUE-KEY> [STATUS]
+dex jira transition <ISSUE-KEY> --list
+```
+
+Move an issue through its workflow to a new status.
+
+### Flags
+- `-l, --list` - List available transitions for the issue
+
+### Examples
+```bash
+# List available transitions
+dex jira transition DEV-123 --list
+
+# Transition to a new status
+dex jira transition DEV-123 "In Progress"
+dex jira transition DEV-123 Done
+dex jira transition DEV-123 Review
+```
+
+## Comment on Issue
+```bash
+dex jira comment <ISSUE-KEY> "<MESSAGE>"
+dex jira comment <ISSUE-KEY> --body "<MESSAGE>"
+```
+
+Add a comment to an issue.
+
+### Flags
+- `-b, --body` - Comment body (alternative to positional argument)
+
+### Examples
+```bash
+dex jira comment DEV-123 "Working on this now"
+dex jira comment DEV-123 --body "Multi-line comment
+with more details here"
+```
+
 ## View Issue (Full Details)
 ```bash
 dex jira view <KEY>               # View issue with description, comments, links, subtasks

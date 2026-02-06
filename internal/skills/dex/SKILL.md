@@ -65,6 +65,9 @@ dex jira my -s "In Progress"      # Filter by status
 dex jira view <KEY>               # View issue details
 dex jira search "<JQL>"           # Search with JQL
 dex jira link <KEY> <KEY> [-t type]  # Link issues together
+dex jira update <KEY> [--flags]   # Update issue fields
+dex jira transition <KEY> <status>   # Change issue status
+dex jira comment <KEY> "message"  # Add comment to issue
 ```
 
 ### Slack (`dex slack`)
