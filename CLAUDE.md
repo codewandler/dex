@@ -144,7 +144,7 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 ### Testing Slack Commands
 
-**Always use `#dex-tests` channel** for testing Slack send/reply functionality. Never send test messages to other channels to avoid disrupting co-workers.
+**Always use `#dex-releases` channel** for testing Slack send/reply functionality. Never send test messages to other channels to avoid disrupting co-workers.
 
 ### Git Workflow
 
@@ -228,7 +228,7 @@ When the user asks to "release" or "publish" the current changes:
    ```bash
    dex gh release create v0.X.Y --notes "<markdown changelog from step 5>"
    ```
-9. **Announce in `#dex-tests`**: Send a Slack message with:
+9. **Announce in `#dex-releases`**: Send a Slack message with:
    - The new version number
    - Link to the GitHub release
    - Brief summary of key changes
