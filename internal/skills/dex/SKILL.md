@@ -1,12 +1,12 @@
 ---
 name: dex
-description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, and Loki operations
+description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, and Homer operations
 user-invocable: true
 ---
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, and SQL operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, and SQL operations. Run commands via Bash tool.
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
@@ -36,6 +36,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 | Jira | `dex jira` | [references/jira.md](references/jira.md) |
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
+| Homer | `dex homer` | [references/homer.md](references/homer.md) |
 | SQL | `dex sql` | [references/sql.md](references/sql.md) |
 | Claude Code | `dex claude` | [references/claude.md](references/claude.md) |
 
@@ -117,6 +118,17 @@ dex loki labels job               # List values for label
 dex loki test                     # Test connection
 ```
 
+### Homer (`dex homer`)
+```bash
+dex homer discover                # Find Homer via K8s service discovery
+dex homer discover -n eu          # Discover in specific namespace
+dex homer search --from 1h        # Search recent SIP calls
+dex homer search --caller "+49.." # Search by caller number
+dex homer show <call-id>          # Show SIP message flow
+dex homer export <call-id>        # Export call as PCAP
+dex homer aliases                 # List IP/port aliases
+```
+
 ### SQL (`dex sql`)
 ```bash
 dex sql datasources               # List configured datasources
@@ -143,3 +155,5 @@ dex claude statusline             # Generate status line for Claude Code
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `sre/helm!2903`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)
+- Homer URL: set `HOMER_URL` env var or use `--url` flag (auto-discovers `homer-webapp` service in K8s)
+- Command aliases: `homer`=`sip`

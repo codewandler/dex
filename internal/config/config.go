@@ -38,6 +38,7 @@ type Config struct {
 	Jira       JiraConfig       `json:"jira,omitempty"`
 	Slack      SlackConfig      `json:"slack,omitempty"`
 	Loki       LokiConfig       `json:"loki,omitempty"`
+	Homer      HomerConfig      `json:"homer,omitempty"`
 	SQL        SQLConfig        `json:"sql,omitempty"`
 	StatusLine StatusLineConfig `json:"status_line,omitempty"`
 }
@@ -72,6 +73,20 @@ type SegmentConfig struct {
 // LokiConfig holds Loki-specific configuration
 type LokiConfig struct {
 	URL string `json:"url,omitempty" envconfig:"LOKI_URL"`
+}
+
+// HomerConfig holds Homer SIP tracing configuration
+type HomerConfig struct {
+	URL       string                   `json:"url,omitempty" envconfig:"HOMER_URL"`
+	Username  string                   `json:"username,omitempty" envconfig:"HOMER_USERNAME"`
+	Password  string                   `json:"password,omitempty" envconfig:"HOMER_PASSWORD"`
+	Endpoints map[string]HomerEndpoint `json:"endpoints,omitempty"`
+}
+
+// HomerEndpoint holds credentials for a specific Homer endpoint
+type HomerEndpoint struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 // GitLabConfig holds GitLab-specific configuration

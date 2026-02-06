@@ -18,7 +18,8 @@ Unified access to your engineering tools:
   - GitHub (clone via gh CLI)
   - Jira (issues, search)
   - Slack (messaging)
-  - Loki (log querying)`,
+  - Loki (log querying)
+  - Homer (SIP call tracing)`,
 }
 
 func Execute() {
