@@ -32,10 +32,10 @@ func (c *Client) resolveProjectID(pid any) (int, error) {
 			}
 		}
 
-		// Fall back to API lookup
-		project, _, err := c.gl.Projects.GetProject(gitlab.PathEscape(v), nil)
+		// Fall back to API lookup (GetProject handles PathEscape internally)
+		project, _, err := c.gl.Projects.GetProject(v, nil)
 		if err != nil {
-			return 0, fmt.Errorf("project not found: %s", v)
+			return 0, fmt.Errorf("project not found: %s: %w", v, err)
 		}
 		return project.ID, nil
 	default:
