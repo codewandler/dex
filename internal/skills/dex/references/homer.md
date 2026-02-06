@@ -83,6 +83,13 @@ dex homer export <call-id> --from 2h          # Expand time range
 
 Exports SIP messages as a PCAP file for analysis in Wireshark or similar tools.
 
+## List Configured Endpoints
+```bash
+dex homer endpoints                           # List all configured endpoints with URLs
+```
+
+Shows all Homer endpoints from `~/.dex/config.json`, including the default URL and any endpoint-specific credential overrides.
+
 ## List Aliases
 ```bash
 dex homer aliases                             # List all IP/port aliases

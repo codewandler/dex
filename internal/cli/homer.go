@@ -449,6 +449,75 @@ Examples:
 	},
 }
 
+var homerEndpointsCmd = &cobra.Command{
+	Use:   "endpoints",
+	Short: "List configured Homer endpoints",
+	Long: `List all Homer endpoints configured in ~/.dex/config.json.
+
+Shows the default URL and any endpoint-specific credential overrides.
+
+Examples:
+  dex homer endpoints`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+			os.Exit(1)
+		}
+
+		hasDefault := cfg.Homer.URL != ""
+		hasEndpoints := len(cfg.Homer.Endpoints) > 0
+
+		if !hasDefault && !hasEndpoints {
+			homerDimColor.Println("No Homer endpoints configured.")
+			homerDimColor.Println("Tip: Set HOMER_URL or configure endpoints in ~/.dex/config.json")
+			return
+		}
+
+		line := strings.Repeat("─", 80)
+		fmt.Println()
+		homerHeaderColor.Println("  Homer Endpoints")
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		if hasDefault {
+			fmt.Printf("  %-10s  %s\n", "Default:", cfg.Homer.URL)
+			creds := "custom"
+			if cfg.Homer.Username == "" {
+				creds = "default (admin)"
+			}
+			homerDimColor.Printf("  %-10s  credentials: %s\n", "", creds)
+			fmt.Println()
+		}
+
+		if hasEndpoints {
+			for url, ep := range cfg.Homer.Endpoints {
+				label := ""
+				if url == cfg.Homer.URL {
+					label = " (default)"
+				}
+				fmt.Printf("  %s%s\n", url, label)
+				creds := "custom"
+				if ep.Username == "" {
+					creds = "not set (will use global)"
+				}
+				homerDimColor.Printf("    credentials: %s\n", creds)
+			}
+			fmt.Println()
+		}
+
+		count := len(cfg.Homer.Endpoints)
+		if hasDefault {
+			// Count default if not already in endpoints map
+			if _, ok := cfg.Homer.Endpoints[cfg.Homer.URL]; !ok {
+				count++
+			}
+		}
+		homerDimColor.Printf("  %d endpoint(s) configured\n", count)
+		fmt.Println()
+	},
+}
+
 var homerAliasesCmd = &cobra.Command{
 	Use:   "aliases",
 	Short: "List configured IP/port aliases",
@@ -544,6 +613,7 @@ func init() {
 	homerCmd.AddCommand(homerSearchCmd)
 	homerCmd.AddCommand(homerShowCmd)
 	homerCmd.AddCommand(homerExportCmd)
+	homerCmd.AddCommand(homerEndpointsCmd)
 	homerCmd.AddCommand(homerAliasesCmd)
 
 	// Search flags

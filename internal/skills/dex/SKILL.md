@@ -127,6 +127,7 @@ dex homer search --caller "+49.." # Search by caller number
 dex homer show <call-id>          # Show SIP message flow
 dex homer export <call-id>        # Export call as PCAP
 dex homer aliases                 # List IP/port aliases
+dex homer endpoints               # List configured endpoints with URLs
 ```
 
 ### SQL (`dex sql`)
