@@ -97,6 +97,27 @@ var todoUpdateCmd = &cobra.Command{
 	},
 }
 
+var todoShowCmd = &cobra.Command{
+	Use:   "show <ID>",
+	Short: "Show todo details",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		store, err := todo.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		t := store.FindTodo(args[0])
+		if t == nil {
+			fmt.Fprintf(os.Stderr, "Error: todo %s not found\n", args[0])
+			os.Exit(1)
+		}
+
+		printTodoDetail(t)
+	},
+}
+
 var todoLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List todos",
@@ -197,6 +218,56 @@ var todoRefDelCmd = &cobra.Command{
 	},
 }
 
+func printTodoDetail(t *models.Todo) {
+	stateColors := map[models.TodoState]*color.Color{
+		models.TodoStatePending:    color.New(color.FgYellow),
+		models.TodoStateInProgress: color.New(color.FgBlue),
+		models.TodoStateOnHold:     color.New(color.FgRed),
+		models.TodoStateDone:       color.New(color.FgGreen),
+	}
+
+	labelColor := color.New(color.FgCyan)
+	dimColor := color.New(color.FgHiBlack)
+
+	fmt.Println()
+	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("  %s\n", t.Title)
+	fmt.Println(strings.Repeat("─", 60))
+	fmt.Println()
+
+	labelColor.Printf("  %-14s ", "ID:")
+	fmt.Println(t.ID)
+
+	labelColor.Printf("  %-14s ", "State:")
+	c := stateColors[t.State]
+	if c == nil {
+		c = color.New(color.FgWhite)
+	}
+	c.Println(string(t.State))
+
+	if t.Description != "" {
+		labelColor.Printf("  %-14s ", "Description:")
+		fmt.Println(t.Description)
+	}
+
+	labelColor.Printf("  %-14s ", "Created:")
+	dimColor.Println(t.CreatedAt.Format("2006-01-02 15:04"))
+
+	labelColor.Printf("  %-14s ", "Updated:")
+	dimColor.Println(t.UpdatedAt.Format("2006-01-02 15:04"))
+
+	if len(t.References) > 0 {
+		fmt.Println()
+		labelColor.Printf("  References (%d):\n", len(t.References))
+		for _, ref := range t.References {
+			dimColor.Printf("    [%s] ", ref.ID)
+			fmt.Printf("%s: %s\n", ref.Type, ref.Value)
+		}
+	}
+
+	fmt.Println()
+}
+
 func printTodoList(todos []models.Todo) {
 	stateColors := map[models.TodoState]*color.Color{
 		models.TodoStatePending:    color.New(color.FgYellow),
@@ -238,6 +309,7 @@ func printTodoList(todos []models.Todo) {
 
 func init() {
 	todoCmd.AddCommand(todoAddCmd)
+	todoCmd.AddCommand(todoShowCmd)
 	todoCmd.AddCommand(todoUpdateCmd)
 	todoCmd.AddCommand(todoLsCmd)
 	todoCmd.AddCommand(todoRefCmd)
