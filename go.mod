@@ -4,7 +4,9 @@ go 1.25.6
 
 require (
 	github.com/charmbracelet/glamour v0.10.0
+	github.com/codewandler/md2adf v0.1.1
 	github.com/fatih/color v1.16.0
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/slack-go/slack v0.17.3
 	github.com/spf13/cobra v1.10.2
@@ -26,7 +28,6 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
-	github.com/codewandler/md2adf v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
@@ -35,7 +36,6 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
