@@ -26,7 +26,7 @@ dex jira create -p <project> -t <type> -s "<summary>" [options]
 - `-s, --summary` - Issue summary/title
 
 ### Optional Flags
-- `-d, --description` - Issue description (plain text)
+- `-d, --description` - Issue description (markdown, auto-converted to Jira format)
 - `-l, --labels` - Comma-separated labels
 - `-a, --assignee` - Assignee (email or account ID)
 - `--priority` - Priority (Lowest, Low, Medium, High, Highest)
@@ -37,8 +37,8 @@ dex jira create -p <project> -t <type> -s "<summary>" [options]
 # Basic task
 dex jira create -p DEV -t Task -s "Update API documentation"
 
-# Bug with description
-dex jira create -p DEV -t Bug -s "Login fails" -d "Users report 500 error on login"
+# Bug with markdown description
+dex jira create -p DEV -t Bug -s "Login fails" -d "Users report **500 error** on login. See [logs](https://example.com)."
 
 # Story with labels
 dex jira create -p TEL -t Story -s "Add dark mode" -l ui,enhancement
@@ -111,7 +111,7 @@ Update fields on an existing issue.
 
 ### Flags
 - `-s, --summary` - New summary/title
-- `-d, --description` - New description
+- `-d, --description` - New description (markdown, auto-converted to Jira format)
 - `-a, --assignee` - New assignee (email or account ID, empty string to unassign)
 - `-p, --priority` - New priority (Lowest, Low, Medium, High, Highest)
 - `--add-label` - Labels to add (can specify multiple)
@@ -161,16 +161,20 @@ dex jira comment <ISSUE-KEY> "<MESSAGE>"
 dex jira comment <ISSUE-KEY> --body "<MESSAGE>"
 ```
 
-Add a comment to an issue.
+Add a comment to an issue. Comments support markdown formatting (headings, lists, code blocks, links, etc.) which is automatically converted to Jira's format. Issue keys like DEV-123 in the text are auto-linked.
 
 ### Flags
-- `-b, --body` - Comment body (alternative to positional argument)
+- `-b, --body` - Comment body in markdown (alternative to positional argument)
 
 ### Examples
 ```bash
 dex jira comment DEV-123 "Working on this now"
-dex jira comment DEV-123 --body "Multi-line comment
-with more details here"
+dex jira comment DEV-123 --body "## Status Update
+
+- Fixed the auth bug
+- Still need to add tests
+
+See DEV-456 for context"
 ```
 
 ## Delete Comment

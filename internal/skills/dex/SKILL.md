@@ -72,7 +72,7 @@ dex jira search "<JQL>"           # Search with JQL
 dex jira link <KEY> <KEY> [-t type]  # Link issues together
 dex jira update <KEY> [--flags]   # Update issue fields
 dex jira transition <KEY> <status>   # Change issue status
-dex jira comment <KEY> "message"  # Add comment to issue
+dex jira comment <KEY> "message"  # Add comment (supports markdown)
 dex jira comment-delete <KEY> <ID>  # Delete a comment
 ```
 

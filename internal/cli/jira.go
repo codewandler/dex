@@ -441,11 +441,17 @@ var jiraCommentCmd = &cobra.Command{
 	Long: `Add a comment to a Jira issue.
 
 The message can be provided as an argument or via --body flag for longer text.
+Supports markdown formatting (headings, lists, code blocks, links, etc.)
+which is automatically converted to Jira's format.
 
 Examples:
   dex jira comment DEV-123 "Working on this now"
-  dex jira comment DEV-123 --body "Multi-line comment
-with more details here"`,
+  dex jira comment DEV-123 --body "## Status Update
+
+- Fixed the auth bug
+- Still need to add tests
+
+See DEV-456 for context"`,
 	Args: cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -513,6 +519,10 @@ var jiraCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new Jira issue",
 	Long: `Create a new Jira issue with specified fields.
+
+Descriptions support markdown formatting (headings, lists, code blocks, links, etc.)
+which is automatically converted to Jira's format. Issue keys like DEV-123 in the
+description are auto-linked.
 
 Examples:
   dex jira create -p DEV -t Task -s "Update API documentation"
@@ -681,7 +691,7 @@ func init() {
 	jiraCreateCmd.Flags().StringP("project", "p", "", "Project key (e.g., DEV, TEL)")
 	jiraCreateCmd.Flags().StringP("type", "t", "", "Issue type (Task, Bug, Story, Sub-task)")
 	jiraCreateCmd.Flags().StringP("summary", "s", "", "Issue summary/title")
-	jiraCreateCmd.Flags().StringP("description", "d", "", "Issue description (plain text)")
+	jiraCreateCmd.Flags().StringP("description", "d", "", "Issue description (markdown)")
 	jiraCreateCmd.Flags().StringP("labels", "l", "", "Comma-separated labels")
 	jiraCreateCmd.Flags().StringP("assignee", "a", "", "Assignee (email or account ID)")
 	jiraCreateCmd.Flags().String("priority", "", "Priority (Lowest, Low, Medium, High, Highest)")
@@ -696,7 +706,7 @@ func init() {
 
 	// Update command flags
 	jiraUpdateCmd.Flags().StringP("summary", "s", "", "New summary/title")
-	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description")
+	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description (markdown)")
 	jiraUpdateCmd.Flags().StringP("assignee", "a", "", "New assignee (email or account ID, empty to unassign)")
 	jiraUpdateCmd.Flags().StringP("priority", "p", "", "New priority (Lowest, Low, Medium, High, Highest)")
 	jiraUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (can specify multiple)")
@@ -706,7 +716,7 @@ func init() {
 	jiraTransitionCmd.Flags().BoolP("list", "l", false, "List available transitions")
 
 	// Comment command flags
-	jiraCommentCmd.Flags().StringP("body", "b", "", "Comment body (alternative to positional argument)")
+	jiraCommentCmd.Flags().StringP("body", "b", "", "Comment body in markdown (alternative to positional argument)")
 }
 
 func truncate(s string, maxLen int) string {
