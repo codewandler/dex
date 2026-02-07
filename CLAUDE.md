@@ -142,9 +142,11 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 ## Development
 
-### Testing Slack Commands
+### Slack Usage
 
 **Always use `#dex-releases` channel** for testing Slack send/reply functionality. Never send test messages to other channels to avoid disrupting co-workers.
+
+**Always @mention people by name** when the user asks to inform or notify someone. Look up their Slack handle (e.g., `@john.doe`) and include it in the message so they get a notification. Never post about someone without tagging them when the intent is to let them know.
 
 ### Git Workflow
 
