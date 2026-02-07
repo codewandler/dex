@@ -29,7 +29,7 @@ var skillInstallCmd = &cobra.Command{
 	Long: `Install a skill from skills.sh to your local or global Claude skills directory.
 
 By default, skills are installed to ./.claude/skills/ (local project).
-Use --global to install to ~/.claude/skills/ instead.
+Use --global to install to $CLAUDE_CONFIG_DIR/skills/ (or ~/.claude/skills/) instead.
 
 Examples:
   dex skill install kubernetes-specialist
@@ -61,11 +61,11 @@ Examples:
 		// Determine target directory
 		var targetDir string
 		if skillInstallGlobal {
-			homeDir, err := os.UserHomeDir()
+			configDir, err := claudeConfigDir()
 			if err != nil {
-				return fmt.Errorf("failed to get home directory: %w", err)
+				return err
 			}
-			targetDir = filepath.Join(homeDir, ".claude", "skills")
+			targetDir = filepath.Join(configDir, "skills")
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -129,7 +129,19 @@ func skillNameCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
-// RunDexInstall installs the dex skill files to ~/.claude/skills/dex/
+// claudeConfigDir returns the Claude config directory, respecting CLAUDE_CONFIG_DIR.
+func claudeConfigDir() (string, error) {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".claude"), nil
+}
+
+// RunDexInstall installs the dex skill files to the Claude skills directory.
 // Returns the number of files installed and any error.
 func RunDexInstall() (int, error) {
 	skillFS, err := skills.DexSkillFS()
@@ -137,12 +149,12 @@ func RunDexInstall() (int, error) {
 		return 0, fmt.Errorf("failed to get embedded skill filesystem: %w", err)
 	}
 
-	homeDir, err := os.UserHomeDir()
+	configDir, err := claudeConfigDir()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get home directory: %w", err)
+		return 0, err
 	}
 
-	skillDir := filepath.Join(homeDir, ".claude", "skills", "dex")
+	skillDir := filepath.Join(configDir, "skills", "dex")
 
 	// Walk and install all files from embedded FS
 	var installed int
@@ -183,15 +195,15 @@ func RunDexInstall() (int, error) {
 
 var dexInstallCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install the dex skill to ~/.claude/skills/dex/",
+	Short: "Install the dex skill to the Claude skills directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		installed, err := RunDexInstall()
 		if err != nil {
 			return err
 		}
 
-		homeDir, _ := os.UserHomeDir()
-		skillDir := filepath.Join(homeDir, ".claude", "skills", "dex")
+		configDir, _ := claudeConfigDir()
+		skillDir := filepath.Join(configDir, "skills", "dex")
 		fmt.Printf("Installed %d files to %s\n", installed, skillDir)
 		return nil
 	},
@@ -261,7 +273,7 @@ var skillSearchCmd = &cobra.Command{
 func init() {
 	skillSearchCmd.Flags().IntVarP(&skillSearchLimit, "limit", "n", 10, "Maximum number of results")
 
-	skillInstallCmd.Flags().BoolVarP(&skillInstallGlobal, "global", "g", false, "Install to ~/.claude/skills/ instead of ./.claude/skills/")
+	skillInstallCmd.Flags().BoolVarP(&skillInstallGlobal, "global", "g", false, "Install to $CLAUDE_CONFIG_DIR/skills/ instead of ./.claude/skills/")
 	skillInstallCmd.Flags().StringVarP(&skillInstallSource, "source", "s", "", "GitHub source (owner/repo) to install from")
 
 	skillCmd.AddCommand(skillInstallCmd)
