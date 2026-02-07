@@ -219,3 +219,20 @@ func waitForPort(port int, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timeout waiting for %s", addr)
 }
+
+// FindByNamespaceAndPod finds an active port-forward for the given namespace and pod.
+// Returns the info and true if found and running, or nil and false otherwise.
+func FindByNamespaceAndPod(namespace, pod string) (*Info, bool) {
+	forwards, err := List()
+	if err != nil {
+		return nil, false
+	}
+
+	for _, info := range forwards {
+		if info.Namespace == namespace && info.Pod == pod {
+			return info, true
+		}
+	}
+
+	return nil, false
+}

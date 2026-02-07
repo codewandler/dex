@@ -11,6 +11,7 @@ import (
 	"github.com/codewandler/dex/internal/config"
 	"github.com/codewandler/dex/internal/k8s"
 	"github.com/codewandler/dex/internal/loki"
+	"github.com/codewandler/dex/internal/portforward"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -127,7 +128,22 @@ func discoverLokiURL() (string, error) {
 		return "", fmt.Errorf("no Loki pods found in namespaces: %s", strings.Join(searchNamespaces, ", "))
 	}
 
-	// Test each candidate with a short-timeout probe client
+	// For each candidate, check if there's an existing port-forward first
+	for _, c := range candidates {
+		if info, exists := portforward.FindByNamespaceAndPod(c.namespace, c.name); exists {
+			// Test the port-forwarded endpoint
+			localURL := fmt.Sprintf("http://localhost:%d", info.LocalPort)
+			probeClient, err := loki.NewProbeClient(localURL)
+			if err == nil {
+				_, err = probeClient.Labels("")
+				if err == nil {
+					return localURL, nil
+				}
+			}
+		}
+	}
+
+	// No working port-forward found, test Pod IPs with a short-timeout probe client
 	for _, c := range candidates {
 		probeClient, err := loki.NewProbeClient(c.url)
 		if err != nil {
@@ -513,6 +529,30 @@ Examples:
 
 		var working []candidate
 		for _, c := range candidates {
+			// First check if there's an existing port-forward
+			if info, exists := portforward.FindByNamespaceAndPod(c.namespace, c.name); exists {
+				localURL := fmt.Sprintf("http://localhost:%d", info.LocalPort)
+				lokiTimeColor.Printf("  %s/%s (port-forward: localhost:%d) ", c.namespace, c.name, info.LocalPort)
+
+				probeClient, err := loki.NewProbeClient(localURL)
+				if err == nil {
+					_, err = probeClient.Labels("")
+					if err == nil {
+						lokiSuccessColor.Printf("✓ connected\n")
+						working = append(working, candidate{
+							url:       localURL,
+							namespace: c.namespace,
+							name:      c.name,
+							podIP:     fmt.Sprintf("localhost:%d", info.LocalPort),
+						})
+						continue
+					}
+				}
+				lokiErrorColor.Printf("✗ port-forward exists but not reachable\n")
+				continue
+			}
+
+			// No port-forward, try Pod IP
 			lokiTimeColor.Printf("  %s/%s (%s) ", c.namespace, c.name, c.podIP)
 
 			probeClient, err := loki.NewProbeClient(c.url)
