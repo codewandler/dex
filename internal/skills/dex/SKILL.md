@@ -49,6 +49,10 @@ dex k8s ns ls                     # List namespaces
 dex k8s pod ls [-A] [-n ns]       # List pods
 dex k8s pod logs <name> [-f]      # Stream pod logs
 dex k8s svc ls                    # List services
+dex k8s forward ls                # List active port-forwards
+dex k8s forward start <query>               # Smart discovery: auto-detect pod, port, namespace
+dex k8s forward start <pod> <port> -n <ns>  # Explicit: start detached port-forward
+dex k8s forward stop <name>       # Stop a port-forward
 ```
 
 ### GitLab (`dex gl`)

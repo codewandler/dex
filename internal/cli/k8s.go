@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/codewandler/dex/internal/k8s"
+	"github.com/codewandler/dex/internal/portforward"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -919,6 +920,362 @@ func truncateK8s(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
+// Forward commands
+var k8sForwardCmd = &cobra.Command{
+	Use:     "forward",
+	Aliases: []string{"fwd", "portforward", "pf"},
+	Short:   "Manage port-forwards",
+}
+
+var k8sForwardStartCmd = &cobra.Command{
+	Use:   "start <query> [[localPort:]remotePort]",
+	Short: "Start a detached port-forward",
+	Long: `Start a kubectl port-forward in the background.
+
+With just a query, auto-discovers the pod/service, port, and namespace:
+  dex k8s forward start loki
+
+Searches pods first (all namespaces), then services. Picks the first match,
+determines the remote port from the container/service spec, and finds a free
+local port starting at the remote port.
+
+With explicit port spec, works like kubectl:
+  dex k8s forward start loki-0 3100 -n monitoring
+  dex k8s forward start loki-0 8080:3100 -n monitoring --name loki`,
+	Args:              cobra.RangeArgs(1, 2),
+	ValidArgsFunction: completePodNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace, _ := cmd.Flags().GetString("namespace")
+		name, _ := cmd.Flags().GetString("name")
+		query := args[0]
+
+		var pod string
+		var localPort, remotePort int
+
+		if len(args) == 2 {
+			// Explicit mode: <pod> <portSpec> -n <ns>
+			pod = query
+			portSpec := args[1]
+
+			if namespace == "" {
+				fmt.Fprintf(os.Stderr, "Error: namespace is required (-n)\n")
+				os.Exit(1)
+			}
+
+			var err error
+			localPort, remotePort, err = parsePortSpec(portSpec)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// Discovery mode: <query>
+			discovered, err := discoverForwardTarget(query, namespace)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			pod = discovered.pod
+			namespace = discovered.namespace
+			remotePort = discovered.remotePort
+
+			localPort = portforward.FreePort(remotePort)
+			if localPort != remotePort {
+				fmt.Printf("Resolved: pod %s in %s, port %d (local: %d, %d in use)\n",
+					pod, namespace, remotePort, localPort, remotePort)
+			} else {
+				fmt.Printf("Resolved: pod %s in %s, port %d\n", pod, namespace, remotePort)
+			}
+		}
+
+		if name == "" {
+			name = query
+		}
+
+		fmt.Printf("Starting port-forward %s (%s/%s %d:%d)...\n", name, namespace, pod, localPort, remotePort)
+		info, err := portforward.Start(name, namespace, pod, localPort, remotePort)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		k8sStatusColor.Printf("Port-forward %s running (PID %d)\n", info.Name, info.PID)
+		fmt.Printf("  localhost:%d → %s:%d\n", info.LocalPort, info.Pod, info.RemotePort)
+	},
+}
+
+type discoveredTarget struct {
+	pod        string
+	namespace  string
+	remotePort int
+}
+
+func discoverForwardTarget(query, namespace string) (*discoveredTarget, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Search pods — if namespace given, search there; otherwise all namespaces
+	client, err := k8s.NewClient(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	allNamespaces := namespace == ""
+	pods, err := client.ListPods(ctx, allNamespaces)
+	if err != nil {
+		return nil, fmt.Errorf("listing pods: %w", err)
+	}
+
+	queryLower := strings.ToLower(query)
+	for _, pod := range pods {
+		if !strings.Contains(strings.ToLower(pod.Name), queryLower) {
+			continue
+		}
+		if pod.Status.Phase != "Running" {
+			continue
+		}
+		// Found a matching pod — extract first container port
+		remotePort := 0
+		for _, c := range pod.Spec.Containers {
+			if len(c.Ports) > 0 {
+				remotePort = int(c.Ports[0].ContainerPort)
+				break
+			}
+		}
+		if remotePort == 0 {
+			return nil, fmt.Errorf("pod %s has no container ports", pod.Name)
+		}
+		return &discoveredTarget{
+			pod:        pod.Name,
+			namespace:  pod.Namespace,
+			remotePort: remotePort,
+		}, nil
+	}
+
+	// No pod found — search services
+	services, err := client.ListServices(ctx, allNamespaces)
+	if err != nil {
+		return nil, fmt.Errorf("listing services: %w", err)
+	}
+
+	for _, svc := range services {
+		if !strings.Contains(strings.ToLower(svc.Name), queryLower) {
+			continue
+		}
+		if len(svc.Spec.Ports) == 0 {
+			continue
+		}
+
+		remotePort := int(svc.Spec.Ports[0].Port)
+
+		// Find a pod backing this service via its selector
+		if len(svc.Spec.Selector) == 0 {
+			return nil, fmt.Errorf("service %s has no selector", svc.Name)
+		}
+
+		var labelParts []string
+		for k, v := range svc.Spec.Selector {
+			labelParts = append(labelParts, fmt.Sprintf("%s=%s", k, v))
+		}
+		labelSelector := strings.Join(labelParts, ",")
+
+		backingPods, err := client.FindPodsAllNamespaces(ctx, labelSelector)
+		if err != nil {
+			return nil, fmt.Errorf("finding pods for service %s: %w", svc.Name, err)
+		}
+
+		// Pick first running pod
+		for _, pod := range backingPods {
+			if pod.Status.Phase != "Running" {
+				continue
+			}
+			return &discoveredTarget{
+				pod:        pod.Name,
+				namespace:  pod.Namespace,
+				remotePort: remotePort,
+			}, nil
+		}
+
+		return nil, fmt.Errorf("service %s has no running pods", svc.Name)
+	}
+
+	return nil, fmt.Errorf("no pod or service matching %q found", query)
+}
+
+var k8sForwardStopCmd = &cobra.Command{
+	Use:   "stop <name>",
+	Short: "Stop a running port-forward",
+	Long: `Stop a port-forward by its name and remove its PID file.
+
+Examples:
+  dex k8s forward stop loki`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeForwardNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		name := args[0]
+
+		if err := portforward.Stop(name); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Stopped port-forward %s\n", name)
+	},
+}
+
+var k8sForwardStatusCmd = &cobra.Command{
+	Use:   "status [name]",
+	Short: "Show running port-forwards",
+	Long: `Show all running port-forwards, or details about a specific one.
+
+Examples:
+  dex k8s forward status
+  dex k8s forward status loki`,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeForwardNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 1 {
+			info, running := portforward.IsRunning(args[0])
+			if !running {
+				fmt.Printf("No active port-forward named %q\n", args[0])
+				return
+			}
+			printForwardInfo(info)
+			return
+		}
+
+		forwards, err := portforward.List()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(forwards) == 0 {
+			k8sDimColor.Println("No active port-forwards.")
+			return
+		}
+
+		line := strings.Repeat("─", 90)
+		fmt.Println()
+		k8sHeaderColor.Printf("  Port-Forwards (%d)\n", len(forwards))
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		fmt.Printf("  %-15s %-20s %-15s %-18s %-8s %s\n", "NAME", "POD", "NAMESPACE", "PORTS", "PID", "AGE")
+		fmt.Printf("  %s\n", strings.Repeat("─", 85))
+
+		for _, f := range forwards {
+			ports := fmt.Sprintf("%d:%d", f.LocalPort, f.RemotePort)
+			k8sNameColor.Printf("  %-15s ", truncateK8s(f.Name, 15))
+			fmt.Printf("%-20s ", truncateK8s(f.Pod, 20))
+			k8sDimColor.Printf("%-15s ", truncateK8s(f.Namespace, 15))
+			fmt.Printf("%-18s ", ports)
+			k8sDimColor.Printf("%-8d ", f.PID)
+			k8sDimColor.Printf("%s\n", formatAge(f.StartedAt))
+		}
+		fmt.Println()
+	},
+}
+
+var k8sForwardLsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "List running port-forwards",
+	Long: `List all active port-forwards.
+
+Examples:
+  dex k8s forward ls
+  dex k8s portforward ls`,
+	Run: func(cmd *cobra.Command, args []string) {
+		forwards, err := portforward.List()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(forwards) == 0 {
+			k8sDimColor.Println("No active port-forwards.")
+			return
+		}
+
+		line := strings.Repeat("─", 90)
+		fmt.Println()
+		k8sHeaderColor.Printf("  Port-Forwards (%d)\n", len(forwards))
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		fmt.Printf("  %-15s %-20s %-15s %-18s %-8s %s\n", "NAME", "POD", "NAMESPACE", "PORTS", "PID", "AGE")
+		fmt.Printf("  %s\n", strings.Repeat("─", 85))
+
+		for _, f := range forwards {
+			ports := fmt.Sprintf("%d:%d", f.LocalPort, f.RemotePort)
+			k8sNameColor.Printf("  %-15s ", truncateK8s(f.Name, 15))
+			fmt.Printf("%-20s ", truncateK8s(f.Pod, 20))
+			k8sDimColor.Printf("%-15s ", truncateK8s(f.Namespace, 15))
+			fmt.Printf("%-18s ", ports)
+			k8sDimColor.Printf("%-8d ", f.PID)
+			k8sDimColor.Printf("%s\n", formatAge(f.StartedAt))
+		}
+		fmt.Println()
+	},
+}
+
+func printForwardInfo(info *portforward.Info) {
+	line := strings.Repeat("─", 50)
+	fmt.Println()
+	k8sHeaderColor.Printf("  Port-Forward: %s\n", info.Name)
+	fmt.Println("  " + line)
+	fmt.Println()
+	printK8sField("Pod", info.Pod)
+	printK8sField("Namespace", info.Namespace)
+	printK8sField("Local Port", strconv.Itoa(info.LocalPort))
+	printK8sField("Remote Port", strconv.Itoa(info.RemotePort))
+	printK8sField("PID", strconv.Itoa(info.PID))
+	printK8sField("Age", formatAge(info.StartedAt))
+	fmt.Println()
+}
+
+func parsePortSpec(spec string) (local, remote int, err error) {
+	parts := strings.SplitN(spec, ":", 2)
+	if len(parts) == 1 {
+		port, err := strconv.Atoi(parts[0])
+		if err != nil || port <= 0 || port > 65535 {
+			return 0, 0, fmt.Errorf("invalid port: %s", spec)
+		}
+		return port, port, nil
+	}
+	local64, err := strconv.Atoi(parts[0])
+	if err != nil || local64 <= 0 || local64 > 65535 {
+		return 0, 0, fmt.Errorf("invalid local port: %s", parts[0])
+	}
+	remote64, err := strconv.Atoi(parts[1])
+	if err != nil || remote64 <= 0 || remote64 > 65535 {
+		return 0, 0, fmt.Errorf("invalid remote port: %s", parts[1])
+	}
+	return local64, remote64, nil
+}
+
+func completeForwardNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	forwards, err := portforward.List()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+	for _, f := range forwards {
+		if strings.Contains(strings.ToLower(f.Name), toCompleteLower) {
+			desc := fmt.Sprintf("%s/%s %d:%d", f.Namespace, f.Pod, f.LocalPort, f.RemotePort)
+			completions = append(completions, f.Name+"\t"+desc)
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 func init() {
 	// Add k8s command to root
 	rootCmd.AddCommand(k8sCmd)
@@ -956,4 +1313,13 @@ func init() {
 	k8sSvcLsCmd.Flags().StringP("namespace", "n", "", "Namespace to list services from")
 	k8sSvcLsCmd.Flags().BoolP("all-namespaces", "A", false, "List services from all namespaces")
 	k8sSvcShowCmd.Flags().StringP("namespace", "n", "", "Namespace of the service")
+
+	// Forward commands
+	k8sCmd.AddCommand(k8sForwardCmd)
+	k8sForwardCmd.AddCommand(k8sForwardLsCmd)
+	k8sForwardCmd.AddCommand(k8sForwardStartCmd)
+	k8sForwardCmd.AddCommand(k8sForwardStopCmd)
+	k8sForwardCmd.AddCommand(k8sForwardStatusCmd)
+	k8sForwardStartCmd.Flags().StringP("namespace", "n", "", "Namespace (required for explicit mode, auto-detected in discovery mode)")
+	k8sForwardStartCmd.Flags().String("name", "", "Label for the forward (defaults to pod name)")
 }
