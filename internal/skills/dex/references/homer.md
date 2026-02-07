@@ -4,48 +4,36 @@ SIP call tracing via Homer 7.x. Search and inspect SIP traffic, view message flo
 
 Alias: `dex sip`
 
+## Configuration & Credentials
+
+Pass the Homer URL via `--url` on any command. Credentials are resolved automatically from `~/.dex/config.json` by matching the URL against configured endpoints:
+
+```json
+{
+  "homer": {
+    "endpoints": {
+      "http://homer-webapp.eu.svc.cluster.local:80": {
+        "username": "admin",
+        "password": "secret"
+      }
+    }
+  }
+}
+```
+
+**If the Homer URL is already known** (e.g., from prior context or conversation), just use `--url` directly — the CLI matches it against configured endpoints to retrieve credentials. No discover step needed.
+
+**Credential resolution order:** endpoint-specific config → `HOMER_USERNAME`/`HOMER_PASSWORD` env vars → global `homer.username`/`homer.password` in config → default `admin`/`admin`.
+
+**Auto-discovery fallback:** If no URL is provided via `--url`, config, or env var, commands automatically attempt K8s service discovery for `homer-webapp`.
+
 ## Discover Homer in Kubernetes
 ```bash
 dex homer discover                # Find homer-webapp in current namespace
 dex homer discover -n eu          # Search in specific namespace
 ```
 
-Looks for service `homer-webapp` in the specified namespace (or current K8s namespace), tests connectivity, and verifies authentication.
-
-## Configuration
-
-Set `HOMER_URL` environment variable or add to `~/.dex/config.json`:
-```json
-{
-  "homer": {
-    "url": "http://homer-webapp.eu.svc.cluster.local:80"
-  }
-}
-```
-
-Alternatively, use the `--url` flag on any command.
-
-**Auto-discovery:** If no URL is configured, commands will automatically look for service `homer-webapp` in the current K8s namespace.
-
-### Credentials
-
-Credentials are resolved in this order:
-1. **Endpoint-specific config** in `~/.dex/config.json`:
-   ```json
-   {
-     "homer": {
-       "endpoints": {
-         "http://homer-webapp.eu.svc.cluster.local:80": {
-           "username": "admin",
-           "password": "secret"
-         }
-       }
-     }
-   }
-   ```
-2. **Environment variables:** `HOMER_USERNAME` / `HOMER_PASSWORD`
-3. **Global config:** `homer.username` / `homer.password` in config file
-4. **Default:** `admin` / `admin` (Homer default)
+Diagnostic command that tests connectivity and authentication. Only needed for troubleshooting — not a prerequisite for other commands.
 
 ## Search Calls
 ```bash
@@ -234,5 +222,5 @@ These flags are available on all Homer subcommands:
 - Default time range is 24 hours (`--since 24h`) for search/calls, 10 days for show/export/analyze
 - Time values support durations (`30m`, `1h`, `2h30m`, `1d`, `7d`) and absolute timestamps (`2006-01-02 15:04`)
 - Use `--at` for quick lookups around a known time
-- Use `dex homer discover` to verify connectivity before searching
+- Use `dex homer discover` only to troubleshoot connectivity — not needed before normal commands
 - PCAP files can be opened directly in Wireshark
