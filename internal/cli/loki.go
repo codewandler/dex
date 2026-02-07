@@ -67,18 +67,23 @@ func discoverLokiURL() (string, error) {
 		podIP     string
 	}
 	var candidates []candidate
+	var lastErr error
+	searched := 0
 
 	// Search for Loki pods by name pattern in each namespace
 	for _, ns := range searchNamespaces {
 		nsClient, err := k8s.NewClient(ns)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 
 		pods, err := nsClient.ListPods(ctx, false)
 		if err != nil {
+			lastErr = err
 			continue
 		}
+		searched++
 
 		for _, pod := range pods {
 			nameLower := strings.ToLower(pod.Name)
@@ -116,6 +121,9 @@ func discoverLokiURL() (string, error) {
 	}
 
 	if len(candidates) == 0 {
+		if searched == 0 && lastErr != nil {
+			return "", fmt.Errorf("failed to list pods in any namespace: %w", lastErr)
+		}
 		return "", fmt.Errorf("no Loki pods found in namespaces: %s", strings.Join(searchNamespaces, ", "))
 	}
 
@@ -433,18 +441,23 @@ Examples:
 			podIP     string
 		}
 		var candidates []candidate
+		var lastErr error
+		searched := 0
 
 		// Search for Loki pods by name pattern in each namespace
 		for _, ns := range searchNamespaces {
 			nsClient, err := k8s.NewClient(ns)
 			if err != nil {
+				lastErr = err
 				continue
 			}
 
 			pods, err := nsClient.ListPods(ctx, false)
 			if err != nil {
+				lastErr = err
 				continue
 			}
+			searched++
 
 			for _, pod := range pods {
 				nameLower := strings.ToLower(pod.Name)
@@ -482,6 +495,11 @@ Examples:
 		}
 
 		if len(candidates) == 0 {
+			if searched == 0 && lastErr != nil {
+				fmt.Fprintf(os.Stderr, "Failed to connect to Kubernetes API: %v\n", lastErr)
+				fmt.Fprintf(os.Stderr, "Tip: Check VPN connection and cluster access\n")
+				os.Exit(1)
+			}
 			fmt.Fprintf(os.Stderr, "No Loki pods found in cluster.\n")
 			fmt.Fprintf(os.Stderr, "Searched namespaces: %s\n", strings.Join(searchNamespaces, ", "))
 			os.Exit(1)
