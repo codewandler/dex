@@ -49,6 +49,18 @@ func NewClient(baseURL string) (*Client, error) {
 	}, nil
 }
 
+// NewProbeClient creates a Loki client with a short timeout for connectivity checks
+func NewProbeClient(baseURL string) (*Client, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	return &Client{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 3 * time.Second,
+		},
+	}, nil
+}
+
 // Query executes a LogQL query and returns log entries
 func (c *Client) Query(query string, since time.Duration, limit int) ([]QueryResult, error) {
 	end := time.Now()

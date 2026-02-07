@@ -127,15 +127,15 @@ func discoverLokiURL() (string, error) {
 		return "", fmt.Errorf("no Loki pods found in namespaces: %s", strings.Join(searchNamespaces, ", "))
 	}
 
-	// Test each candidate and return the first working one
+	// Test each candidate with a short-timeout probe client
 	for _, c := range candidates {
-		lokiClient, err := loki.NewClient(c.url)
+		probeClient, err := loki.NewProbeClient(c.url)
 		if err != nil {
 			continue
 		}
 
 		// Try to get labels as a connectivity test
-		_, err = lokiClient.Labels("")
+		_, err = probeClient.Labels("")
 		if err != nil {
 			continue
 		}
@@ -143,7 +143,10 @@ func discoverLokiURL() (string, error) {
 		return c.url, nil
 	}
 
-	return "", fmt.Errorf("found %d Loki pod(s) but none are reachable", len(candidates))
+	// Suggest port-forwarding with the first candidate's details
+	c := candidates[0]
+	return "", fmt.Errorf("found %d Loki pod(s) but none are reachable via Pod IP\n\nTip: Use port-forwarding instead:\n  dex k8s forward start %s -n %s\n  Then set LOKI_URL to the local endpoint shown in the output",
+		len(candidates), c.name, c.namespace)
 }
 
 var lokiCmd = &cobra.Command{
@@ -512,14 +515,14 @@ Examples:
 		for _, c := range candidates {
 			lokiTimeColor.Printf("  %s/%s (%s) ", c.namespace, c.name, c.podIP)
 
-			lokiClient, err := loki.NewClient(c.url)
+			probeClient, err := loki.NewProbeClient(c.url)
 			if err != nil {
 				lokiErrorColor.Printf("✗ failed to create client\n")
 				continue
 			}
 
 			// Try to get labels as a connectivity test
-			_, err = lokiClient.Labels("")
+			_, err = probeClient.Labels("")
 			if err != nil {
 				lokiErrorColor.Printf("✗ %v\n", err)
 				continue
@@ -532,8 +535,11 @@ Examples:
 		fmt.Println()
 
 		if len(working) == 0 {
-			fmt.Fprintf(os.Stderr, "No reachable Loki instances found.\n")
-			fmt.Fprintf(os.Stderr, "Tip: Make sure you have VPN access to the cluster network\n")
+			fmt.Fprintf(os.Stderr, "No reachable Loki instances found.\n\n")
+			c := candidates[0]
+			fmt.Fprintf(os.Stderr, "Tip: Use port-forwarding instead:\n")
+			fmt.Fprintf(os.Stderr, "  dex k8s forward start %s -n %s\n", c.name, c.namespace)
+			fmt.Fprintf(os.Stderr, "  Then set LOKI_URL to the local endpoint shown in the output\n")
 			os.Exit(1)
 		}
 
