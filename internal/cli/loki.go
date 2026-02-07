@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -200,6 +201,7 @@ Examples:
 		limit, _ := cmd.Flags().GetInt("limit")
 		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
 		namespace, _ := cmd.Flags().GetString("namespace")
+		labelsFlag, _ := cmd.Flags().GetStringSlice("labels")
 
 		// Get Loki URL from flag, config, or auto-discovery
 		lokiURL, err := getLokiURL(urlFlag)
@@ -274,12 +276,44 @@ Examples:
 		for i := len(results) - 1; i >= 0; i-- {
 			r := results[i]
 			lokiTimeColor.Printf("%s ", r.Timestamp.Format("2006-01-02 15:04:05.000"))
+			if formatted := formatLabels(r.Labels, labelsFlag); formatted != "" {
+				lokiLabelColor.Printf("%s ", formatted)
+			}
 			lokiLineColor.Println(r.Line)
 		}
 
 		fmt.Println()
 		lokiTimeColor.Printf("(%d entries)\n", len(results))
 	},
+}
+
+// formatLabels formats a label map as {key=val, key=val}.
+// If filter is non-empty, only those keys are shown.
+func formatLabels(labels map[string]string, filter []string) string {
+	var keys []string
+	if len(filter) > 0 {
+		for _, k := range filter {
+			if _, ok := labels[k]; ok {
+				keys = append(keys, k)
+			}
+		}
+	} else {
+		keys = make([]string, 0, len(labels))
+		for k := range labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+	}
+
+	if len(keys) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, labels[k]))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }
 
 // injectNamespaceIntoQuery adds namespace selector to a LogQL query
@@ -673,6 +707,7 @@ func init() {
 	lokiQueryCmd.Flags().IntP("limit", "l", 1000, "Maximum number of entries to return")
 	lokiQueryCmd.Flags().BoolP("all-namespaces", "A", false, "Query all namespaces (default: current k8s namespace)")
 	lokiQueryCmd.Flags().StringP("namespace", "n", "", "Namespace to query (default: current k8s namespace)")
+	lokiQueryCmd.Flags().StringSlice("labels", []string{"app", "pod"}, "Labels to show per log line (comma-separated, empty for all)")
 
 	// Labels command flags
 	lokiLabelsCmd.Flags().BoolP("all-namespaces", "A", false, "List labels/values across all namespaces (default: current k8s namespace)")

@@ -43,9 +43,13 @@ dex loki query '{job="my-app"}' --limit 50         # Limit results
 dex loki query '{app="nginx"} |= "error"'          # Filter for "error"
 dex loki query '{app="nginx"} |~ "5[0-9]{2}"'      # Regex filter (5xx errors)
 dex loki query '{job="my-app"} | json'             # Parse JSON logs
+dex loki query '{job="my-app"}' --labels pod,container  # Show specific labels
+dex loki query '{job="my-app"}' --labels ""             # Show all labels
 ```
 
 By default, queries are scoped to your current Kubernetes namespace. Use `-A` for all namespaces.
+
+Output shows stream labels before each log line. By default only `app` and `pod` are shown. Use `--labels` to customize (comma-separated), or `--labels ""` to show all.
 
 ## Labels
 ```bash

@@ -120,6 +120,8 @@ dex loki query '{job="app"}' --since 2d --until 1d  # Relative window
 dex loki query '{job="app"}' --since "2026-02-04 15:00" --until "2026-02-04 16:00"
 dex loki query '{job="app"}' --since "2026-02-04T15:00:00Z"  # UTC timestamp
 dex loki query '{job="app"}' --since "2026-02-04 15:00" --utc # Interpret as UTC
+dex loki query '{job="app"}' --labels pod,container  # Show specific labels
+dex loki query '{job="app"}' --labels ""             # Show all labels
 dex loki labels                   # List labels (current namespace)
 dex loki labels -A                # List labels (all namespaces)
 dex loki labels job               # List values for label
