@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -20,6 +21,7 @@ var (
 	homerSuccessColor = color.New(color.FgGreen)
 	homerErrorColor   = color.New(color.FgRed)
 	homerMethodColor  = color.New(color.FgYellow, color.Bold)
+	homerWarnColor    = color.New(color.FgHiYellow)
 )
 
 // getHomerClient handles the full discovery -> auth flow and returns a ready-to-use client
@@ -38,6 +40,7 @@ func getHomerClient(cmd *cobra.Command) (*homer.Client, error) {
 
 	// 3. Create client and authenticate
 	client := homer.NewClient(homerURL)
+	client.Debug, _ = cmd.Flags().GetBool("debug")
 	if err := client.Authenticate(username, password); err != nil {
 		return nil, fmt.Errorf("authentication failed at %s: %w", homerURL, err)
 	}
@@ -216,12 +219,23 @@ Examples:
 var homerSearchCmd = &cobra.Command{
 	Use:   "search",
 	Short: "Search SIP calls",
-	Long: `Search for SIP calls by caller, callee, call-id, or time range.
+	Long: `Search for SIP calls by number, caller/callee, user agent, or time range.
+
+Filter flags (--number, --from-user, --to-user, --ua) are combined as AND conditions into a
+Homer smart input query. Use -q for custom expressions with field validation.
+
+Available fields: from_user, to_user, ruri_user, user_agent (alias: ua),
+  cseq, method, status, call_id (alias: sid)
 
 Examples:
-  dex homer search --from 1h --caller "+4930..."
-  dex homer search --from 2h --callee "100"
-  dex homer search --from 30m --limit 20`,
+  dex homer search --number "4921514174858"
+  dex homer search --from-user "999%" --to-user "12345"
+  dex homer search --from-user "999%" --ua "Asterisk%"
+  dex homer search -q "from_user = '123' AND status = 200"
+  dex homer search -q "from_user = '999%' AND (to_user = '123' OR to_user = '456')"
+  dex homer search --at "2026-02-04 17:13"
+  dex homer search --number "4921514174858" -m INVITE -m BYE
+  dex homer search --number "4921514174858" -o jsonl`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := getHomerClient(cmd)
 		if err != nil {
@@ -229,26 +243,103 @@ Examples:
 			os.Exit(1)
 		}
 
-		fromStr, _ := cmd.Flags().GetString("from")
-		toStr, _ := cmd.Flags().GetString("to")
-		caller, _ := cmd.Flags().GetString("caller")
-		callee, _ := cmd.Flags().GetString("callee")
+		sinceStr, _ := cmd.Flags().GetString("since")
+		untilStr, _ := cmd.Flags().GetString("until")
+		atStr, _ := cmd.Flags().GetString("at")
+		query, _ := cmd.Flags().GetString("query")
+		number, _ := cmd.Flags().GetString("number")
+		fromUser, _ := cmd.Flags().GetString("from-user")
+		toUser, _ := cmd.Flags().GetString("to-user")
+		ua, _ := cmd.Flags().GetString("ua")
 		callID, _ := cmd.Flags().GetString("call-id")
+		methods, _ := cmd.Flags().GetStringSlice("method")
 		limit, _ := cmd.Flags().GetInt("limit")
+		output, _ := cmd.Flags().GetString("output")
 
-		from, to, err := parseTimeRange(fromStr, toStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid time range: %v\n", err)
-			os.Exit(1)
+		var from, to time.Time
+
+		if atStr != "" {
+			if cmd.Flags().Changed("since") || cmd.Flags().Changed("until") {
+				fmt.Fprintf(os.Stderr, "Cannot use --at together with --since/--until\n")
+				os.Exit(1)
+			}
+			at, err := parseTimeValue(atStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid --at: %v\n", err)
+				os.Exit(1)
+			}
+			from = at.Add(-5 * time.Minute)
+			to = at.Add(5 * time.Minute)
+		} else {
+			from, err = parseTimeValue(sinceStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid --since: %v\n", err)
+				os.Exit(1)
+			}
+			if untilStr == "" {
+				to = time.Now()
+			} else {
+				to, err = parseTimeValue(untilStr)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Invalid --until: %v\n", err)
+					os.Exit(1)
+				}
+			}
+		}
+
+		if output == "" {
+			homerDimColor.Printf("  Time range: %s → %s\n\n", from.Format("2006-01-02 15:04:05"), to.Format("2006-01-02 15:04:05"))
+		}
+
+		// Build smartinput from flags. Each flag produces a set of OR-alternatives
+		// (e.g. with/without + prefix). The cartesian product of all sets is computed
+		// so that AND binds within each term and OR separates terms — no parentheses
+		// needed since Homer uses standard AND-before-OR precedence.
+		var criteria [][]string
+		if number != "" {
+			bare := strings.TrimPrefix(number, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.from_user = '%s'", bare),
+				fmt.Sprintf("data_header.from_user = '%s'", plus),
+				fmt.Sprintf("data_header.to_user = '%s'", bare),
+				fmt.Sprintf("data_header.to_user = '%s'", plus),
+			})
+		}
+		if fromUser != "" {
+			bare := strings.TrimPrefix(fromUser, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.from_user = '%s'", bare),
+				fmt.Sprintf("data_header.from_user = '%s'", plus),
+			})
+		}
+		if toUser != "" {
+			bare := strings.TrimPrefix(toUser, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.to_user = '%s'", bare),
+				fmt.Sprintf("data_header.to_user = '%s'", plus),
+			})
+		}
+		if ua != "" {
+			criteria = append(criteria, []string{fmt.Sprintf("data_header.user_agent = '%s'", ua)})
+		}
+		if query != "" {
+			parsed, err := homer.ParseQuery(query)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid query: %v\n", err)
+				os.Exit(1)
+			}
+			criteria = append(criteria, []string{parsed})
 		}
 
 		params := homer.SearchParams{
-			From:   from,
-			To:     to,
-			Caller: caller,
-			Callee: callee,
-			CallID: callID,
-			Limit:  limit,
+			From:       from,
+			To:         to,
+			SmartInput: buildSmartInput(criteria),
+			CallID:     callID,
+			Limit:      limit,
 		}
 
 		result, err := client.SearchCalls(params)
@@ -257,50 +348,96 @@ Examples:
 			os.Exit(1)
 		}
 
-		if len(result.Data) == 0 {
+		// Convert to clean records
+		records := homer.ToSearchRecords(result.Data)
+
+		// Client-side method filter
+		if len(methods) > 0 {
+			methodSet := make(map[string]bool, len(methods))
+			for _, m := range methods {
+				methodSet[strings.ToUpper(m)] = true
+			}
+			filtered := records[:0]
+			for _, r := range records {
+				if methodSet[strings.ToUpper(r.Method)] {
+					filtered = append(filtered, r)
+				}
+			}
+			records = filtered
+		}
+
+		// JSON/JSONL output
+		if output == "json" {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(records)
+			return
+		}
+		if output == "jsonl" {
+			enc := json.NewEncoder(os.Stdout)
+			for _, r := range records {
+				enc.Encode(r)
+			}
+			return
+		}
+
+		if len(records) == 0 {
 			homerDimColor.Println("No calls found.")
 			return
 		}
 
-		line := strings.Repeat("─", 100)
-		fmt.Println()
-		homerHeaderColor.Printf("  SIP Calls (%d)\n", len(result.Data))
-		fmt.Println("  " + line)
-		fmt.Println()
-
-		// Table header
-		fmt.Printf("  %-20s  %-10s  %-20s  %-20s  %s\n",
-			"DATE", "METHOD", "FROM", "TO", "CALL-ID")
-		fmt.Println("  " + line)
-
-		for _, call := range result.Data {
-			method := call.Method
-			if method == "" {
-				method = call.MethodText
+		// Compute dynamic column widths
+		maxSrcWidth := 0
+		maxDstWidth := 0
+		maxUAWidth := len("USER-AGENT")
+		for _, r := range records {
+			if w := len(fmt.Sprintf("%s:%d", r.SrcIP, r.SrcPort)); w > maxSrcWidth {
+				maxSrcWidth = w
 			}
+			if w := len(fmt.Sprintf("%s:%d", r.DstIP, r.DstPort)); w > maxDstWidth {
+				maxDstWidth = w
+			}
+			if len(r.UserAgent) > maxUAWidth {
+				maxUAWidth = len(r.UserAgent)
+			}
+		}
+		routeWidth := maxSrcWidth + 3 + maxDstWidth
+
+		// Total row width: indent(2) + DATE(20) + gap(2) + ROUTE + gap(2) + CALL-ID(30) + gap(2) + METHOD(10) + gap(2) + FROM(20) + gap(2) + TO(20) + gap(2) + UA
+		lineWidth := 20 + 2 + routeWidth + 2 + 30 + 2 + 10 + 2 + 20 + 2 + 20 + 2 + maxUAWidth
+		line := strings.Repeat("─", lineWidth)
+		fmt.Println()
+		homerHeaderColor.Printf("  SIP Calls (%d)\n", len(records))
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		routeHeader := fmt.Sprintf("%-*s", routeWidth, "ROUTE")
+		fmt.Printf("  %-20s  %s  %-30s  %-10s  %-20s  %-20s  %s\n",
+			"DATE", routeHeader, "CALL-ID", "METHOD", "FROM", "TO", "USER-AGENT")
+		fmt.Println("  " + line)
+
+		for _, r := range records {
+			method := r.Method
 			if method == "" {
 				method = "-"
 			}
-			from := call.FromUser
-			if from == "" {
-				from = "-"
+			fromUser := r.FromUser
+			if fromUser == "" {
+				fromUser = "-"
 			}
-			to := call.ToUser
-			if to == "" {
-				to = call.RuriUser
-			}
-			if to == "" {
-				to = "-"
-			}
-			callid := call.CallID
-			if len(callid) > 40 {
-				callid = callid[:40] + "..."
+			toUser := r.ToUser
+			if toUser == "" {
+				toUser = "-"
 			}
 
-			dateStr := formatEpochMS(call.Date)
-			fmt.Printf("  %-20s  ", dateStr)
+			fmt.Printf("  %-20s  ", r.Date.Format("2006-01-02 15:04:05"))
+			printRoute(r.SrcIP, r.SrcPort, r.DstIP, r.DstPort, maxSrcWidth, routeWidth)
+			fmt.Print("  ")
+			printSessionID(r.CallID, 30)
+			fmt.Print("  ")
 			homerMethodColor.Printf("%-10s", method)
-			fmt.Printf("  %-20s  %-20s  %s\n", from, to, callid)
+			fmt.Printf("  %-20s  %-20s  ", fromUser, toUser)
+			printUserAgent(r.UserAgent)
 		}
 		fmt.Println()
 	},
@@ -518,6 +655,319 @@ Examples:
 	},
 }
 
+var homerCallsCmd = &cobra.Command{
+	Use:   "calls",
+	Short: "List calls grouped by Call-ID",
+	Long: `Search and display calls grouped by Call-ID with direction and status.
+
+Supports the same filter flags as search (--number, --from-user, --to-user, --ua, -q)
+and the same time range options (--since, --until, --at).
+
+Examples:
+  dex homer calls --since 1h
+  dex homer calls --number "31617554360" --since 2h
+  dex homer calls --from-user "999%" --since 1h
+  dex homer calls --ua "FPBX%" --since 30m
+  dex homer calls -q "ua = 'Asterisk%'" --since 1h
+  dex homer calls --at "2026-02-04 17:13"
+  dex homer calls --since 1h -o json`,
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := getHomerClient(cmd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
+		sinceStr, _ := cmd.Flags().GetString("since")
+		untilStr, _ := cmd.Flags().GetString("until")
+		atStr, _ := cmd.Flags().GetString("at")
+		number, _ := cmd.Flags().GetString("number")
+		fromUser, _ := cmd.Flags().GetString("from-user")
+		toUser, _ := cmd.Flags().GetString("to-user")
+		ua, _ := cmd.Flags().GetString("ua")
+		query, _ := cmd.Flags().GetString("query")
+		limit, _ := cmd.Flags().GetInt("limit")
+		output, _ := cmd.Flags().GetString("output")
+
+		var from, to time.Time
+
+		if atStr != "" {
+			if cmd.Flags().Changed("since") || cmd.Flags().Changed("until") {
+				fmt.Fprintf(os.Stderr, "Cannot use --at together with --since/--until\n")
+				os.Exit(1)
+			}
+			at, err := parseTimeValue(atStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid --at: %v\n", err)
+				os.Exit(1)
+			}
+			from = at.Add(-5 * time.Minute)
+			to = at.Add(5 * time.Minute)
+		} else {
+			from, err = parseTimeValue(sinceStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid --since: %v\n", err)
+				os.Exit(1)
+			}
+			if untilStr == "" {
+				to = time.Now()
+			} else {
+				to, err = parseTimeValue(untilStr)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Invalid --until: %v\n", err)
+					os.Exit(1)
+				}
+			}
+		}
+
+		if output == "" {
+			homerDimColor.Printf("  Time range: %s → %s\n\n", from.Format("2006-01-02 15:04:05"), to.Format("2006-01-02 15:04:05"))
+		}
+
+		// Build smartinput from flags (same logic as search command).
+		var criteria [][]string
+		if number != "" {
+			bare := strings.TrimPrefix(number, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.from_user = '%s'", bare),
+				fmt.Sprintf("data_header.from_user = '%s'", plus),
+				fmt.Sprintf("data_header.to_user = '%s'", bare),
+				fmt.Sprintf("data_header.to_user = '%s'", plus),
+			})
+		}
+		if fromUser != "" {
+			bare := strings.TrimPrefix(fromUser, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.from_user = '%s'", bare),
+				fmt.Sprintf("data_header.from_user = '%s'", plus),
+			})
+		}
+		if toUser != "" {
+			bare := strings.TrimPrefix(toUser, "+")
+			plus := "+" + bare
+			criteria = append(criteria, []string{
+				fmt.Sprintf("data_header.to_user = '%s'", bare),
+				fmt.Sprintf("data_header.to_user = '%s'", plus),
+			})
+		}
+		if ua != "" {
+			criteria = append(criteria, []string{fmt.Sprintf("data_header.user_agent = '%s'", ua)})
+		}
+		if query != "" {
+			parsed, err := homer.ParseQuery(query)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid query: %v\n", err)
+				os.Exit(1)
+			}
+			criteria = append(criteria, []string{parsed})
+		}
+
+		params := homer.SearchParams{
+			From:       from,
+			To:         to,
+			SmartInput: buildSmartInput(criteria),
+		}
+		calls, err := client.FetchCalls(params, number, limit)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Search failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// JSON/JSONL output
+		if output == "json" {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(calls)
+			return
+		}
+		if output == "jsonl" {
+			enc := json.NewEncoder(os.Stdout)
+			for _, c := range calls {
+				enc.Encode(c)
+			}
+			return
+		}
+
+		if len(calls) == 0 {
+			homerDimColor.Println("No calls found.")
+			return
+		}
+
+		line := strings.Repeat("─", 110)
+		fmt.Println()
+		homerHeaderColor.Printf("  Calls (%d)\n", len(calls))
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		// Compute dynamic column widths
+		maxCallIDWidth := len("CALL-ID")
+		maxTimeWidth := len("TIME")
+		for _, c := range calls {
+			if len(c.CallID) > maxCallIDWidth {
+				maxCallIDWidth = len(c.CallID)
+			}
+			tw := len(formatCallTime(c))
+			if tw > maxTimeWidth {
+				maxTimeWidth = tw
+			}
+		}
+
+		lineWidth := maxTimeWidth + 2 + maxCallIDWidth + 2 + 20 + 2 + 20 + 2 + 12
+		line = strings.Repeat("─", lineWidth)
+
+		// Table header
+		fmt.Printf("  %-*s  %-*s  %-20s  %-20s  %s\n",
+			maxTimeWidth, "TIME", maxCallIDWidth, "CALL-ID", "FROM", "TO", "STATUS")
+		fmt.Println("  " + line)
+
+		for _, c := range calls {
+			caller := c.Caller
+			if caller == "" {
+				caller = "-"
+			}
+			callee := c.Callee
+			if callee == "" {
+				callee = "-"
+			}
+
+			printCallTime(c, maxTimeWidth)
+			fmt.Print("  ")
+			printCallID(c.CallID, maxCallIDWidth)
+			fmt.Printf("  %-20s  %-20s  ", caller, callee)
+			formatCallStatus(c.Status)
+			fmt.Print("\n")
+		}
+		fmt.Println()
+	},
+}
+
+// buildSmartInput constructs a Homer smartinput expression from criteria.
+// Each criterion is a set of OR-alternatives (e.g. number with/without + prefix).
+// The cartesian product of all criteria is computed: AND within each product term,
+// OR between terms. Homer uses standard AND-before-OR precedence so no parentheses
+// are needed.
+func buildSmartInput(criteria [][]string) string {
+	if len(criteria) == 0 {
+		return ""
+	}
+
+	// Compute cartesian product of all criteria
+	products := [][]string{{}}
+	for _, alts := range criteria {
+		var next [][]string
+		for _, product := range products {
+			for _, alt := range alts {
+				term := make([]string, len(product)+1)
+				copy(term, product)
+				term[len(product)] = alt
+				next = append(next, term)
+			}
+		}
+		products = next
+	}
+
+	// Format: AND within each product, OR between products
+	terms := make([]string, len(products))
+	for i, product := range products {
+		terms[i] = strings.Join(product, " AND ")
+	}
+	return strings.Join(terms, " OR ")
+}
+
+// formatCallTime formats start, end, and duration into a compact time string.
+// Same day:  "2026-02-04 16:53:06 - 17:12:08 (19m2s)"
+// Diff day:  "2026-02-04 23:59:00 - 2026-02-05 00:01:00 (2m)"
+// No end:    "2026-02-04 16:53:06 - <na>"
+func formatCallTime(c homer.CallSummary) string {
+	start := c.StartTime.Format("2006-01-02 15:04:05")
+
+	if c.MsgCount <= 1 {
+		return start + " - <na>"
+	}
+
+	dur := formatDuration(c.Duration)
+
+	if c.StartTime.Format("2006-01-02") == c.EndTime.Format("2006-01-02") {
+		return fmt.Sprintf("%s - %s (%s)", start, c.EndTime.Format("15:04:05"), dur)
+	}
+
+	return fmt.Sprintf("%s - %s (%s)", start, c.EndTime.Format("2006-01-02 15:04:05"), dur)
+}
+
+// printCallTime prints the call time with coloring, padded to width.
+// The <na> marker for missing end times is printed in orange.
+func printCallTime(c homer.CallSummary, width int) {
+	s := formatCallTime(c)
+	if c.MsgCount <= 1 {
+		// Print everything before <na> normally, then <na> in orange
+		prefix := c.StartTime.Format("2006-01-02 15:04:05") + " - "
+		fmt.Print("  " + prefix)
+		homerWarnColor.Print("<na>")
+		if pad := width - len(s); pad > 0 {
+			fmt.Print(strings.Repeat(" ", pad))
+		}
+	} else {
+		fmt.Printf("  %-*s", width, s)
+	}
+}
+
+// formatDuration formats a duration into a compact human-readable string (e.g., "53s", "18m12s", "1h5m").
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	d = d.Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		m := int(d.Minutes())
+		s := int(d.Seconds()) % 60
+		if s == 0 {
+			return fmt.Sprintf("%dm", m)
+		}
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
+}
+
+// printCallID prints a Call-ID with the local part in standout color and the @host part dimmed,
+// padded to the given width.
+func printCallID(callID string, width int) {
+	if idx := strings.Index(callID, "@"); idx >= 0 {
+		homerHeaderColor.Print(callID[:idx])
+		homerDimColor.Print(callID[idx:])
+	} else {
+		homerHeaderColor.Print(callID)
+	}
+	if pad := width - len(callID); pad > 0 {
+		fmt.Print(strings.Repeat(" ", pad))
+	}
+}
+
+// formatCallStatus prints a colored status string
+func formatCallStatus(status string) {
+	switch status {
+	case "answered":
+		homerSuccessColor.Printf("%-12s", status)
+	case "busy", "cancelled", "no answer":
+		homerMethodColor.Printf("%-12s", status)
+	case "failed":
+		homerErrorColor.Printf("%-12s", status)
+	case "ringing":
+		homerDimColor.Printf("%-12s", status)
+	default:
+		fmt.Printf("%-12s", "-")
+	}
+}
+
 var homerAliasesCmd = &cobra.Command{
 	Use:   "aliases",
 	Short: "List configured IP/port aliases",
@@ -569,6 +1019,73 @@ Examples:
 	},
 }
 
+// splitSessionID splits a formatted session ID into hash and host parts for colored output.
+func splitSessionID(callID string) (hash string, host string) {
+	sid := homer.FormatSessionID(callID)
+	if sid == "" {
+		return "-", ""
+	}
+	if idx := strings.Index(sid, "@"); idx >= 0 {
+		return sid[:idx], sid[idx:]
+	}
+	return sid, ""
+}
+
+// printSessionID prints a colored session ID padded to the given width.
+func printSessionID(callID string, width int) {
+	hash, host := splitSessionID(callID)
+	full := hash + host
+	padding := ""
+	if len(full) < width {
+		padding = strings.Repeat(" ", width-len(full))
+	}
+	homerHeaderColor.Print(hash)
+	homerDimColor.Print(host)
+	fmt.Print(padding)
+}
+
+// printUserAgent prints a formatted user agent with special coloring for known types.
+func printUserAgent(ua string) {
+	if strings.HasPrefix(ua, "Asterisk ") {
+		homerMethodColor.Print("Asterisk")
+		homerDimColor.Println(" " + ua[9:])
+	} else if strings.HasPrefix(ua, "FPBX ") {
+		homerHeaderColor.Print("FPBX")
+		homerDimColor.Println(" " + ua[5:])
+	} else {
+		homerDimColor.Println(ua)
+	}
+}
+
+// printRoute prints a colored "srcIP:port → dstIP:port" route padded to totalWidth display characters.
+// Source side is padded to srcWidth so arrows align. IP is normal, port is dim.
+func printRoute(srcIP string, srcPort int, dstIP string, dstPort int, srcWidth int, totalWidth int) {
+	srcStr := fmt.Sprintf("%s:%d", srcIP, srcPort)
+	srcPad := ""
+	if len(srcStr) < srcWidth {
+		srcPad = strings.Repeat(" ", srcWidth-len(srcStr))
+	}
+
+	// Print source
+	fmt.Print(srcIP)
+	homerDimColor.Printf(":%d", srcPort)
+	fmt.Print(srcPad)
+
+	// Arrow (→ is 1 display char)
+	homerDimColor.Print(" → ")
+
+	// Print destination
+	fmt.Print(dstIP)
+	homerDimColor.Printf(":%d", dstPort)
+
+	// Pad to total width: src(padded) + " → "(3 display) + dst
+	dstStr := fmt.Sprintf("%s:%d", dstIP, dstPort)
+	used := srcWidth + 3 + len(dstStr)
+	if used < totalWidth {
+		fmt.Print(strings.Repeat(" ", totalWidth-used))
+	}
+}
+
 // formatEpochMS converts an epoch millisecond timestamp to a human-readable string
 func formatEpochMS(ms int64) string {
 	if ms == 0 {
@@ -601,12 +1118,44 @@ func parseTimeRange(fromStr, toStr string) (time.Time, time.Time, error) {
 	return from, to, nil
 }
 
+// parseTimeValue parses a string that is either a duration (e.g., "1h", "30m", "2d")
+// or an absolute timestamp (e.g., "2026-02-04 17:13", "2026-02-04T17:13:00").
+// Durations are interpreted as "that long ago from now".
+func parseTimeValue(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Now(), nil
+	}
+
+	// Try absolute timestamp formats (most specific first)
+	formats := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02",
+	}
+	for _, f := range formats {
+		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+
+	// Try duration (e.g., "1h", "30m", "2d")
+	dur, err := parseLokiDuration(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("must be a duration (e.g., 1h, 30m, 2d) or timestamp (e.g., 2006-01-02 15:04): %s", s)
+	}
+	return time.Now().Add(-dur), nil
+}
+
 func init() {
 	rootCmd.AddCommand(homerCmd)
 
 	// Persistent flags (available to all subcommands)
 	homerCmd.PersistentFlags().String("url", "", "Homer URL (overrides HOMER_URL config)")
 	homerCmd.PersistentFlags().StringP("namespace", "n", "", "Kubernetes namespace for service discovery")
+	homerCmd.PersistentFlags().BoolP("debug", "d", false, "Print API endpoint and request body")
 
 	// Subcommands
 	homerCmd.AddCommand(homerDiscoverCmd)
@@ -614,15 +1163,22 @@ func init() {
 	homerCmd.AddCommand(homerShowCmd)
 	homerCmd.AddCommand(homerExportCmd)
 	homerCmd.AddCommand(homerEndpointsCmd)
+	homerCmd.AddCommand(homerCallsCmd)
 	homerCmd.AddCommand(homerAliasesCmd)
 
 	// Search flags
-	homerSearchCmd.Flags().String("from", "1h", "Time range start (e.g., 1h, 30m, 2d)")
-	homerSearchCmd.Flags().String("to", "", "Time range end (default: now)")
-	homerSearchCmd.Flags().String("caller", "", "Source number/URI")
-	homerSearchCmd.Flags().String("callee", "", "Destination number/URI")
+	homerSearchCmd.Flags().String("since", "24h", "Start of time range (duration like 1h, 30m or timestamp like 2006-01-02 15:04)")
+	homerSearchCmd.Flags().String("until", "", "End of time range (default: now)")
+	homerSearchCmd.Flags().String("at", "", "Point in time to search around (±5 minutes)")
+	homerSearchCmd.Flags().StringP("query", "q", "", "Query expression (e.g., \"from_user = '123' AND status = 200\")")
+	homerSearchCmd.Flags().String("number", "", "Phone number (searches from_user and to_user with and without + prefix)")
+	homerSearchCmd.Flags().String("from-user", "", "Filter by SIP from_user")
+	homerSearchCmd.Flags().String("to-user", "", "Filter by SIP to_user")
+	homerSearchCmd.Flags().String("ua", "", "Filter by SIP User-Agent")
 	homerSearchCmd.Flags().String("call-id", "", "SIP Call-ID")
-	homerSearchCmd.Flags().IntP("limit", "l", 50, "Maximum results")
+	homerSearchCmd.Flags().StringSliceP("method", "m", nil, "Filter by SIP method (repeatable, e.g. -m INVITE -m BYE)")
+	homerSearchCmd.Flags().IntP("limit", "l", 200, "Maximum results")
+	homerSearchCmd.Flags().StringP("output", "o", "", "Output format: json or jsonl")
 
 	// Show flags
 	homerShowCmd.Flags().String("from", "1h", "Time range start")
@@ -632,4 +1188,16 @@ func init() {
 	homerExportCmd.Flags().String("from", "1h", "Time range start")
 	homerExportCmd.Flags().String("to", "", "Time range end (default: now)")
 	homerExportCmd.Flags().StringP("output", "o", "", "Output file path (default: <call-id>.pcap)")
+
+	// Calls flags
+	homerCallsCmd.Flags().String("since", "24h", "Start of time range (duration like 1h, 30m or timestamp like 2006-01-02 15:04)")
+	homerCallsCmd.Flags().String("until", "", "End of time range (default: now)")
+	homerCallsCmd.Flags().String("at", "", "Point in time to search around (±5 minutes)")
+	homerCallsCmd.Flags().String("number", "", "Phone number (searches from_user and to_user with and without + prefix)")
+	homerCallsCmd.Flags().String("from-user", "", "Filter by SIP from_user")
+	homerCallsCmd.Flags().String("to-user", "", "Filter by SIP to_user")
+	homerCallsCmd.Flags().String("ua", "", "Filter by SIP User-Agent")
+	homerCallsCmd.Flags().StringP("query", "q", "", "Query expression (e.g., \"from_user = '123' AND status = 200\")")
+	homerCallsCmd.Flags().IntP("limit", "l", 100, "Maximum number of calls to return")
+	homerCallsCmd.Flags().StringP("output", "o", "", "Output format: json or jsonl")
 }

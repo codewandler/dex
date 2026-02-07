@@ -122,8 +122,16 @@ dex loki test                     # Test connection
 ```bash
 dex homer discover                # Find Homer via K8s service discovery
 dex homer discover -n eu          # Discover in specific namespace
-dex homer search --from 1h        # Search recent SIP calls
-dex homer search --caller "+49.." # Search by caller number
+dex homer calls --since 1h        # List calls grouped by Call-ID
+dex homer calls --number "123" --since 2h  # Calls to number in last 2h
+dex homer calls --from-user "999%" --since 1h  # Filter by caller
+dex homer calls -q "ua = 'Asterisk%'" --since 1h  # Custom query
+dex homer calls --since 1h -o json  # JSON output
+dex homer search --number "49215..."  # Search by number (from_user and to_user)
+dex homer search --from-user "999%" --to-user "12345"  # Filter by caller/callee
+dex homer search --from-user "999%" --ua "Asterisk%"   # Combine with user agent
+dex homer search -q "from_user = '123' AND status = 200"  # Query with field validation
+dex homer search --at "2026-02-04 17:13"  # Search around a specific time
 dex homer show <call-id>          # Show SIP message flow
 dex homer export <call-id>        # Export call as PCAP
 dex homer aliases                 # List IP/port aliases
