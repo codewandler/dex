@@ -179,16 +179,24 @@ var lokiQueryCmd = &cobra.Command{
 By default, queries are scoped to the current Kubernetes namespace.
 Use -A/--all-namespaces to query across all namespaces.
 
+Time range flags accept durations (1h, 30m, 2d) or timestamps (2006-01-02 15:04).
+Timestamps without a timezone suffix are interpreted in local time (use --utc to override).
+
 Examples:
-  dex loki query '{job="my-app"}'              # Current namespace only
-  dex loki query '{job="my-app"}' -A           # All namespaces
+  dex loki query '{job="my-app"}'                            # Current namespace only
+  dex loki query '{job="my-app"}' -A                         # All namespaces
   dex loki query '{job="my-app"}' --since 1h
-  dex loki query '{job="my-app"} |= "error"' --since 30m --limit 50
+  dex loki query '{job="my-app"}' --since 2d --until 1d      # From 2 days ago to 1 day ago
+  dex loki query '{job="my-app"}' --since "2026-02-04 15:00" --until "2026-02-04 16:00"
+  dex loki query '{job="my-app"}' --since "2026-02-04T15:00:00Z"  # UTC timestamp
+  dex loki query '{job="my-app"}' --since "2026-02-04 15:00" --utc
   dex loki --url=http://loki:3100 query '{app="nginx"}'`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		urlFlag, _ := cmd.Flags().GetString("url")
 		sinceStr, _ := cmd.Flags().GetString("since")
+		untilStr, _ := cmd.Flags().GetString("until")
+		utcFlag, _ := cmd.Flags().GetBool("utc")
 		limit, _ := cmd.Flags().GetInt("limit")
 		allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
 		namespace, _ := cmd.Flags().GetString("namespace")
@@ -200,10 +208,30 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Parse since duration
-		since, err := parseLokiDuration(sinceStr)
+		// Determine timezone for parsing
+		loc := time.Local
+		if utcFlag {
+			loc = time.UTC
+		}
+
+		// Parse --since (start time)
+		start, err := parseTimeValueInLocation(sinceStr, loc)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid since duration: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Invalid --since value: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Parse --until (end time), defaults to now
+		end, err := parseTimeValueInLocation(untilStr, loc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid --until value: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Validate time range
+		if !start.Before(end) {
+			fmt.Fprintf(os.Stderr, "Invalid time range: --since (%s) must be before --until (%s)\n",
+				start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
 			os.Exit(1)
 		}
 
@@ -231,7 +259,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		results, err := client.Query(query, since, limit)
+		results, err := client.Query(query, start, end, limit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
 			os.Exit(1)
@@ -639,7 +667,9 @@ func init() {
 	lokiCmd.AddCommand(lokiDiscoverCmd)
 
 	// Query command flags
-	lokiQueryCmd.Flags().StringP("since", "s", "1h", "Time range to query (e.g., 1h, 30m, 1d)")
+	lokiQueryCmd.Flags().StringP("since", "s", "1h", "Start of time range (duration like 1h, 30m or timestamp like 2006-01-02 15:04)")
+	lokiQueryCmd.Flags().StringP("until", "u", "", "End of time range (duration or timestamp, default: now)")
+	lokiQueryCmd.Flags().Bool("utc", false, "Interpret naive timestamps as UTC instead of local timezone")
 	lokiQueryCmd.Flags().IntP("limit", "l", 1000, "Maximum number of entries to return")
 	lokiQueryCmd.Flags().BoolP("all-namespaces", "A", false, "Query all namespaces (default: current k8s namespace)")
 	lokiQueryCmd.Flags().StringP("namespace", "n", "", "Namespace to query (default: current k8s namespace)")

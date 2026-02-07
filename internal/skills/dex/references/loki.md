@@ -35,6 +35,10 @@ dex loki query '{job="my-app"}' -A                 # All namespaces
 dex loki query '{job="my-app"}' -n prod            # Specific namespace
 dex loki query '{job="my-app"}' --since 30m        # Last 30 minutes
 dex loki query '{job="my-app"}' --since 1d         # Last day
+dex loki query '{job="my-app"}' --since 2d --until 1d   # From 2 days ago to 1 day ago
+dex loki query '{job="my-app"}' --since "2026-02-04 15:00" --until "2026-02-04 16:00"
+dex loki query '{job="my-app"}' --since "2026-02-04T15:00:00Z"  # UTC timestamp via suffix
+dex loki query '{job="my-app"}' --since "2026-02-04 15:00" --utc # Interpret as UTC
 dex loki query '{job="my-app"}' --limit 50         # Limit results
 dex loki query '{app="nginx"} |= "error"'          # Filter for "error"
 dex loki query '{app="nginx"} |~ "5[0-9]{2}"'      # Regex filter (5xx errors)
@@ -82,7 +86,9 @@ dex loki --url=http://loki:3100 test  # Test specific URL
 
 ## Tips
 
-- Default time range is 1 hour (`--since 1h`)
+- Default time range is 1 hour (`--since 1h`), default end is now
+- `--since` and `--until` accept durations (`30m`, `1h`, `2d`) or timestamps (`2006-01-02 15:04`, `2006-01-02T15:04:05Z`)
+- Naive timestamps (no tz suffix) are interpreted in local timezone; use `--utc` to interpret as UTC
+- Timestamps with explicit timezone suffix (`Z`, `+02:00`) always use the embedded timezone
 - Default limit is 1000 entries (`--limit 1000`)
 - Results are displayed oldest-first for readability
-- Duration supports: `30m`, `1h`, `2h30m`, `1d`, `7d`

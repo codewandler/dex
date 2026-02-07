@@ -62,10 +62,7 @@ func NewProbeClient(baseURL string) (*Client, error) {
 }
 
 // Query executes a LogQL query and returns log entries
-func (c *Client) Query(query string, since time.Duration, limit int) ([]QueryResult, error) {
-	end := time.Now()
-	start := end.Add(-since)
-
+func (c *Client) Query(query string, start, end time.Time, limit int) ([]QueryResult, error) {
 	// Build query URL
 	endpoint := fmt.Sprintf("%s/loki/api/v1/query_range", c.baseURL)
 

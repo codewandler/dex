@@ -1157,25 +1157,38 @@ func parseTimeRange(fromStr, toStr string) (time.Time, time.Time, error) {
 	return from, to, nil
 }
 
-// parseTimeValue parses a string that is either a duration (e.g., "1h", "30m", "2d")
+// parseTimeValueInLocation parses a string that is either a duration (e.g., "1h", "30m", "2d")
 // or an absolute timestamp (e.g., "2026-02-04 17:13", "2026-02-04T17:13:00").
+// Timestamps with explicit timezone suffixes (Z, +02:00) use the embedded timezone.
+// Naive timestamps (no tz suffix) use the provided location.
 // Durations are interpreted as "that long ago from now".
-func parseTimeValue(s string) (time.Time, error) {
+func parseTimeValueInLocation(s string, loc *time.Location) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Now(), nil
 	}
 
-	// Try absolute timestamp formats (most specific first)
-	formats := []string{
+	// Try timezone-aware formats first (embedded tz takes precedence)
+	tzFormats := []string{
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+	}
+	for _, f := range tzFormats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+
+	// Try naive timestamp formats (use provided location)
+	naiveFormats := []string{
 		"2006-01-02 15:04:05",
 		"2006-01-02 15:04",
 		"2006-01-02T15:04:05",
 		"2006-01-02T15:04",
 		"2006-01-02",
 	}
-	for _, f := range formats {
-		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
+	for _, f := range naiveFormats {
+		if t, err := time.ParseInLocation(f, s, loc); err == nil {
 			return t, nil
 		}
 	}
@@ -1186,6 +1199,11 @@ func parseTimeValue(s string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("must be a duration (e.g., 1h, 30m, 2d) or timestamp (e.g., 2006-01-02 15:04): %s", s)
 	}
 	return time.Now().Add(-dur), nil
+}
+
+// parseTimeValue parses a string that is either a duration or timestamp using local timezone.
+func parseTimeValue(s string) (time.Time, error) {
+	return parseTimeValueInLocation(s, time.Local)
 }
 
 var homerAnalyzeCmd = &cobra.Command{

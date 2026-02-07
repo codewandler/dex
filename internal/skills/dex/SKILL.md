@@ -116,6 +116,10 @@ dex loki query '{job="app"}'      # Query (current k8s namespace)
 dex loki query '{job="app"}' -A   # Query all namespaces
 dex loki query '{job="app"}' -n prod  # Query specific namespace
 dex loki query '{app="x"} |= "error"' -s 30m  # Filter + time range
+dex loki query '{job="app"}' --since 2d --until 1d  # Relative window
+dex loki query '{job="app"}' --since "2026-02-04 15:00" --until "2026-02-04 16:00"
+dex loki query '{job="app"}' --since "2026-02-04T15:00:00Z"  # UTC timestamp
+dex loki query '{job="app"}' --since "2026-02-04 15:00" --utc # Interpret as UTC
 dex loki labels                   # List labels (current namespace)
 dex loki labels -A                # List labels (all namespaces)
 dex loki labels job               # List values for label
