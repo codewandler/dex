@@ -143,29 +143,40 @@ func FormatUserAgent(ua string) string {
 	return ua
 }
 
-// FormatSessionID formats a SIP Call-ID into a compact session identifier.
-// e.g. "824e9152-ab4f-453a-9293-45827b4c96d1" → "824e..96d1"
-// e.g. "1a675a3e795a2f23@172.31.1.2:5060" → "1a67..2f23@172.31.1.2:5060"
-func FormatSessionID(callID string) string {
-	if callID == "" {
-		return ""
-	}
+// TransactionResult holds the response from a call transaction query
+type TransactionResult struct {
+	Data struct {
+		Messages []TransactionMessage `json:"messages"`
+	} `json:"data"`
+	Total int `json:"total"`
+}
 
-	local := callID
-	host := ""
-	if idx := strings.Index(callID, "@"); idx >= 0 {
-		local = callID[:idx]
-		host = callID[idx:]
-	}
+// TransactionMessage represents a SIP message with its raw content.
+// The transaction endpoint also returns RTCP/RTP messages (profile "5_default", "35_default")
+// which lack SIP-specific fields like Method. Use IsSIP() to filter.
+type TransactionMessage struct {
+	ID         int             `json:"id"`
+	CallID     string          `json:"sid"`
+	Method     string          `json:"method,omitempty"`
+	SrcIP      string          `json:"srcIp"`
+	SrcPort    int             `json:"srcPort"`
+	DstIP      string          `json:"dstIp"`
+	DstPort    int             `json:"dstPort"`
+	CreateDate int64           `json:"create_date"`
+	MicroTS    int64           `json:"micro_ts"`
+	Raw        string          `json:"raw"`
+	FromUser   string          `json:"from_user,omitempty"`
+	ToUser     string          `json:"to_user,omitempty"`
+	CSeq       string          `json:"cseq,omitempty"`
+	Protocol   int             `json:"protocol"`
+	Profile    string          `json:"profile,omitempty"`
+	DBNode     string          `json:"dbnode"`
+	Node       json.RawMessage `json:"node"` // string or []string depending on Homer version
+}
 
-	stripped := strings.ReplaceAll(local, "-", "")
-	if len(stripped) > 8 {
-		local = stripped[:4] + ".." + stripped[len(stripped)-4:]
-	} else {
-		local = stripped
-	}
-
-	return local + host
+// IsSIP returns true if this is a SIP message (not RTCP/RTP/QoS).
+func (m TransactionMessage) IsSIP() bool {
+	return m.Profile == "" || m.Profile == "1_call" || m.Profile == "1_default" || m.Profile == "1_registration"
 }
 
 // Alias represents a Homer IP/port alias
@@ -247,6 +258,76 @@ func (c *Client) SearchCalls(params SearchParams) (*SearchResult, error) {
 	return &result, nil
 }
 
+// GetTransaction fetches full SIP message details (including raw bodies) for a call.
+// This uses the /api/v3/call/transaction endpoint which requires search results (IDs + callIDs)
+// from a prior SearchCalls query.
+func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*TransactionResult, error) {
+	// Collect unique call-ids and find the first message ID and nodes
+	callIDs := make(map[string]bool)
+	var firstID float64
+	nodes := make(map[string]bool)
+	for _, r := range searchData {
+		callIDs[r.CallID] = true
+		if firstID == 0 {
+			firstID = r.ID
+		}
+		// Extract node from table name or use "local"
+		nodes["local"] = true
+	}
+
+	callIDList := make([]string, 0, len(callIDs))
+	for id := range callIDs {
+		callIDList = append(callIDList, id)
+	}
+	nodeList := make([]string, 0, len(nodes))
+	for n := range nodes {
+		nodeList = append(nodeList, n)
+	}
+
+	_, offsetSec := time.Now().Zone()
+	tzMinutes := -(offsetSec / 60)
+
+	reqBody := map[string]any{
+		"param": map[string]any{
+			"search": map[string]any{
+				"1_call": map[string]any{
+					"id":     firstID,
+					"callid": callIDList,
+					"uuid":   []any{},
+				},
+			},
+			"location": map[string]any{
+				"node": nodeList,
+			},
+			"timezone": map[string]any{
+				"name":  "Local",
+				"value": tzMinutes,
+			},
+			"transaction": map[string]any{
+				"call":         true,
+				"registration": false,
+				"rest":         false,
+			},
+		},
+		"timestamp": map[string]any{
+			"from": params.From.UnixMilli(),
+			"to":   params.To.UnixMilli(),
+		},
+	}
+
+	body, err := c.doAuthRequest("POST", "/api/v3/call/transaction", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("get transaction failed: %w", err)
+	}
+
+	var result TransactionResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode transaction result: %w", err)
+	}
+
+	return &result, nil
+}
+
 // ExportPCAP exports call messages as a PCAP file
 func (c *Client) ExportPCAP(params SearchParams) ([]byte, error) {
 	reqBody := c.buildSearchPayload(params)
@@ -305,14 +386,19 @@ func (c *Client) buildSearchPayload(params SearchParams) map[string]any {
 	filters := []map[string]any{
 		{"name": "limit", "value": fmt.Sprintf("%d", limit), "type": "string", "hepid": 1},
 	}
-	if params.SmartInput != "" {
-		filters = append(filters, map[string]any{
-			"name": "smartinput", "value": params.SmartInput, "type": "string", "hepid": 1,
-		})
-	}
+	// Merge CallID into smartinput (the named "sid" filter doesn't work in Homer)
+	smartInput := params.SmartInput
 	if params.CallID != "" {
+		sidExpr := fmt.Sprintf("sid = '%s'", params.CallID)
+		if smartInput != "" {
+			smartInput = sidExpr + " AND " + smartInput
+		} else {
+			smartInput = sidExpr
+		}
+	}
+	if smartInput != "" {
 		filters = append(filters, map[string]any{
-			"name": "sid", "value": params.CallID, "type": "string", "hepid": 1,
+			"name": "smartinput", "value": smartInput, "type": "string", "hepid": 1,
 		})
 	}
 

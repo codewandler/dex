@@ -176,6 +176,42 @@ func MergeSearchResults(a, b *SearchResult) *SearchResult {
 	return &SearchResult{Data: merged}
 }
 
+// DeriveRoute extracts unique IP hop pairs from a call's messages.
+// Returns pairs of [src, dst] IPs in the order they first appear.
+func DeriveRoute(msgs []CallRecord) [][2]string {
+	var pairs [][2]string
+	seen := make(map[[2]string]bool)
+	for _, m := range msgs {
+		pair := [2]string{m.SourceIP, m.DestIP}
+		if !seen[pair] {
+			seen[pair] = true
+			pairs = append(pairs, pair)
+		}
+	}
+	return pairs
+}
+
+// FormatRoute formats IP hop pairs into a compact chain like "A → B → C".
+// Collapses consecutive hops that share an IP endpoint.
+func FormatRoute(pairs [][2]string) string {
+	if len(pairs) == 0 {
+		return ""
+	}
+
+	// Build chain by collapsing shared IPs
+	chain := []string{pairs[0][0], pairs[0][1]}
+	for i := 1; i < len(pairs); i++ {
+		if pairs[i][0] == chain[len(chain)-1] {
+			chain = append(chain, pairs[i][1])
+		} else {
+			// Discontinuous hop — append both
+			chain = append(chain, pairs[i][0], pairs[i][1])
+		}
+	}
+
+	return strings.Join(chain, " → ")
+}
+
 // detectDirection determines call direction relative to the given number.
 // If number matches caller → OUT, matches callee → IN.
 func detectDirection(caller, callee, number string) string {

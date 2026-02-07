@@ -136,8 +136,14 @@ dex homer search --from-user "999%" --to-user "12345"  # Filter by caller/callee
 dex homer search --from-user "999%" --ua "Asterisk%"   # Combine with user agent
 dex homer search -q "from_user = '123' AND status = 200"  # Query with field validation
 dex homer search --at "2026-02-04 17:13"  # Search around a specific time
+dex homer search --number "123" -m INVITE -m BYE  # Filter by SIP method
+dex homer search --number "123" -o json   # JSON output
 dex homer show <call-id>          # Show SIP message flow
+dex homer show id1 id2 id3        # Combined flow for multiple calls
+dex homer show <call-id> --raw    # Show raw SIP message bodies
 dex homer export <call-id>        # Export call as PCAP
+dex homer analyze <call-id> -c X-Acme-Call-ID  # Correlate multi-leg call by header
+dex homer analyze <call-id> -c X-Acme-Call-ID -H X-Acme -N 49341550035  # With extra columns and numbers
 dex homer aliases                 # List IP/port aliases
 dex homer endpoints               # List configured endpoints with URLs
 ```
