@@ -54,7 +54,7 @@ func discoverLokiURL() (string, error) {
 		return "", fmt.Errorf("failed to connect to Kubernetes: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Common namespaces to search
@@ -415,7 +415,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		fmt.Println("Searching for Loki in cluster...")
