@@ -78,3 +78,46 @@ func ExtractSDP(raw string) string {
 	}
 	return ""
 }
+
+// ExtractSDPMedia extracts a compact media description from an SDP body embedded in a raw SIP message.
+// Returns e.g. "PCMA :17818" (codec + port) or "" if no SDP or no audio media line.
+func ExtractSDPMedia(raw string) string {
+	sdp := ExtractSDP(raw)
+	if sdp == "" {
+		return ""
+	}
+
+	var port string
+	var codec string
+	for _, line := range strings.Split(sdp, "\n") {
+		line = strings.TrimRight(line, "\r")
+		// m=audio 17818 RTP/AVP 8 0 101
+		if strings.HasPrefix(line, "m=audio ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				port = parts[1]
+			}
+		}
+		// a=rtpmap:8 PCMA/8000
+		if codec == "" && strings.HasPrefix(line, "a=rtpmap:") {
+			// value is "8 PCMA/8000" — take the codec name before the slash
+			val := line[len("a=rtpmap:"):]
+			parts := strings.Fields(val)
+			if len(parts) >= 2 {
+				name := parts[1]
+				if slashIdx := strings.IndexByte(name, '/'); slashIdx >= 0 {
+					name = name[:slashIdx]
+				}
+				codec = name
+			}
+		}
+	}
+
+	if port == "" {
+		return ""
+	}
+	if codec != "" {
+		return codec + " :" + port
+	}
+	return ":" + port
+}

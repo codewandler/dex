@@ -2041,6 +2041,20 @@ Examples:
 			legIndex[c.CallID] = i + 1
 		}
 
+		// Map endpoints to Homer aliases (IP → alias name).
+		// Skip aliases that are just the IP with or without port (Homer returns these when no real alias is configured).
+		epAliases := make(map[string]string)
+		for _, r := range fanResult.Data {
+			if r.AliasSrc != "" && epAliases[r.SourceIP] == "" &&
+				!strings.HasPrefix(r.SourceIP, r.AliasSrc) && !strings.HasPrefix(r.AliasSrc, r.SourceIP) {
+				epAliases[r.SourceIP] = r.AliasSrc
+			}
+			if r.AliasDst != "" && epAliases[r.DestIP] == "" &&
+				!strings.HasPrefix(r.DestIP, r.AliasDst) && !strings.HasPrefix(r.AliasDst, r.DestIP) {
+				epAliases[r.DestIP] = r.AliasDst
+			}
+		}
+
 		// Map endpoints to notable phone numbers.
 		// Build set of numbers the user cares about (from -N, --from-user, --to-user).
 		notableNumbers := make(map[string]bool)
@@ -2081,6 +2095,11 @@ Examples:
 			if w := len(ep) + 4; w > flowColWidth {
 				flowColWidth = w
 			}
+			if alias, ok := epAliases[ep]; ok {
+				if w := len(alias) + 4; w > flowColWidth {
+					flowColWidth = w
+				}
+			}
 			if num, ok := epNumbers[ep]; ok {
 				if w := len(num) + 4; w > flowColWidth {
 					flowColWidth = w
@@ -2092,13 +2111,25 @@ Examples:
 		flowTimeWidth := 20
 
 		flowTotalWidth := flowTimeWidth + len(endpoints)*flowColWidth + 8
-		flowLine := strings.Repeat("─", flowTotalWidth)
+		flowLine := strings.Repeat("-", flowTotalWidth)
 
 		homerHeaderColor.Println("  Message Flow")
 		fmt.Println("  " + flowLine)
 		fmt.Println()
 
-		// Endpoint header labels (IP), centered around the pipe position
+		// Endpoint alias labels (bold/cyan), if any aliases exist
+		if len(epAliases) > 0 {
+			aliasLabels := make([]string, len(endpoints))
+			for i, ep := range endpoints {
+				if alias, ok := epAliases[ep]; ok {
+					aliasLabels[i] = alias
+				}
+			}
+			fmt.Printf("  %-*s", flowTimeWidth, "")
+			homerHeaderColor.Println(flowBuildLabelRow(aliasLabels, len(endpoints), flowColWidth))
+		}
+
+		// Endpoint IP labels (dim)
 		fmt.Printf("  %-*s", flowTimeWidth, "")
 		homerDimColor.Println(flowBuildLabelRow(endpoints, len(endpoints), flowColWidth))
 
@@ -2149,6 +2180,27 @@ Examples:
 				homerDimColor.Printf("  Leg %d", leg)
 			}
 			fmt.Println()
+
+			// SDP annotation line (codec + port) for messages with SDP
+			if sdpMedia := homer.ExtractSDPMedia(msg.Raw); sdpMedia != "" {
+				sdpRow := buildFlowPipeRow(len(endpoints), flowColWidth)
+				sdpBuf := []byte(sdpRow)
+				// Center media info between source and destination endpoints
+				label := []byte(sdpMedia)
+				center := (srcIdx + dstIdx) * flowColWidth / 2
+				start := center - len(label)/2
+				if start < 0 {
+					start = 0
+				}
+				end := start + len(label)
+				if end > len(sdpBuf) {
+					end = len(sdpBuf)
+					start = end - len(label)
+				}
+				copy(sdpBuf[start:end], label)
+				fmt.Printf("  %-*s", flowTimeWidth, "")
+				homerDimColor.Println(string(sdpBuf))
+			}
 		}
 
 		// Final pipe row
@@ -2280,14 +2332,14 @@ func flowBuildLabelRow(labels []string, numCols, colWidth int) string {
 	return string(buf)
 }
 
-// buildFlowPipeRow builds a pipe row for the ladder diagram: "│" at each column center.
+// buildFlowPipeRow builds a pipe row for the ladder diagram: "|" at each column center.
 func buildFlowPipeRow(numCols, colWidth int) string {
-	buf := make([]rune, numCols*colWidth)
+	buf := make([]byte, numCols*colWidth)
 	for i := range buf {
 		buf[i] = ' '
 	}
 	for i := range numCols {
-		buf[i*colWidth] = '│'
+		buf[i*colWidth] = '|'
 	}
 	return string(buf)
 }
@@ -2295,7 +2347,7 @@ func buildFlowPipeRow(numCols, colWidth int) string {
 // buildFlowArrowRow builds an arrow row for the ladder diagram.
 // Draws a gapless arrow from srcIdx to dstIdx with the method label centered on it.
 func buildFlowArrowRow(numCols, colWidth, srcIdx, dstIdx int, method string) string {
-	buf := make([]rune, numCols*colWidth)
+	buf := make([]byte, numCols*colWidth)
 	for i := range buf {
 		buf[i] = ' '
 	}
@@ -2310,7 +2362,7 @@ func buildFlowArrowRow(numCols, colWidth, srcIdx, dstIdx int, method string) str
 	// Place pipes for columns outside the arrow range
 	for i := range numCols {
 		if i < leftIdx || i > rightIdx {
-			buf[i*colWidth] = '│'
+			buf[i*colWidth] = '|'
 		}
 	}
 
@@ -2318,61 +2370,32 @@ func buildFlowArrowRow(numCols, colWidth, srcIdx, dstIdx int, method string) str
 	leftPos := leftIdx * colWidth
 	rightPos := rightIdx * colWidth
 	for i := leftPos; i <= rightPos; i++ {
-		buf[i] = '─'
+		buf[i] = '-'
 	}
 
-	// Source/destination: keep │ with space separating it from the arrow.
-	// Arrowhead sits one position inside the space.
 	if srcIdx < dstIdx {
 		// left=source, right=destination
-		buf[leftPos] = '│'
-		buf[leftPos+1] = ' '
-		buf[rightPos] = '│'
-		buf[rightPos-1] = ' '
-		buf[rightPos-2] = '▶'
+		buf[leftPos] = '|'
+		buf[rightPos] = '|'
+		buf[rightPos-1] = '>'
 	} else {
 		// right=source, left=destination
-		buf[rightPos] = '│'
-		buf[rightPos-1] = ' '
-		buf[leftPos] = '│'
-		buf[leftPos+1] = ' '
-		buf[leftPos+2] = '◀'
+		buf[rightPos] = '|'
+		buf[leftPos] = '|'
+		buf[leftPos+1] = '<'
 	}
 
 	// Intermediate columns: crossing character where arrow passes through
 	for i := leftIdx + 1; i < rightIdx; i++ {
-		buf[i*colWidth] = '─'
+		buf[i*colWidth] = '-'
 	}
 
-	// Place method label in the widest segment between crossings.
-	label := []rune(" " + method + " ")
-	// Collect segment boundaries: [segStart, segEnd) pairs where label can go.
-	// Each segment runs between source/crossings/destination, leaving 1 char
-	// padding around each crossing and 2 chars at source/destination for "│ "/"▶ │".
-	boundaries := []int{leftPos + 2}
-	for i := leftIdx + 1; i < rightIdx; i++ {
-		pos := i * colWidth
-		boundaries = append(boundaries, pos)   // end of prev segment (at crossing)
-		boundaries = append(boundaries, pos+1) // start of next segment (after crossing)
-	}
-	boundaries = append(boundaries, rightPos-2)
-
-	// Find widest segment
-	bestStart, bestWidth := 0, 0
-	for i := 0; i < len(boundaries)-1; i += 2 {
-		segStart := boundaries[i]
-		segEnd := boundaries[i+1]
-		w := segEnd - segStart
-		if w > bestWidth {
-			bestWidth = w
-			bestStart = segStart
-			// Center label in this segment
-		}
-	}
-
-	if len(label) <= bestWidth {
-		segMid := bestStart + bestWidth/2
-		labelStart := segMid - len(label)/2
+	// Center method label across the entire arrow span.
+	label := []byte(" " + method + " ")
+	spanWidth := rightPos - leftPos
+	if len(label) <= spanWidth {
+		mid := (leftPos + rightPos) / 2
+		labelStart := mid - len(label)/2
 		copy(buf[labelStart:], label)
 	}
 
