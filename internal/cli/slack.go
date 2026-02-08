@@ -375,11 +375,12 @@ The target can be:
 
 Use --thread/-t to reply to a specific thread.
 Use --as to choose the sender identity (bot or user).
-@mentions in the message body are auto-resolved to Slack user mentions.
+@mentions and #channel mentions in the message body are auto-resolved.
 
 Examples:
   dex slack send dev-team "Hello from dex!"
   dex slack send dev-team "Hey @john.doe check this!"  # @mention in message
+  dex slack send dev-team "Check out #general for updates"  # #channel mention
   dex slack send dev-team "Follow up" -t 1770257991.873399  # Reply to thread
   dex slack send @john.doe "Hey, check this out!"      # DM (requires im:write)
   dex slack send dev-team "Message as me" --as user       # Send as user (not bot)`,
@@ -442,8 +443,9 @@ Examples:
 			channelID = slack.ResolveChannel(targetArg)
 		}
 
-		// Resolve @mentions in message body to <@USER_ID> format
+		// Resolve @mentions and #channel mentions in message body
 		message = slack.ResolveMentions(message)
+		message = slack.ResolveChannelMentions(message)
 
 		var ts string
 		if threadTS != "" {

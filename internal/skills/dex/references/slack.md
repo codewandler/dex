@@ -51,9 +51,11 @@ dex slack users --no-cache        # Fetch from API instead of index
 dex slack send dev-team "Hello from dex!"
 dex slack send C0123456789 "Hello!"
 
-# With @mentions in message (auto-resolved to Slack mentions)
+# With @mentions and #channel mentions (auto-resolved to Slack mentions)
 dex slack send dev-team "Hey @john.doe check this!"
 dex slack send dev-team "@alice @bob please review"
+dex slack send dev-team "Check out #general for updates"
+dex slack send dev-team "See discussion in #dev-team and ask @john.doe"
 
 # Reply to thread (use -t with thread timestamp from previous send)
 dex slack send dev-team "Follow up" -t 1770257991.873399
@@ -68,16 +70,19 @@ dex slack send dev-team "Message from me" --as user
 
 Notes:
 - Channel names and @usernames autocomplete from index
-- @mentions in message body are auto-converted to `<@USER_ID>` format
+- @mentions and #channel mentions in message body are auto-converted to Slack format
+  - `@username` → `<@USER_ID>`
+  - `#channel` → `<#CHANNEL_ID>`
 - Use `-t <ts>` to continue a thread (ts returned from previous send)
 - Use `--as user` to send as yourself instead of the bot
 
-**Important:** When mentioning users, always use the exact username from `dex slack users`. Use the search parameter to find the right handle:
+**Important:** When mentioning users or channels, always use the exact name from `dex slack users` or `dex slack channels`:
 ```bash
 dex slack users john              # → john.doe
-dex slack send dev-team "Hey @john.doe check this out"
+dex slack channels | grep dev     # → dev-team
+dex slack send dev-team "Hey @john.doe check #general"
 ```
-Partial names like `@john` won't resolve - use the full handle like `@john.doe`.
+Partial names like `@john` or `#dev` won't resolve - use the full handle like `@john.doe` and exact channel name like `#dev-team`.
 
 ## Search Mentions
 ```bash

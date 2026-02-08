@@ -229,6 +229,63 @@ func ResolveMentions(text string) string {
 	return result
 }
 
+// ResolveChannelMentions converts #channel mentions in text to Slack <#CHANNEL_ID> format
+// Example: "Check #dev-team for updates" -> "Check <#C0123456789> for updates"
+func ResolveChannelMentions(text string) string {
+	idx, err := LoadIndex()
+	if err != nil || len(idx.Channels) == 0 {
+		return text
+	}
+
+	result := text
+	i := 0
+	for i < len(result) {
+		// Find next #
+		hashIdx := -1
+		for j := i; j < len(result); j++ {
+			if result[j] == '#' {
+				hashIdx = j
+				break
+			}
+		}
+		if hashIdx == -1 {
+			break
+		}
+
+		// Skip if this # is already part of a Slack channel mention format <#...>
+		if hashIdx > 0 && result[hashIdx-1] == '<' {
+			i = hashIdx + 1
+			continue
+		}
+
+		// Extract potential channel name (alphanumeric, underscores, hyphens)
+		endIdx := hashIdx + 1
+		for endIdx < len(result) {
+			c := result[endIdx]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+				c == '_' || c == '-' {
+				endIdx++
+			} else {
+				break
+			}
+		}
+
+		if endIdx > hashIdx+1 {
+			channelName := result[hashIdx+1 : endIdx]
+			channel := idx.FindChannel(channelName)
+			if channel != nil {
+				mention := "<#" + channel.ID + ">"
+				result = result[:hashIdx] + mention + result[endIdx:]
+				i = hashIdx + len(mention)
+				continue
+			}
+		}
+		i = hashIdx + 1
+	}
+
+	return result
+}
+
 // MentionStatusCache caches classification results for mentions
 // Only "Replied" and "Acked" statuses are cached (they're stable)
 // "Pending" is not cached as it may change when user replies
