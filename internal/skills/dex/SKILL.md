@@ -84,6 +84,7 @@ dex slack send <ch> "msg" -t <ts> # Reply to thread
 dex slack mentions [--unhandled]  # My mentions today
 dex slack search "query"          # Search messages
 dex slack thread <url|ch:ts>      # View thread details
+dex slack users [query]           # Search/list users (resolve handles)
 ```
 
 ### GitHub (`dex gh`)

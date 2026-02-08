@@ -41,6 +41,7 @@ dex slack channels                # List all indexed channels
 dex slack channels --member       # Only channels bot is a member of
 dex slack channels --no-cache     # Fetch from API instead of index
 dex slack users                   # List all indexed users
+dex slack users john              # Search users matching "john"
 dex slack users --no-cache        # Fetch from API instead of index
 ```
 
@@ -71,9 +72,9 @@ Notes:
 - Use `-t <ts>` to continue a thread (ts returned from previous send)
 - Use `--as user` to send as yourself instead of the bot
 
-**Important:** When mentioning users, always use the exact username from `dex slack users`. For example:
+**Important:** When mentioning users, always use the exact username from `dex slack users`. Use the search parameter to find the right handle:
 ```bash
-dex slack users | grep -i john    # → john.doe
+dex slack users john              # → john.doe
 dex slack send dev-team "Hey @john.doe check this out"
 ```
 Partial names like `@john` won't resolve - use the full handle like `@john.doe`.

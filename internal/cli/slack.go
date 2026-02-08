@@ -562,15 +562,23 @@ func printChannel(id, name string, isPrivate, isMember bool, numMembers int) {
 }
 
 var slackUsersCmd = &cobra.Command{
-	Use:   "users",
-	Short: "List Slack users",
-	Long: `List Slack users from the local index.
+	Use:   "users [query]",
+	Short: "Search or list Slack users",
+	Long: `Search or list Slack users from the local index.
+
+When a query is provided, filters users by matching against username, display name,
+and real name (case-insensitive substring match).
 
 Examples:
   dex slack users              # List all indexed users
+  dex slack users john         # Search for users matching "john"
   dex slack users --no-cache   # Fetch from API instead of index`,
 	Run: func(cmd *cobra.Command, args []string) {
 		noCache, _ := cmd.Flags().GetBool("no-cache")
+		query := ""
+		if len(args) > 0 {
+			query = strings.ToLower(strings.Join(args, " "))
+		}
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -597,10 +605,17 @@ Examples:
 			printUserHeader()
 			count := 0
 			for _, u := range idx.Users {
+				if query != "" && !userMatchesQuery(u.Username, u.DisplayName, u.RealName, query) {
+					continue
+				}
 				printUser(u.ID, u.Username, u.DisplayName, u.IsBot)
 				count++
 			}
-			fmt.Printf("\n%d users (from index, %s old)\n", count, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
+			if count == 0 && query != "" {
+				fmt.Printf("\nNo users matching %q. Try running 'dex slack index' to refresh the user list.\n", query)
+			} else {
+				fmt.Printf("\n%d users (from index, %s old)\n", count, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
+			}
 			return
 		}
 
@@ -623,10 +638,17 @@ Examples:
 			if u.Deleted || u.ID == "USLACKBOT" {
 				continue
 			}
+			if query != "" && !userMatchesQuery(u.Name, u.Profile.DisplayName, u.RealName, query) {
+				continue
+			}
 			printUser(u.ID, u.Name, u.Profile.DisplayName, u.IsBot)
 			count++
 		}
-		fmt.Printf("\n%d users\n", count)
+		if count == 0 && query != "" {
+			fmt.Printf("\nNo users matching %q.\n", query)
+		} else {
+			fmt.Printf("\n%d users\n", count)
+		}
 	},
 }
 
@@ -641,6 +663,12 @@ func printUser(id, username, displayName string, isBot bool) {
 		userType = "bot"
 	}
 	fmt.Printf("%-15s %-25s %-30s %s\n", id, username, displayName, userType)
+}
+
+func userMatchesQuery(username, displayName, realName, query string) bool {
+	return strings.Contains(strings.ToLower(username), query) ||
+		strings.Contains(strings.ToLower(displayName), query) ||
+		strings.Contains(strings.ToLower(realName), query)
 }
 
 // completeSlackUsers provides shell completion for usernames (without @ prefix)
