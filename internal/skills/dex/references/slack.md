@@ -37,13 +37,25 @@ Index stored at `~/.dex/slack/index.json`. Required for channel/user name autoco
 
 ## List Channels & Users
 ```bash
-dex slack channels                # List all indexed channels
-dex slack channels --member       # Only channels bot is a member of
-dex slack channels --no-cache     # Fetch from API instead of index
+dex slack channels                    # List all indexed channels
+dex slack channels --member           # Only channels bot is a member of
+dex slack channels --user timo.friedl # Channels a user belongs to
+dex slack channels --no-cache         # Fetch from API instead of index
 dex slack users                   # List all indexed users
 dex slack users john              # Search users matching "john"
+dex slack users --channel dev-team    # Members of #dev-team
+dex slack users john --channel dev    # Search within channel members
 dex slack users --no-cache        # Fetch from API instead of index
 ```
+
+## Channel Members
+```bash
+dex slack channel members dev-team    # List all members of #dev-team
+dex slack channel members general     # List all members of #general
+```
+
+Shows member user IDs resolved to usernames from the index.
+Requires `dex slack index` to have been run (member data is fetched for public non-archived channels).
 
 ## Send Message
 ```bash

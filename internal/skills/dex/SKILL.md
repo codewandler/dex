@@ -86,7 +86,10 @@ dex slack mentions [--unhandled]  # My mentions today
 dex slack search "query"          # Search messages
 dex slack thread <url|ch:ts>      # View thread details
 dex slack users [query]           # Search/list users (resolve handles)
+dex slack users --channel <name>  # List users in a channel
 dex slack channels                # List channels (resolve names)
+dex slack channels --user <name>  # Channels a user belongs to
+dex slack channel members <name>  # List members of a channel
 ```
 
 ### GitHub (`dex gh`)

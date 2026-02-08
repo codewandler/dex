@@ -185,6 +185,39 @@ func (c *Client) ListChannels() ([]slack.Channel, error) {
 	return allChannels, nil
 }
 
+// GetChannelMembers returns all member user IDs for a channel, handling pagination and rate limits
+func (c *Client) GetChannelMembers(channelID string) ([]string, error) {
+	var allMembers []string
+	cursor := ""
+
+	for {
+		params := &slack.GetUsersInConversationParameters{
+			ChannelID: channelID,
+			Cursor:    cursor,
+			Limit:     200,
+		}
+
+		members, nextCursor, err := c.api.GetUsersInConversation(params)
+		if err != nil {
+			// Handle rate limiting
+			if rateLimitErr, ok := err.(*slack.RateLimitedError); ok {
+				time.Sleep(rateLimitErr.RetryAfter)
+				continue
+			}
+			return nil, fmt.Errorf("failed to get channel members: %w", err)
+		}
+
+		allMembers = append(allMembers, members...)
+
+		if nextCursor == "" {
+			break
+		}
+		cursor = nextCursor
+	}
+
+	return allMembers, nil
+}
+
 // ListUsers lists all users in the workspace
 func (c *Client) ListUsers() ([]slack.User, error) {
 	users, err := c.api.GetUsers()

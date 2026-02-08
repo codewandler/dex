@@ -71,7 +71,7 @@ func SaveIndex(idx *models.SlackIndex) error {
 type ProgressFunc func(completed, total int)
 
 // IndexAll fetches all channels and users and builds the index
-func (c *Client) IndexAll(channelProgressFn, userProgressFn ProgressFunc) (*models.SlackIndex, error) {
+func (c *Client) IndexAll(channelProgressFn, userProgressFn, memberProgressFn ProgressFunc) (*models.SlackIndex, error) {
 	auth, err := c.TestAuth()
 	if err != nil {
 		return nil, err
@@ -149,6 +149,31 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn ProgressFunc) (*mode
 	sort.Slice(idx.Users, func(i, j int) bool {
 		return idx.Users[i].Username < idx.Users[j].Username
 	})
+
+	// Index channel members (public, non-archived only)
+	var memberChannels []int
+	for i, ch := range idx.Channels {
+		if !ch.IsPrivate && !ch.IsArchived {
+			memberChannels = append(memberChannels, i)
+		}
+	}
+
+	total = len(memberChannels)
+	for progress, ci := range memberChannels {
+		members, err := c.GetChannelMembers(idx.Channels[ci].ID)
+		if err != nil {
+			// Skip channels where we can't fetch members
+			if memberProgressFn != nil {
+				memberProgressFn(progress+1, total)
+			}
+			continue
+		}
+		idx.Channels[ci].MemberIDs = members
+
+		if memberProgressFn != nil {
+			memberProgressFn(progress+1, total)
+		}
+	}
 
 	idx.BuildLookupMaps()
 	return idx, nil

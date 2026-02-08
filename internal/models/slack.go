@@ -23,6 +23,7 @@ type SlackChannel struct {
 	IsArchived bool      `json:"is_archived"`
 	IsMember   bool      `json:"is_member"` // Bot is a member and can post
 	NumMembers int       `json:"num_members"`
+	MemberIDs  []string  `json:"member_ids,omitempty"`
 	Topic      string    `json:"topic,omitempty"`
 	Purpose    string    `json:"purpose,omitempty"`
 	IndexedAt  time.Time `json:"indexed_at"`
@@ -174,4 +175,18 @@ func (idx *SlackIndex) UpsertUser(u SlackUser) {
 			idx.UsersByUsername[u.Username] = i
 		}
 	}
+}
+
+// ChannelsForUser returns all channels that contain the given user ID
+func (idx *SlackIndex) ChannelsForUser(userID string) []SlackChannel {
+	var channels []SlackChannel
+	for _, ch := range idx.Channels {
+		for _, mid := range ch.MemberIDs {
+			if mid == userID {
+				channels = append(channels, ch)
+				break
+			}
+		}
+	}
+	return channels
 }

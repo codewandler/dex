@@ -340,6 +340,9 @@ Examples:
 			func(completed, total int) {
 				fmt.Printf("\rIndexing users... %d/%d   ", completed, total)
 			},
+			func(completed, total int) {
+				fmt.Printf("\rIndexing members... %d/%d   ", completed, total)
+			},
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nFailed to index: %v\n", err)
@@ -472,13 +475,17 @@ var slackChannelsCmd = &cobra.Command{
 By default shows all indexed channels. Use --member to filter to only
 channels the bot is a member of (can post to).
 
+Use --user to show only channels a specific user belongs to (requires member data in index).
+
 Examples:
-  dex slack channels              # List all indexed channels
-  dex slack channels --member     # Only channels bot can post to
-  dex slack channels --no-cache   # Fetch from API instead of index`,
+  dex slack channels                      # List all indexed channels
+  dex slack channels --member             # Only channels bot can post to
+  dex slack channels --user timo.friedl   # Channels for a user
+  dex slack channels --no-cache           # Fetch from API instead of index`,
 	Run: func(cmd *cobra.Command, args []string) {
 		noCache, _ := cmd.Flags().GetBool("no-cache")
 		memberOnly, _ := cmd.Flags().GetBool("member")
+		userFilter, _ := cmd.Flags().GetString("user")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -502,16 +509,44 @@ Examples:
 				os.Exit(1)
 			}
 
+			// Build user channel set if --user is specified
+			var userChannelSet map[string]bool
+			var resolvedUsername string
+			if userFilter != "" {
+				userID := idx.ResolveUserID(userFilter)
+				if u := idx.FindUser(userID); u != nil {
+					resolvedUsername = u.Username
+				} else {
+					resolvedUsername = userFilter
+				}
+				userChannels := idx.ChannelsForUser(userID)
+				if len(userChannels) == 0 {
+					fmt.Printf("No channels found for user %q. Run 'dex slack index --force' to fetch member data.\n", resolvedUsername)
+					return
+				}
+				userChannelSet = make(map[string]bool, len(userChannels))
+				for _, ch := range userChannels {
+					userChannelSet[ch.ID] = true
+				}
+			}
+
 			printChannelHeader()
 			count := 0
 			for _, ch := range idx.Channels {
 				if memberOnly && !ch.IsMember {
 					continue
 				}
+				if userChannelSet != nil && !userChannelSet[ch.ID] {
+					continue
+				}
 				printChannel(ch.ID, ch.Name, ch.IsPrivate, ch.IsMember, ch.NumMembers)
 				count++
 			}
-			fmt.Printf("\n%d channels (from index, %s old)\n", count, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
+			if userFilter != "" {
+				fmt.Printf("\n%d channels for @%s (from index, %s old)\n", count, resolvedUsername, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
+			} else {
+				fmt.Printf("\n%d channels (from index, %s old)\n", count, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
+			}
 			return
 		}
 
@@ -571,12 +606,17 @@ var slackUsersCmd = &cobra.Command{
 When a query is provided, filters users by matching against username, display name,
 and real name (case-insensitive substring match).
 
+Use --channel to filter to members of a specific channel (requires member data in index).
+
 Examples:
-  dex slack users              # List all indexed users
-  dex slack users john         # Search for users matching "john"
-  dex slack users --no-cache   # Fetch from API instead of index`,
+  dex slack users                       # List all indexed users
+  dex slack users john                  # Search for users matching "john"
+  dex slack users --channel dev-team    # Members of #dev-team
+  dex slack users john --channel dev    # Search within channel members
+  dex slack users --no-cache            # Fetch from API instead of index`,
 	Run: func(cmd *cobra.Command, args []string) {
 		noCache, _ := cmd.Flags().GetBool("no-cache")
+		channelFilter, _ := cmd.Flags().GetString("channel")
 		query := ""
 		if len(args) > 0 {
 			query = strings.ToLower(strings.Join(args, " "))
@@ -604,9 +644,30 @@ Examples:
 				os.Exit(1)
 			}
 
+			// Build channel member set if --channel is specified
+			var channelMemberSet map[string]bool
+			if channelFilter != "" {
+				ch := idx.FindChannel(channelFilter)
+				if ch == nil {
+					fmt.Fprintf(os.Stderr, "Channel %q not found in index.\n", channelFilter)
+					os.Exit(1)
+				}
+				if len(ch.MemberIDs) == 0 {
+					fmt.Fprintf(os.Stderr, "No member data for #%s. Run 'dex slack index --force' to fetch members.\n", ch.Name)
+					os.Exit(1)
+				}
+				channelMemberSet = make(map[string]bool, len(ch.MemberIDs))
+				for _, id := range ch.MemberIDs {
+					channelMemberSet[id] = true
+				}
+			}
+
 			printUserHeader()
 			count := 0
 			for _, u := range idx.Users {
+				if channelMemberSet != nil && !channelMemberSet[u.ID] {
+					continue
+				}
 				if query != "" && !userMatchesQuery(u.Username, u.DisplayName, u.RealName, query) {
 					continue
 				}
@@ -615,6 +676,8 @@ Examples:
 			}
 			if count == 0 && query != "" {
 				fmt.Printf("\nNo users matching %q. Try running 'dex slack index' to refresh the user list.\n", query)
+			} else if channelFilter != "" {
+				fmt.Printf("\n%d users in #%s (from index, %s old)\n", count, channelFilter, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
 			} else {
 				fmt.Printf("\n%d users (from index, %s old)\n", count, formatSlackIndexAge(time.Since(idx.LastFullIndexAt)))
 			}
@@ -1461,6 +1524,83 @@ Examples:
 	},
 }
 
+var slackChannelCmd = &cobra.Command{
+	Use:   "channel",
+	Short: "Channel operations",
+	Long:  `Commands for Slack channel operations.`,
+}
+
+var slackChannelMembersCmd = &cobra.Command{
+	Use:   "members <channel-name>",
+	Short: "List members of a channel",
+	Long: `List all members of a Slack channel from the local index.
+
+Requires a prior 'dex slack index' run with member data.
+
+Examples:
+  dex slack channel members dev-team
+  dex slack channel members general`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeSlackChannelNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		channelName := args[0]
+
+		idx, err := slack.LoadIndex()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load index: %v\n", err)
+			os.Exit(1)
+		}
+
+		ch := idx.FindChannel(channelName)
+		if ch == nil {
+			fmt.Fprintf(os.Stderr, "Channel %q not found in index. Run 'dex slack index' first.\n", channelName)
+			os.Exit(1)
+		}
+
+		if len(ch.MemberIDs) == 0 {
+			fmt.Printf("No member data for #%s. Run 'dex slack index --force' to fetch members.\n", ch.Name)
+			return
+		}
+
+		printUserHeader()
+		count := 0
+		for _, memberID := range ch.MemberIDs {
+			u := idx.FindUser(memberID)
+			if u != nil {
+				printUser(u.ID, u.Username, u.DisplayName, u.IsBot)
+				count++
+			} else {
+				printUser(memberID, "", "", false)
+				count++
+			}
+		}
+		fmt.Printf("\n%d members in #%s\n", count, ch.Name)
+	},
+}
+
+// completeSlackChannelNames provides shell completion for channel names
+func completeSlackChannelNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	idx, err := slack.LoadIndex()
+	if err != nil || len(idx.Channels) == 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	var completions []string
+	toCompleteLower := strings.ToLower(toComplete)
+
+	for _, ch := range idx.Channels {
+		if strings.Contains(strings.ToLower(ch.Name), toCompleteLower) {
+			completions = append(completions, ch.Name)
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 func printSearchHeader() {
 	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
 	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
@@ -1502,19 +1642,27 @@ func init() {
 	slackCmd.AddCommand(slackIndexCmd)
 	slackCmd.AddCommand(slackSendCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
+	slackCmd.AddCommand(slackChannelCmd)
 	slackCmd.AddCommand(slackUsersCmd)
 	slackCmd.AddCommand(slackMentionsCmd)
 	slackCmd.AddCommand(slackSearchCmd)
 	slackCmd.AddCommand(slackThreadCmd)
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
+	slackChannelCmd.AddCommand(slackChannelMembersCmd)
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
 	slackSendCmd.Flags().String("as", "bot", "Send as 'bot' (default) or 'user'")
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
+	slackChannelsCmd.Flags().StringP("user", "u", "", "Show only channels this user belongs to")
+	_ = slackChannelsCmd.RegisterFlagCompletionFunc("user", completeSlackUsers)
 	slackUsersCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
+	slackUsersCmd.Flags().StringP("channel", "C", "", "Filter to members of specified channel")
+	_ = slackUsersCmd.RegisterFlagCompletionFunc("channel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeSlackChannelNames(cmd, nil, toComplete)
+	})
 	slackMentionsCmd.Flags().StringP("user", "u", "", "User to search mentions for (username or ID)")
 	slackMentionsCmd.Flags().BoolP("bot", "b", false, "Search for bot mentions instead of your own")
 	slackMentionsCmd.Flags().IntP("limit", "l", 20, "Maximum number of results to show")
