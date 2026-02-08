@@ -159,6 +159,37 @@ Exports SIP messages as a PCAP file for analysis in Wireshark or similar tools.
 - `--to` - Time range end as duration (default: now)
 - `-o, --output` - Output file path (default: `<call-id>.pcap`)
 
+## Call Quality / QoS
+```bash
+dex homer qos <call-id>                           # Show RTCP quality metrics
+dex homer qos id1@host id2@host                   # Multiple calls
+dex homer qos <call-id> --clock 16000             # Wideband codec (16 kHz)
+dex homer qos <call-id> --latency 50              # Override assumed latency
+dex homer qos <call-id> -o json                   # JSON output
+dex homer qos <call-id> --from 2h                 # Expand time range
+```
+
+Fetches RTCP sender/receiver reports from Homer and computes per-stream quality metrics: packet loss, jitter (average and maximum), and an estimated MOS score.
+
+### QoS Flags
+- `--from` - Time range start as duration (default: `10d`)
+- `--to` - Time range end as duration (default: now)
+- `--clock` - RTP clock rate in Hz for jitter conversion (default: `8000` for G.711)
+- `--latency` - Assumed one-way network latency in ms for MOS calculation (default: `20`)
+- `-o, --output` - Output format: `json` or `jsonl`
+
+### MOS Scale
+MOS (Mean Opinion Score) is estimated using the E-model approximation:
+
+| MOS | Quality |
+|-----|---------|
+| 4.3+ | Excellent |
+| 3.6 - 4.3 | Good |
+| 2.6 - 3.6 | Fair |
+| < 2.6 | Poor |
+
+MOS is not returned by Homer — it is computed client-side from latency, jitter, and packet loss. The `--latency` flag controls the assumed one-way network delay (default 20 ms). The `--clock` flag sets the RTP clock rate used to convert RTCP jitter values from timestamp units to milliseconds (default 8000 Hz for G.711 narrowband; use 16000 for wideband codecs like G.722).
+
 ## Analyze Call (Multi-Leg Correlation)
 ```bash
 dex homer analyze <call-id> -c X-Acme-Call-ID                    # Correlate legs by header

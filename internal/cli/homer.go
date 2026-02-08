@@ -1083,6 +1083,165 @@ Examples:
 	},
 }
 
+var homerQosCmd = &cobra.Command{
+	Use:   "qos <call-id> [call-id...]",
+	Short: "Show RTCP call quality metrics",
+	Long: `Display RTCP quality-of-service data (jitter, packet loss, MOS) for one or more calls.
+
+Fetches RTCP sender/receiver reports from Homer and computes per-stream metrics
+including packet loss percentage, jitter statistics, and an estimated MOS score
+using the E-model approximation.
+
+MOS scale: 4.3+ excellent, 3.6-4.3 good, 2.6-3.6 fair, <2.6 poor
+
+Examples:
+  dex homer qos abc123-def456@host
+  dex homer qos id1@host id2@host
+  dex homer qos abc123@host --clock 16000
+  dex homer qos abc123@host --latency 50
+  dex homer qos abc123@host -o json`,
+	Args: cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := getHomerClient(cmd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
+		fromStr, _ := cmd.Flags().GetString("from")
+		toStr, _ := cmd.Flags().GetString("to")
+		clockRate, _ := cmd.Flags().GetInt("clock")
+		latencyMS, _ := cmd.Flags().GetFloat64("latency")
+		output, _ := cmd.Flags().GetString("output")
+
+		from, to, err := parseTimeRange(fromStr, toStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid time range: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Search for each Call-ID and merge results
+		var merged *homer.SearchResult
+		for _, callID := range args {
+			params := homer.SearchParams{
+				From:   from,
+				To:     to,
+				CallID: callID,
+				Limit:  200,
+			}
+			result, err := client.SearchCalls(params)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to get messages for %s: %v\n", callID, err)
+				os.Exit(1)
+			}
+			merged = homer.MergeSearchResults(merged, result)
+		}
+
+		if merged == nil || len(merged.Data) == 0 {
+			homerDimColor.Println("No messages found for the given call-id(s).")
+			homerDimColor.Println("Tip: Try expanding the time range with --from")
+			return
+		}
+
+		// Fetch QoS data
+		qosParams := homer.SearchParams{From: from, To: to}
+		qos, err := client.GetQoS(qosParams, merged.Data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get QoS data: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Aggregate streams
+		streams := homer.AggregateStreams(qos, clockRate, latencyMS)
+
+		if len(streams) == 0 {
+			homerDimColor.Println("No QoS data available for the given call-id(s).")
+			return
+		}
+
+		// JSON output
+		if output == "json" {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(streams)
+			return
+		}
+		if output == "jsonl" {
+			enc := json.NewEncoder(os.Stdout)
+			for _, s := range streams {
+				enc.Encode(s)
+			}
+			return
+		}
+
+		// Table output
+		label := args[0]
+		if len(args) > 1 {
+			label = fmt.Sprintf("%d call-ids", len(args))
+		}
+
+		// Compute stream column width
+		maxStreamWidth := len("STREAM")
+		for _, s := range streams {
+			w := len(fmt.Sprintf("%s:%d → %s:%d", s.SrcIP, s.SrcPort, s.DstIP, s.DstPort))
+			if w > maxStreamWidth {
+				maxStreamWidth = w
+			}
+		}
+
+		lineWidth := 2 + maxStreamWidth + 2 + 8 + 2 + 9 + 2 + 7 + 2 + 20 + 2 + 5
+		line := strings.Repeat("─", lineWidth)
+
+		fmt.Println()
+		homerHeaderColor.Printf("  Call Quality (RTCP) — %s\n", label)
+		fmt.Println("  " + line)
+		fmt.Println()
+
+		fmt.Printf("  %-*s  %8s  %9s  %7s  %-20s  %s\n",
+			maxStreamWidth, "STREAM", "REPORTS", "PACKETS", "LOSS", "JITTER (avg/max)", "MOS")
+		fmt.Println("  " + line)
+
+		for _, s := range streams {
+			stream := fmt.Sprintf("%s:%d → %s:%d", s.SrcIP, s.SrcPort, s.DstIP, s.DstPort)
+			loss := fmt.Sprintf("%.1f%%", s.LossPercent)
+			jitter := fmt.Sprintf("%.2f / %.2f ms", s.AvgJitterMS, s.MaxJitterMS)
+			mosStr := fmt.Sprintf("%.2f", s.MOS)
+
+			fmt.Printf("  %-*s  %8d  %9d  ", maxStreamWidth, stream, s.Reports, s.Packets)
+
+			// Color-code loss
+			switch {
+			case s.LossPercent == 0:
+				homerSuccessColor.Printf("%7s", loss)
+			case s.LossPercent <= 2:
+				homerWarnColor.Printf("%7s", loss)
+			default:
+				homerErrorColor.Printf("%7s", loss)
+			}
+
+			fmt.Printf("  %-20s  ", jitter)
+
+			// Color-code MOS
+			switch {
+			case s.MOS >= 4.3:
+				homerSuccessColor.Printf("%s", mosStr)
+			case s.MOS >= 3.6:
+				fmt.Print(mosStr)
+			case s.MOS >= 2.6:
+				homerWarnColor.Printf("%s", mosStr)
+			default:
+				homerErrorColor.Printf("%s", mosStr)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println()
+		homerDimColor.Println("  MOS: 4.3+ excellent · 3.6-4.3 good · 2.6-3.6 fair · <2.6 poor")
+		homerDimColor.Printf("  Assumed latency: %.0f ms (override with --latency)\n", latencyMS)
+		fmt.Println()
+	},
+}
+
 // printUserAgent prints a formatted user agent with special coloring for known types.
 func printUserAgent(ua string) {
 	if strings.HasPrefix(ua, "Asterisk ") {
@@ -2281,6 +2440,7 @@ func init() {
 	homerCmd.AddCommand(homerCallsCmd)
 	homerCmd.AddCommand(homerAliasesCmd)
 	homerCmd.AddCommand(homerAnalyzeCmd)
+	homerCmd.AddCommand(homerQosCmd)
 
 	// Search flags
 	homerSearchCmd.Flags().String("since", "24h", "Start of time range (duration like 1h, 30m or timestamp like 2006-01-02 15:04)")
@@ -2329,4 +2489,11 @@ func init() {
 	homerAnalyzeCmd.Flags().String("at", "", "Point in time ±5 min")
 	homerAnalyzeCmd.Flags().IntP("limit", "l", 100, "Max calls per search")
 	homerAnalyzeCmd.Flags().StringP("output", "o", "", "Output format: json, jsonl")
+
+	// QoS flags
+	homerQosCmd.Flags().String("from", "10d", "Time range start (default: 10 days)")
+	homerQosCmd.Flags().String("to", "", "Time range end (default: now)")
+	homerQosCmd.Flags().Int("clock", 8000, "RTP clock rate in Hz for jitter conversion")
+	homerQosCmd.Flags().Float64("latency", 20, "Assumed one-way latency in ms for MOS calculation")
+	homerQosCmd.Flags().StringP("output", "o", "", "Output format: json or jsonl")
 }

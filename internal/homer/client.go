@@ -258,11 +258,9 @@ func (c *Client) SearchCalls(params SearchParams) (*SearchResult, error) {
 	return &result, nil
 }
 
-// GetTransaction fetches full SIP message details (including raw bodies) for a call.
-// This uses the /api/v3/call/transaction endpoint which requires search results (IDs + callIDs)
-// from a prior SearchCalls query.
-func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*TransactionResult, error) {
-	// Collect unique call-ids and find the first message ID and nodes
+// buildTransactionPayload constructs the shared request body used by both
+// the transaction and QoS endpoints.
+func buildTransactionPayload(params SearchParams, searchData []CallRecord) map[string]any {
 	callIDs := make(map[string]bool)
 	var firstID float64
 	nodes := make(map[string]bool)
@@ -271,7 +269,6 @@ func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*
 		if firstID == 0 {
 			firstID = r.ID
 		}
-		// Extract node from table name or use "local"
 		nodes["local"] = true
 	}
 
@@ -287,7 +284,7 @@ func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*
 	_, offsetSec := time.Now().Zone()
 	tzMinutes := -(offsetSec / 60)
 
-	reqBody := map[string]any{
+	return map[string]any{
 		"param": map[string]any{
 			"search": map[string]any{
 				"1_call": map[string]any{
@@ -314,6 +311,13 @@ func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*
 			"to":   params.To.UnixMilli(),
 		},
 	}
+}
+
+// GetTransaction fetches full SIP message details (including raw bodies) for a call.
+// This uses the /api/v3/call/transaction endpoint which requires search results (IDs + callIDs)
+// from a prior SearchCalls query.
+func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*TransactionResult, error) {
+	reqBody := buildTransactionPayload(params, searchData)
 
 	body, err := c.doAuthRequest("POST", "/api/v3/call/transaction", reqBody)
 	if err != nil {
@@ -323,6 +327,23 @@ func (c *Client) GetTransaction(params SearchParams, searchData []CallRecord) (*
 	var result TransactionResult
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode transaction result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// GetQoS fetches RTCP quality-of-service reports for the given call records.
+func (c *Client) GetQoS(params SearchParams, searchData []CallRecord) (*QoSResult, error) {
+	reqBody := buildTransactionPayload(params, searchData)
+
+	body, err := c.doAuthRequest("POST", "/api/v3/call/report/qos", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("get QoS failed: %w", err)
+	}
+
+	var result QoSResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode QoS result: %w", err)
 	}
 
 	return &result, nil

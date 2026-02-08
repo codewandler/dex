@@ -150,6 +150,9 @@ dex homer show <call-id> --raw    # Show raw SIP message bodies
 dex homer export <call-id>        # Export call as PCAP
 dex homer analyze <call-id> -c X-Acme-Call-ID  # Correlate multi-leg call by header
 dex homer analyze <call-id> -c X-Acme-Call-ID -H X-Acme -N 49341550035  # With extra columns and numbers
+dex homer qos <call-id>           # Show RTCP quality metrics (jitter, loss, MOS)
+dex homer qos <call-id> --clock 16000  # Custom RTP clock rate
+dex homer qos <call-id> -o json   # JSON output
 dex homer aliases                 # List IP/port aliases
 dex homer endpoints               # List configured endpoints with URLs
 ```
