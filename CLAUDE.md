@@ -10,6 +10,7 @@ Swiss army knife CLI for engineers. Usable standalone but primarily designed as 
 - **GitHub** - Repository operations via gh CLI (avoids API rate limits)
 - **Jira** - Issue management (OAuth)
 - **Slack** - Messaging (send, reply, channel index)
+- **Prometheus** - PromQL queries, scrape targets, alerts
 
 ## Project Structure
 
@@ -23,6 +24,7 @@ dex/
 │   │   ├── gitlab.go              # GitLab commands (gl/gitlab)
 │   │   ├── jira.go                # Jira commands
 │   │   ├── k8s.go                 # Kubernetes commands
+│   │   ├── prometheus.go          # Prometheus commands (prom/prometheus)
 │   │   └── slack.go               # Slack commands
 │   ├── gh/                        # GitHub CLI wrapper
 │   │   └── client.go              # gh CLI wrapper for clone operations
@@ -36,6 +38,7 @@ dex/
 │   │   └── tags.go                # Tag operations
 │   ├── jira/                      # Jira OAuth client
 │   ├── k8s/                       # Kubernetes client
+│   ├── prometheus/                # Prometheus API client
 │   ├── slack/                     # Slack API client
 │   │   ├── client.go              # Main client
 │   │   └── index.go               # Channel index
@@ -95,6 +98,7 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 | `SLACK_BOT_TOKEN` | Slack bot token (xoxb-...) |
 | `SLACK_APP_TOKEN` | Slack app token for Socket Mode (xapp-...) |
 | `SLACK_USER_TOKEN` | Slack user token for search API (xoxp-...) |
+| `PROMETHEUS_URL` | Prometheus server URL |
 | `ACTIVITY_DAYS` | Default days for activity lookback |
 
 ## Command Overview
@@ -105,6 +109,7 @@ dex gl ...     # GitLab (aliases: gitlab)
 dex gh ...     # GitHub (aliases: github) - wraps gh CLI
 dex jira ...   # Jira
 dex slack ...  # Slack
+dex prom ...   # Prometheus (aliases: prometheus)
 ```
 
 For full command reference, see `internal/skills/dex/SKILL.md`.

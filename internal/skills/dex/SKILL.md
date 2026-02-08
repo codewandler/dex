@@ -1,12 +1,12 @@
 ---
 name: dex
-description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, and Homer operations
+description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, and Prometheus operations
 user-invocable: true
 ---
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, and SQL operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, Prometheus, and SQL operations. Run commands via Bash tool.
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
@@ -37,6 +37,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
 | Homer | `dex homer` | [references/homer.md](references/homer.md) |
+| Prometheus | `dex prom` | [references/prometheus.md](references/prometheus.md) |
 | SQL | `dex sql` | [references/sql.md](references/sql.md) |
 | Claude Code | `dex claude` | [references/claude.md](references/claude.md) |
 
@@ -128,6 +129,24 @@ dex loki labels job               # List values for label
 dex loki test                     # Test connection
 ```
 
+### Prometheus (`dex prom`)
+```bash
+dex prom discover                 # Auto-discover Prometheus in k8s cluster
+dex prom query 'up'               # Instant query
+dex prom query 'up' -o json       # JSON output
+dex prom query 'up' --time "2026-02-04 15:00"  # Query at specific time
+dex prom query-range 'rate(http_requests_total[5m])' --since 1h  # Range query
+dex prom query-range 'up' --since 30m --step 15s  # Custom step
+dex prom query-range 'up' --since "2026-02-04 15:00" --until "2026-02-04 16:00"
+dex prom labels                   # List all label names
+dex prom labels job               # List values for label
+dex prom labels -m 'up{job="x"}'  # Scoped to matching series
+dex prom targets                  # Scrape targets
+dex prom targets --state dropped  # Dropped targets
+dex prom alerts                   # Active alerts
+dex prom test                     # Test connection
+```
+
 ### Homer (`dex homer`)
 ```bash
 dex homer discover                # Find Homer via K8s service discovery
@@ -184,4 +203,5 @@ dex claude statusline             # Generate status line for Claude Code
 - MR format: `project!iid` (e.g., `sre/helm!2903`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)
 - Homer URL: set `HOMER_URL` env var or use `--url` flag (auto-discovers `homer-webapp` service in K8s)
-- Command aliases: `homer`=`sip`
+- Prometheus URL: set `PROMETHEUS_URL` env var or use `--url` flag (auto-discovers if not set)
+- Command aliases: `homer`=`sip`, `prom`=`prometheus`

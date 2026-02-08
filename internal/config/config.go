@@ -39,6 +39,7 @@ type Config struct {
 	Slack      SlackConfig      `json:"slack,omitempty"`
 	Loki       LokiConfig       `json:"loki,omitempty"`
 	Homer      HomerConfig      `json:"homer,omitempty"`
+	Prometheus PrometheusConfig `json:"prometheus,omitempty"`
 	SQL        SQLConfig        `json:"sql,omitempty"`
 	StatusLine StatusLineConfig `json:"status_line,omitempty"`
 }
@@ -73,6 +74,11 @@ type SegmentConfig struct {
 // LokiConfig holds Loki-specific configuration
 type LokiConfig struct {
 	URL string `json:"url,omitempty" envconfig:"LOKI_URL"`
+}
+
+// PrometheusConfig holds Prometheus-specific configuration
+type PrometheusConfig struct {
+	URL string `json:"url,omitempty" envconfig:"PROMETHEUS_URL"`
 }
 
 // HomerConfig holds Homer SIP tracing configuration
@@ -247,6 +253,14 @@ func (c *Config) RequireSlack() error {
 func (c *Config) RequireLoki() error {
 	if c.Loki.URL == "" {
 		return errors.New("Loki URL not configured. Set LOKI_URL or add to ~/.dex/config.json")
+	}
+	return nil
+}
+
+// RequirePrometheus validates that Prometheus URL is configured
+func (c *Config) RequirePrometheus() error {
+	if c.Prometheus.URL == "" {
+		return errors.New("Prometheus URL not configured. Set PROMETHEUS_URL or add to ~/.dex/config.json")
 	}
 	return nil
 }
