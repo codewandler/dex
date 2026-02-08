@@ -1136,6 +1136,28 @@ func PrintSearchResults(filePath string, diff *gl.ParsedDiff, pattern string) {
 	fmt.Println()
 }
 
+// PrintCommitList displays a list of commits
+func PrintCommitList(commits []models.Commit) {
+	if len(commits) == 0 {
+		dimColor.Println("No commits found.")
+		return
+	}
+
+	fmt.Println()
+	sectionColor.Printf("  Commits (%d):\n", len(commits))
+	fmt.Println()
+
+	for _, c := range commits {
+		title := truncate(c.Title, 60)
+		ago := timeAgo(c.CreatedAt)
+		commitColor.Printf("  %s ", c.ShortID)
+		fmt.Printf("%s ", title)
+		dimColor.Printf("(%s, %s)\n", c.AuthorName, ago)
+	}
+
+	fmt.Println()
+}
+
 // PrintCommitDetails displays full commit information
 func PrintCommitDetails(c *models.CommitDetail) {
 	line := strings.Repeat("═", 60)

@@ -29,6 +29,18 @@ dex gl proj show <id> --no-cache  # Always fetch from API, bypass cache
 ```
 
 ## Commits
+
+### List Commits
+```bash
+dex gl commit ls <project>                  # List recent commits (default: 20, last 14d)
+dex gl commit ls group/proj --since 7d      # Commits from last 7 days
+dex gl commit ls group/proj --branch main   # Filter by branch
+dex gl commit ls group/proj -b develop      # Short flag
+dex gl commit ls group/proj -n 50           # Show 50 commits
+dex gl commit ls 742 --since 3d -n 10       # By project ID, combined flags
+```
+
+### Show Commit
 ```bash
 dex gl commit show <project> <sha>   # Show full commit details (message body, stats)
 dex gl commit show 742 95a1e625      # By project ID

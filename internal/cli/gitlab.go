@@ -859,6 +859,59 @@ Examples:
 	},
 }
 
+var gitlabCommitLsCmd = &cobra.Command{
+	Use:   "ls <project>",
+	Short: "List commits for a project",
+	Long: `List recent commits for a GitLab project.
+
+Examples:
+  dex gl commit ls group/project               # Last 14 days, 20 commits
+  dex gl commit ls group/project --since 7d    # Last 7 days
+  dex gl commit ls group/project --branch main # Filter by branch
+  dex gl commit ls group/project -n 50         # Show 50 commits`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		sinceStr, _ := cmd.Flags().GetString("since")
+		branch, _ := cmd.Flags().GetString("branch")
+		limit, _ := cmd.Flags().GetInt("limit")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		opts := gitlab.ListProjectCommitsOptions{
+			ProjectID: projectID,
+			Branch:    branch,
+			Limit:     limit,
+		}
+
+		if sinceStr != "" {
+			d := parseDuration(sinceStr)
+			if d > 0 {
+				opts.Since = time.Now().Add(-d)
+			}
+		}
+
+		commits, err := client.ListProjectCommits(opts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list commits: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintCommitList(commits)
+	},
+}
+
 var gitlabCommitShowCmd = &cobra.Command{
 	Use:   "show <project> <sha>",
 	Short: "Show commit details",
@@ -1173,6 +1226,7 @@ func init() {
 	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
 	gitlabProjCmd.AddCommand(gitlabShowCmd)
 
+	gitlabCommitCmd.AddCommand(gitlabCommitLsCmd)
 	gitlabCommitCmd.AddCommand(gitlabCommitShowCmd)
 
 	gitlabMRCmd.AddCommand(gitlabMRLsCmd)
@@ -1194,6 +1248,10 @@ func init() {
 	gitlabProjLsCmd.Flags().StringP("sort", "s", "activity", "Sort by: created, activity, name, path")
 	gitlabProjLsCmd.Flags().BoolP("desc", "d", false, "Sort descending (default for dates, ascending for names)")
 	gitlabProjLsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
+
+	gitlabCommitLsCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 7d, 4h)")
+	gitlabCommitLsCmd.Flags().StringP("branch", "b", "", "Filter by branch or tag")
+	gitlabCommitLsCmd.Flags().IntP("limit", "n", 20, "Number of commits to list")
 
 	gitlabMRLsCmd.Flags().StringP("state", "s", "opened", "MR state: opened, merged, closed, all")
 	gitlabMRLsCmd.Flags().String("scope", "all", "Scope: all, created_by_me, assigned_to_me")

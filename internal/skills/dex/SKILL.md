@@ -59,6 +59,7 @@ dex k8s forward stop <name>       # Stop a port-forward
 ### GitLab (`dex gl`)
 ```bash
 dex gl activity [--since 7d]      # Recent activity
+dex gl commit ls <project>        # List project commits
 dex gl mr ls                      # List open MRs
 dex gl mr show <project!iid>      # Show MR details
 dex gl mr create "<title>"        # Create MR from current branch
