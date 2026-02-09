@@ -153,6 +153,10 @@ Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, an
 
 **Always @mention people by name** when the user asks to inform or notify someone. Look up their Slack handle (e.g., `@john.doe`) and include it in the message so they get a notification. Never post about someone without tagging them when the intent is to let them know.
 
+### No Confidential Data in Source
+
+**NEVER use real internal project names, paths, or IDs in source code, help text, or examples.** This is a public repository. Always use generic placeholders like `my-group/my-project!123` or `group/project!456` instead of real company project paths.
+
 ### Git Workflow
 
 **NEVER commit without explicit user instruction.** Wait for the user to say "commit" before running `git commit`. Completing a task does not imply permission to commit.

@@ -206,7 +206,7 @@ dex claude statusline             # Generate status line for Claude Code
 
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `gh`=`github`
 - Use `-n` for namespace, `-A` for all namespaces in k8s
-- MR format: `project!iid` (e.g., `sre/helm!2903`)
+- MR format: `project!iid` (e.g., `my-group/my-project!123`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)
 - Homer URL: set `HOMER_URL` env var or use `--url` flag (auto-discovers `homer-webapp` service in K8s)
 - Prometheus URL: set `PROMETHEUS_URL` env var or use `--url` flag (auto-discovers if not set)

@@ -65,8 +65,8 @@ dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
 ### Show MR Details
 ```bash
 dex gl mr show <project!iid>         # Show full MR details with discussion IDs
-dex gl mr show sre/helm!2903         # Example
-dex gl mr show sre/helm!2903 --show-diff  # Include file diffs in output
+dex gl mr show my-group/my-project!123         # Example
+dex gl mr show my-group/my-project!123 --show-diff  # Include file diffs in output
 ```
 
 ### View File Diff
@@ -162,6 +162,9 @@ dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
 ### MR Lifecycle
 ```bash
 dex gl mr close <project!iid>                   # Close a merge request
+dex gl mr close proj!123 --reason "No longer needed"  # Close with comment
+dex gl mr reopen <project!iid>                  # Reopen a closed merge request
+dex gl mr reopen proj!123 --reason "Re-opening for further work"  # Reopen with comment
 dex gl mr approve <project!iid>                 # Approve a merge request
 dex gl mr merge <project!iid>                   # Merge a merge request
 dex gl mr merge proj!123 --squash               # Squash commits
@@ -185,4 +188,4 @@ dex gl mr create "Feature" -p group/proj -s branch # Explicit project and source
 
 - GitLab project names autocomplete from local index
 - Command aliases: `gl`=`gitlab`, `mr`=`merge-request`
-- Use `project!iid` format for MR references (e.g., `sre/helm!2903`)
+- Use `project!iid` format for MR references (e.g., `my-group/my-project!123`)

@@ -245,7 +245,7 @@ var gitlabMRShowCmd = &cobra.Command{
 Use the canonical reference format: project!iid
 
 Examples:
-  dex gl mr show sre/helmchart-prod-configs!2903
+  dex gl mr show my-group/my-project!123
   dex gl mr show group/project!456
   dex gl mr show group/project!456 --show-diff   # Include file diffs`,
 	Args: cobra.ExactArgs(1),
@@ -307,7 +307,7 @@ var gitlabMROpenCmd = &cobra.Command{
 Use the canonical reference format: project!iid
 
 Examples:
-  dex gl mr open sre/helmchart-prod-configs!2903
+  dex gl mr open my-group/my-project!123
   dex gl mr open group/project!456`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -363,7 +363,7 @@ Use --dry-run with inline comments to preview where the comment will land
 without actually posting it.
 
 Examples:
-  dex gl mr comment sre/helm!2903 "LGTM, approved!"
+  dex gl mr comment my-group/my-project!123 "LGTM, approved!"
   dex gl mr comment group/project!456 "Please address the review comments"
   echo "Comment from stdin" | dex gl mr comment group/project!456 -
 
@@ -479,7 +479,7 @@ var gitlabMRCloseCmd = &cobra.Command{
 Use the canonical reference format: project!iid
 
 Examples:
-  dex gl mr close sre/helmchart-prod-configs!2903
+  dex gl mr close my-group/my-project!123
   dex gl mr close group/project!456`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -502,12 +502,69 @@ Examples:
 			os.Exit(1)
 		}
 
+		reason, _ := cmd.Flags().GetString("reason")
+		if reason != "" {
+			if err := client.CreateMergeRequestNote(projectID, mrIID, reason); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to post comment: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
 		if err := client.CloseMergeRequest(projectID, mrIID); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to close merge request: %v\n", err)
 			os.Exit(1)
 		}
 
 		fmt.Printf("Closed %s!%d\n", projectID, mrIID)
+	},
+}
+
+var gitlabMRReopenCmd = &cobra.Command{
+	Use:   "reopen <project!iid>",
+	Short: "Reopen a closed merge request",
+	Long: `Reopen a previously closed merge request.
+
+Use the canonical reference format: project!iid
+
+Examples:
+  dex gl mr reopen my-group/my-project!123
+  dex gl mr reopen group/project!456
+  dex gl mr reopen group/project!456 --reason "Re-opening for further work"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		reason, _ := cmd.Flags().GetString("reason")
+		if reason != "" {
+			if err := client.CreateMergeRequestNote(projectID, mrIID, reason); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to post comment: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		if err := client.ReopenMergeRequest(projectID, mrIID); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to reopen merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Reopened %s!%d\n", projectID, mrIID)
 	},
 }
 
@@ -519,7 +576,7 @@ var gitlabMRApproveCmd = &cobra.Command{
 Use the canonical reference format: project!iid
 
 Examples:
-  dex gl mr approve sre/helmchart-prod-configs!2903
+  dex gl mr approve my-group/my-project!123
   dex gl mr approve group/project!456`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -559,7 +616,7 @@ var gitlabMRMergeCmd = &cobra.Command{
 Use the canonical reference format: project!iid
 
 Examples:
-  dex gl mr merge sre/helmchart-prod-configs!2903
+  dex gl mr merge my-group/my-project!123
   dex gl mr merge group/project!456 --squash
   dex gl mr merge group/project!456 --when-pipeline-succeeds
   dex gl mr merge group/project!456 --remove-source-branch`,
@@ -921,7 +978,7 @@ The commit SHA can be a full or short hash.
 
 Examples:
   dex gl commit show 742 95a1e625
-  dex gl commit show sre/mysql-mcp-wrapper 95a1e625
+  dex gl commit show my-group/my-project 95a1e625
   dex gl commit show mygroup/myproject abc123def`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completeProjectNames,
@@ -1236,6 +1293,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRDiffCmd)
 	gitlabMRCmd.AddCommand(gitlabMRReactCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCloseCmd)
+	gitlabMRCmd.AddCommand(gitlabMRReopenCmd)
 	gitlabMRCmd.AddCommand(gitlabMRApproveCmd)
 	gitlabMRCmd.AddCommand(gitlabMRMergeCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCreateCmd)
@@ -1271,6 +1329,9 @@ func init() {
 	gitlabMRCommentCmd.Flags().String("file", "", "File path for inline comment")
 	gitlabMRCommentCmd.Flags().Int("line", 0, "Line number for inline comment")
 	gitlabMRCommentCmd.Flags().Bool("dry-run", false, "Preview where inline comment will land without posting")
+
+	gitlabMRCloseCmd.Flags().String("reason", "", "Post a comment before closing")
+	gitlabMRReopenCmd.Flags().String("reason", "", "Post a comment before reopening")
 
 	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
 

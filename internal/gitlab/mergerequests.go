@@ -592,6 +592,21 @@ func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
 	return err
 }
 
+// ReopenMergeRequest reopens a closed merge request
+func (c *Client) ReopenMergeRequest(projectID any, mrIID int) error {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return err
+	}
+
+	opts := &gitlab.UpdateMergeRequestOptions{
+		StateEvent: gitlab.Ptr("reopen"),
+	}
+
+	_, _, err = c.gl.MergeRequests.UpdateMergeRequest(pid, mrIID, opts)
+	return err
+}
+
 // ApproveMergeRequest approves a merge request
 func (c *Client) ApproveMergeRequest(projectID any, mrIID int) error {
 	pid, err := c.resolveProjectID(projectID)
