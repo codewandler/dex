@@ -1252,6 +1252,9 @@ func getGitLabProjectFromRemote() (string, error) {
 // parseMRReference parses a merge request reference like "group/project!123"
 // Returns the project path and MR IID
 func parseMRReference(ref string) (string, int, error) {
+	// Strip shell escape artifacts: bash/zsh may backslash-escape '!' even in quotes
+	ref = strings.ReplaceAll(ref, `\!`, "!")
+
 	// Find the last ! which separates project from IID
 	idx := strings.LastIndex(ref, "!")
 	if idx == -1 {
