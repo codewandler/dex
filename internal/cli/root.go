@@ -17,6 +17,7 @@ Unified access to your engineering tools:
   - GitLab (activity, repos)
   - GitHub (clone via gh CLI)
   - Jira (issues, search)
+  - Confluence (wiki, search)
   - Slack (messaging)
   - Loki (log querying)
   - Homer (SIP call tracing)`,
@@ -46,6 +47,7 @@ func getVersion() string {
 
 func init() {
 	rootCmd.AddCommand(jiraCmd)
+	rootCmd.AddCommand(confluenceCmd)
 	rootCmd.AddCommand(gitlabCmd)
 	rootCmd.AddCommand(slackCmd)
 	rootCmd.AddCommand(claudeCmd)

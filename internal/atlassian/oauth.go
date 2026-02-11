@@ -1,4 +1,4 @@
-package jira
+package atlassian
 
 import (
 	"context"
@@ -8,31 +8,37 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/codewandler/dex/internal/config"
 )
 
 const (
 	authURL     = "https://auth.atlassian.com/authorize"
 	tokenURL    = "https://auth.atlassian.com/oauth/token"
 	redirectURI = "http://localhost:8089/callback"
-	scopes      = "read:jira-work read:jira-user write:jira-work offline_access"
 )
 
+// OAuthConfig holds the credentials and scopes for an Atlassian OAuth flow.
+type OAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	Scopes       string
+}
+
+// OAuthFlow handles the Atlassian OAuth 2.0 flow.
 type OAuthFlow struct {
-	config *config.Config
+	cfg OAuthConfig
 }
 
-func NewOAuthFlow(cfg *config.Config) *OAuthFlow {
-	return &OAuthFlow{config: cfg}
+// NewOAuthFlow creates a new OAuthFlow with the given config.
+func NewOAuthFlow(cfg OAuthConfig) *OAuthFlow {
+	return &OAuthFlow{cfg: cfg}
 }
 
-// GetAuthURL returns the URL to start the OAuth flow
+// GetAuthURL returns the URL to start the OAuth flow.
 func (o *OAuthFlow) GetAuthURL(state string) string {
 	params := url.Values{
 		"audience":      {"api.atlassian.com"},
-		"client_id":     {o.config.Jira.ClientID},
-		"scope":         {scopes},
+		"client_id":     {o.cfg.ClientID},
+		"scope":         {o.cfg.Scopes},
 		"redirect_uri":  {redirectURI},
 		"state":         {state},
 		"response_type": {"code"},
@@ -41,12 +47,12 @@ func (o *OAuthFlow) GetAuthURL(state string) string {
 	return authURL + "?" + params.Encode()
 }
 
-// ExchangeCode exchanges an authorization code for tokens
-func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*config.JiraToken, error) {
+// ExchangeCode exchanges an authorization code for tokens.
+func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*Token, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
-		"client_id":     {o.config.Jira.ClientID},
-		"client_secret": {o.config.Jira.ClientSecret},
+		"client_id":     {o.cfg.ClientID},
+		"client_secret": {o.cfg.ClientSecret},
 		"code":          {code},
 		"redirect_uri":  {redirectURI},
 	}
@@ -80,13 +86,12 @@ func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*config.Jira
 		return nil, err
 	}
 
-	token := &config.JiraToken{
+	token := &Token{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 	}
 
-	// Get site info (CloudID and SiteURL)
 	siteInfo, err := o.GetSiteInfo(ctx, token.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get site info: %w", err)
@@ -97,12 +102,13 @@ func (o *OAuthFlow) ExchangeCode(ctx context.Context, code string) (*config.Jira
 	return token, nil
 }
 
-// RefreshToken refreshes an expired access token
-func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*config.JiraToken, error) {
+// RefreshToken refreshes an expired access token.
+// existingToken is used to preserve CloudID and SiteURL when available.
+func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string, existingToken *Token) (*Token, error) {
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
-		"client_id":     {o.config.Jira.ClientID},
-		"client_secret": {o.config.Jira.ClientSecret},
+		"client_id":     {o.cfg.ClientID},
+		"client_secret": {o.cfg.ClientSecret},
 		"refresh_token": {refreshToken},
 	}
 
@@ -134,8 +140,6 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 		return nil, err
 	}
 
-	// Load existing token to preserve CloudID and SiteURL
-	existingToken, _ := LoadToken()
 	cloudID := ""
 	siteURL := ""
 	if existingToken != nil {
@@ -143,7 +147,7 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 		siteURL = existingToken.SiteURL
 	}
 
-	token := &config.JiraToken{
+	token := &Token{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
@@ -151,7 +155,6 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 		SiteURL:      siteURL,
 	}
 
-	// If we don't have CloudID or SiteURL, fetch them
 	if token.CloudID == "" || token.SiteURL == "" {
 		siteInfo, err := o.GetSiteInfo(ctx, token.AccessToken)
 		if err == nil {
@@ -163,14 +166,8 @@ func (o *OAuthFlow) RefreshToken(ctx context.Context, refreshToken string) (*con
 	return token, nil
 }
 
-// JiraSiteInfo contains cloud ID and browsable site URL
-type JiraSiteInfo struct {
-	CloudID string
-	SiteURL string
-}
-
-// GetSiteInfo fetches the Jira site info (CloudID and SiteURL) from the accessible-resources API
-func (o *OAuthFlow) GetSiteInfo(ctx context.Context, accessToken string) (*JiraSiteInfo, error) {
+// GetSiteInfo fetches site info (CloudID and SiteURL) from the accessible-resources API.
+func (o *OAuthFlow) GetSiteInfo(ctx context.Context, accessToken string) (*SiteInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.atlassian.com/oauth/token/accessible-resources", nil)
 	if err != nil {
 		return nil, err
@@ -195,25 +192,24 @@ func (o *OAuthFlow) GetSiteInfo(ctx context.Context, accessToken string) (*JiraS
 	}
 
 	if len(resources) == 0 {
-		return nil, fmt.Errorf("no accessible Jira sites found")
+		return nil, fmt.Errorf("no accessible Atlassian sites found")
 	}
 
-	// Return the first accessible site (usually there's only one)
-	return &JiraSiteInfo{
+	return &SiteInfo{
 		CloudID: resources[0].ID,
 		SiteURL: resources[0].URL,
 	}, nil
 }
 
-// StartAuthServer starts a local server to handle the OAuth callback
-func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*config.JiraToken, error) {
+// StartAuthServer starts a local server to handle the OAuth callback.
+// It returns the token for the caller to persist.
+func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*Token, error) {
 	state := fmt.Sprintf("%d", time.Now().UnixNano())
 	codeChan := make(chan string, 1)
 	errChan := make(chan error, 1)
 
-	server := &http.Server{Addr: ":8089"}
-
-	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("state") != state {
 			errChan <- fmt.Errorf("state mismatch")
 			http.Error(w, "State mismatch", http.StatusBadRequest)
@@ -238,6 +234,8 @@ func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*config.JiraToken, err
 		codeChan <- code
 	})
 
+	server := &http.Server{Addr: ":8089", Handler: mux}
+
 	go func() {
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			errChan <- err
@@ -260,14 +258,5 @@ func (o *OAuthFlow) StartAuthServer(ctx context.Context) (*config.JiraToken, err
 
 	server.Shutdown(ctx)
 
-	token, err := o.ExchangeCode(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := SaveToken(token); err != nil {
-		return nil, fmt.Errorf("failed to save token: %w", err)
-	}
-
-	return token, nil
+	return o.ExchangeCode(ctx, code)
 }

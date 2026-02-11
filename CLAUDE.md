@@ -9,6 +9,7 @@ Swiss army knife CLI for engineers. Usable standalone but primarily designed as 
 - **GitLab** - Activity tracking, MRs, commits, project management
 - **GitHub** - Repository operations via gh CLI (avoids API rate limits)
 - **Jira** - Issue management (OAuth)
+- **Confluence** - Wiki search and page viewing (OAuth)
 - **Slack** - Messaging (send, reply, channel index)
 - **Prometheus** - PromQL queries, scrape targets, alerts
 
@@ -22,13 +23,16 @@ dex/
 │   │   ├── root.go                # Root command
 │   │   ├── gh.go                  # GitHub commands (gh/github)
 │   │   ├── gitlab.go              # GitLab commands (gl/gitlab)
+│   │   ├── confluence.go           # Confluence commands (cf/confluence)
 │   │   ├── jira.go                # Jira commands
 │   │   ├── k8s.go                 # Kubernetes commands
 │   │   ├── prometheus.go          # Prometheus commands (prom/prometheus)
 │   │   └── slack.go               # Slack commands
 │   ├── gh/                        # GitHub CLI wrapper
 │   │   └── client.go              # gh CLI wrapper for clone operations
+│   ├── atlassian/                 # Shared Atlassian OAuth (Jira, Confluence)
 │   ├── config/config.go           # Unified configuration (file + env)
+│   ├── confluence/                # Confluence API client
 │   ├── gitlab/                    # GitLab API client
 │   │   ├── client.go              # Main client
 │   │   ├── commits.go             # Commit operations
@@ -77,6 +81,11 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
     "client_secret": "your-oauth-client-secret",
     "token": { ... }
   },
+  "confluence": {
+    "client_id": "your-oauth-client-id",
+    "client_secret": "your-oauth-client-secret",
+    "token": { ... }
+  },
   "slack": {
     "bot_token": "xoxb-...",
     "app_token": "xapp-...",
@@ -91,8 +100,10 @@ Configuration is loaded from `~/.dex/config.json` with environment variable over
 |----------|-------------|
 | `GITLAB_URL` | GitLab instance URL |
 | `GITLAB_PERSONAL_TOKEN` | Personal access token |
-| `JIRA_CLIENT_ID` | OAuth 2.0 client ID |
-| `JIRA_CLIENT_SECRET` | OAuth 2.0 client secret |
+| `JIRA_CLIENT_ID` | Jira OAuth 2.0 client ID |
+| `JIRA_CLIENT_SECRET` | Jira OAuth 2.0 client secret |
+| `CONFLUENCE_CLIENT_ID` | Confluence OAuth 2.0 client ID |
+| `CONFLUENCE_CLIENT_SECRET` | Confluence OAuth 2.0 client secret |
 | `SLACK_CLIENT_ID` | Slack OAuth client ID |
 | `SLACK_CLIENT_SECRET` | Slack OAuth client secret |
 | `SLACK_BOT_TOKEN` | Slack bot token (xoxb-...) |
@@ -108,6 +119,7 @@ dex k8s ...    # Kubernetes (aliases: kube, kubernetes)
 dex gl ...     # GitLab (aliases: gitlab)
 dex gh ...     # GitHub (aliases: github) - wraps gh CLI
 dex jira ...   # Jira
+dex cf ...     # Confluence (aliases: confluence)
 dex slack ...  # Slack
 dex prom ...   # Prometheus (aliases: prometheus)
 ```
@@ -121,6 +133,7 @@ This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that d
 - Browse GitLab activity and MRs
 - Clone GitHub repositories
 - Look up Jira issues
+- Search and view Confluence pages
 - Interact with MRs (comment, react, view diffs)
 - Send Slack messages and reply to threads
 
@@ -133,6 +146,16 @@ This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that d
 5. Run `dex jira auth`
 
 Token stored in `~/.dex/config.json` under `jira.token`.
+
+## Confluence OAuth Setup
+
+1. Use the same OAuth 2.0 app at https://developer.atlassian.com/console/myapps/ (or create a separate one)
+2. Add callback URL: `http://localhost:8089/callback`
+3. Add Confluence API permissions: `read:confluence-content.all`, `read:confluence-space.summary`, `search:confluence`
+4. Set `CONFLUENCE_CLIENT_ID` and `CONFLUENCE_CLIENT_SECRET` (env or config file)
+5. Run `dex confluence auth`
+
+Token stored in `~/.dex/config.json` under `confluence.token`.
 
 ## Slack OAuth Setup
 

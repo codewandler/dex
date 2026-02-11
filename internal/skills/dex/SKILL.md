@@ -1,12 +1,12 @@
 ---
 name: dex
-description: Run dex CLI commands for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, and Prometheus operations
+description: Run dex CLI commands for Kubernetes, GitLab, Jira, Confluence, Slack, GitHub, Loki, Homer, and Prometheus operations
 user-invocable: true
 ---
 
 # dex - Engineer's CLI Tool
 
-Use `dex` for Kubernetes, GitLab, Jira, Slack, GitHub, Loki, Homer, Prometheus, and SQL operations. Run commands via Bash tool.
+Use `dex` for Kubernetes, GitLab, Jira, Confluence, Slack, GitHub, Loki, Homer, Prometheus, and SQL operations. Run commands via Bash tool.
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
@@ -34,6 +34,7 @@ dex skill install <name> -g       # Install skill globally (~/.claude/skills/)
 | GitLab | `dex gl` | [references/gitlab.md](references/gitlab.md) |
 | GitHub | `dex gh` | [references/github.md](references/github.md) |
 | Jira | `dex jira` | [references/jira.md](references/jira.md) |
+| Confluence | `dex confluence` | [references/confluence.md](references/confluence.md) |
 | Slack | `dex slack` | [references/slack.md](references/slack.md) |
 | Loki | `dex loki` | [references/loki.md](references/loki.md) |
 | Homer | `dex homer` | [references/homer.md](references/homer.md) |
@@ -77,6 +78,15 @@ dex jira update <KEY> [--flags]   # Update issue fields (--parent to set/clear p
 dex jira transition <KEY> <status>   # Change issue status
 dex jira comment <KEY> "message"  # Add comment (supports markdown)
 dex jira comment-delete <KEY> <ID>  # Delete a comment
+```
+
+### Confluence (`dex confluence`)
+```bash
+dex confluence auth               # Authenticate with Confluence
+dex confluence spaces             # List spaces
+dex confluence search "query"     # Search content (auto-wraps as CQL)
+dex confluence search "type = page AND space = DEV"  # Raw CQL
+dex confluence page <id>          # View page content
 ```
 
 ### Slack (`dex slack`)
@@ -207,7 +217,7 @@ dex claude statusline             # Generate status line for Claude Code
 
 ## Tips
 
-- Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `gh`=`github`
+- Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `gh`=`github`, `cf`=`confluence`
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `my-group/my-project!123`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)

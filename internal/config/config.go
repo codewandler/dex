@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"time"
 
+	"github.com/codewandler/dex/internal/atlassian"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -36,6 +36,7 @@ type Config struct {
 	// Integration configs (embedded)
 	GitLab     GitLabConfig     `json:"gitlab,omitempty"`
 	Jira       JiraConfig       `json:"jira,omitempty"`
+	Confluence ConfluenceConfig `json:"confluence,omitempty"`
 	Slack      SlackConfig      `json:"slack,omitempty"`
 	Loki       LokiConfig       `json:"loki,omitempty"`
 	Homer      HomerConfig      `json:"homer,omitempty"`
@@ -103,11 +104,18 @@ type GitLabConfig struct {
 
 // JiraConfig holds Jira-specific configuration
 type JiraConfig struct {
-	ClientID     string     `json:"client_id,omitempty" envconfig:"JIRA_CLIENT_ID"`
-	ClientSecret string     `json:"client_secret,omitempty" envconfig:"JIRA_CLIENT_SECRET"`
-	BaseURL      string     `json:"base_url,omitempty" envconfig:"JIRA_BASE_URL"`
-	CloudID      string     `json:"cloud_id,omitempty"`
-	Token        *JiraToken `json:"token,omitempty"`
+	ClientID     string           `json:"client_id,omitempty" envconfig:"JIRA_CLIENT_ID"`
+	ClientSecret string           `json:"client_secret,omitempty" envconfig:"JIRA_CLIENT_SECRET"`
+	BaseURL      string           `json:"base_url,omitempty" envconfig:"JIRA_BASE_URL"`
+	CloudID      string           `json:"cloud_id,omitempty"`
+	Token        *atlassian.Token `json:"token,omitempty"`
+}
+
+// ConfluenceConfig holds Confluence-specific configuration
+type ConfluenceConfig struct {
+	ClientID     string           `json:"client_id,omitempty" envconfig:"CONFLUENCE_CLIENT_ID"`
+	ClientSecret string           `json:"client_secret,omitempty" envconfig:"CONFLUENCE_CLIENT_SECRET"`
+	Token        *atlassian.Token `json:"token,omitempty"`
 }
 
 // SlackConfig holds Slack-specific configuration
@@ -133,22 +141,8 @@ type SlackToken struct {
 	BotUserID    string `json:"bot_user_id"`
 }
 
-// JiraToken holds Jira OAuth tokens
-type JiraToken struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	CloudID      string    `json:"cloud_id,omitempty"`
-	SiteURL      string    `json:"site_url,omitempty"` // Browsable URL like https://company.atlassian.net
-}
-
-// IsExpired checks if the token is expired (with 1 min buffer)
-func (t *JiraToken) IsExpired() bool {
-	if t == nil {
-		return true
-	}
-	return time.Now().After(t.ExpiresAt.Add(-time.Minute))
-}
+// JiraToken is an alias for atlassian.Token for backward compatibility.
+type JiraToken = atlassian.Token
 
 // Load reads config from file and applies environment variable overrides
 func Load() (*Config, error) {
@@ -253,6 +247,14 @@ func (c *Config) RequireSlack() error {
 func (c *Config) RequireLoki() error {
 	if c.Loki.URL == "" {
 		return errors.New("Loki URL not configured. Set LOKI_URL or add to ~/.dex/config.json")
+	}
+	return nil
+}
+
+// RequireConfluence validates that Confluence OAuth config is present
+func (c *Config) RequireConfluence() error {
+	if c.Confluence.ClientID == "" || c.Confluence.ClientSecret == "" {
+		return errors.New("Confluence OAuth not configured. Set CONFLUENCE_CLIENT_ID and CONFLUENCE_CLIENT_SECRET or add to ~/.dex/config.json")
 	}
 	return nil
 }

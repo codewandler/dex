@@ -12,14 +12,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codewandler/dex/internal/atlassian"
 	"github.com/codewandler/dex/internal/config"
 	"github.com/codewandler/md2adf"
 )
 
+const jiraScopes = "read:jira-work read:jira-user write:jira-work offline_access"
+
 type Client struct {
 	config      *config.Config
-	token       *config.JiraToken
-	oauth       *OAuthFlow
+	token       *atlassian.Token
+	oauth       *atlassian.OAuthFlow
 	projectKeys []string // cached project keys for issue linkification
 }
 
@@ -124,7 +127,11 @@ func NewClient() (*Client, error) {
 
 	client := &Client{
 		config: cfg,
-		oauth:  NewOAuthFlow(cfg),
+		oauth: atlassian.NewOAuthFlow(atlassian.OAuthConfig{
+			ClientID:     cfg.Jira.ClientID,
+			ClientSecret: cfg.Jira.ClientSecret,
+			Scopes:       jiraScopes,
+		}),
 	}
 
 	// Try to load existing token
@@ -141,13 +148,16 @@ func (c *Client) EnsureAuth(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if err := SaveToken(token); err != nil {
+			return fmt.Errorf("failed to save token: %w", err)
+		}
 		c.token = token
 		return nil
 	}
 
 	if c.token.IsExpired() {
 		// Token expired, try to refresh
-		token, err := c.oauth.RefreshToken(ctx, c.token.RefreshToken)
+		token, err := c.oauth.RefreshToken(ctx, c.token.RefreshToken, c.token)
 		if err != nil {
 			// Refresh failed, re-authenticate
 			token, err = c.oauth.StartAuthServer(ctx)
