@@ -294,6 +294,44 @@ Examples:
 	},
 }
 
+var jiraUnlinkCmd = &cobra.Command{
+	Use:   "unlink <ISSUE-KEY> <TARGET-KEY> [TARGET-KEY...]",
+	Short: "Remove links between issues",
+	Long: `Remove links between Jira issues.
+
+The first issue is the source, subsequent issues are targets whose links will be removed.
+Use --type to filter by link type when multiple links exist between the same issues.
+
+Examples:
+  dex jira unlink DEV-123 DEV-456                    # Remove link between two issues
+  dex jira unlink DEV-123 DEV-456 DEV-789            # Remove multiple links from DEV-123
+  dex jira unlink DEV-123 DEV-456 -t Blocks          # Remove only "Blocks" link`,
+	Args: cobra.MinimumNArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		linkType, _ := cmd.Flags().GetString("type")
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		sourceIssue := args[0]
+		targetIssues := args[1:]
+
+		for _, target := range targetIssues {
+			if err := client.UnlinkIssues(ctx, sourceIssue, target, linkType); err != nil {
+				fmt.Fprintf(os.Stderr, "Error unlinking %s -> %s: %v\n", sourceIssue, target, err)
+				continue
+			}
+			fmt.Printf("Unlinked %s -> %s\n", sourceIssue, target)
+		}
+	},
+}
+
 var jiraUpdateCmd = &cobra.Command{
 	Use:   "update <ISSUE-KEY>",
 	Short: "Update issue fields",
@@ -307,6 +345,8 @@ Examples:
   dex jira update DEV-123 --add-label urgent
   dex jira update DEV-123 --remove-label backlog
   dex jira update DEV-123 --description "New description"
+  dex jira update DEV-123 --parent DEV-100                    # Set parent
+  dex jira update DEV-123 --parent ""                         # Clear parent
   dex jira update DEV-123 --assignee me@example.com --priority High --add-label urgent`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -352,6 +392,11 @@ Examples:
 		if cmd.Flags().Changed("remove-label") {
 			v, _ := cmd.Flags().GetStringSlice("remove-label")
 			req.RemoveLabels = v
+			hasUpdates = true
+		}
+		if cmd.Flags().Changed("parent") {
+			v, _ := cmd.Flags().GetString("parent")
+			req.Parent = &v
 			hasUpdates = true
 		}
 
@@ -676,6 +721,7 @@ func init() {
 	jiraCmd.AddCommand(jiraCreateCmd)
 	jiraCmd.AddCommand(jiraDeleteCmd)
 	jiraCmd.AddCommand(jiraLinkCmd)
+	jiraCmd.AddCommand(jiraUnlinkCmd)
 	jiraCmd.AddCommand(jiraUpdateCmd)
 	jiraCmd.AddCommand(jiraTransitionCmd)
 	jiraCmd.AddCommand(jiraCommentCmd)
@@ -704,6 +750,9 @@ func init() {
 	jiraLinkCmd.Flags().StringP("type", "t", "Relates", "Link type (Relates, Blocks, Duplicate, etc.)")
 	jiraLinkCmd.Flags().Bool("list-types", false, "List available link types")
 
+	// Unlink command flags
+	jiraUnlinkCmd.Flags().StringP("type", "t", "", "Filter by link type (e.g., Blocks, Duplicate)")
+
 	// Update command flags
 	jiraUpdateCmd.Flags().StringP("summary", "s", "", "New summary/title")
 	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description (markdown)")
@@ -711,6 +760,7 @@ func init() {
 	jiraUpdateCmd.Flags().StringP("priority", "p", "", "New priority (Lowest, Low, Medium, High, Highest)")
 	jiraUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (can specify multiple)")
 	jiraUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (can specify multiple)")
+	jiraUpdateCmd.Flags().String("parent", "", "Parent issue key (e.g., DEV-123, empty to clear)")
 
 	// Transition command flags
 	jiraTransitionCmd.Flags().BoolP("list", "l", false, "List available transitions")

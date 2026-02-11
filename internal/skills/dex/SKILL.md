@@ -72,7 +72,8 @@ dex jira my -s "In Progress"      # Filter by status
 dex jira view <KEY>               # View issue details
 dex jira search "<JQL>"           # Search with JQL
 dex jira link <KEY> <KEY> [-t type]  # Link issues together
-dex jira update <KEY> [--flags]   # Update issue fields
+dex jira unlink <KEY> <KEY> [-t type] # Remove link between issues
+dex jira update <KEY> [--flags]   # Update issue fields (--parent to set/clear parent)
 dex jira transition <KEY> <status>   # Change issue status
 dex jira comment <KEY> "message"  # Add comment (supports markdown)
 dex jira comment-delete <KEY> <ID>  # Delete a comment

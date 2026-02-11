@@ -102,6 +102,28 @@ dex jira link DEV-123 DEV-456 -t Blocks
 dex jira link DEV-123 DEV-456 -t Duplicate
 ```
 
+## Unlink Issues
+```bash
+dex jira unlink <SOURCE-KEY> <TARGET-KEY> [TARGET-KEY...] [-t <type>]
+```
+
+Remove links between Jira issues. The first issue is the source, subsequent issues are targets whose links will be removed.
+
+### Flags
+- `-t, --type` - Filter by link type (e.g., Blocks, Duplicate). Required when multiple links exist between the same issues.
+
+### Examples
+```bash
+# Remove link between two issues
+dex jira unlink DEV-123 DEV-456
+
+# Remove multiple links from a source
+dex jira unlink DEV-123 DEV-456 DEV-789
+
+# Remove only a "Blocks" link
+dex jira unlink DEV-123 DEV-456 -t Blocks
+```
+
 ## Update Issue
 ```bash
 dex jira update <ISSUE-KEY> [flags]
@@ -116,6 +138,7 @@ Update fields on an existing issue.
 - `-p, --priority` - New priority (Lowest, Low, Medium, High, Highest)
 - `--add-label` - Labels to add (can specify multiple)
 - `--remove-label` - Labels to remove (can specify multiple)
+- `--parent` - Parent issue key (e.g., DEV-123, empty string to clear)
 
 ### Examples
 ```bash
@@ -131,6 +154,12 @@ dex jira update DEV-123 --remove-label backlog
 
 # Unassign an issue
 dex jira update DEV-123 --assignee ""
+
+# Set parent (epic)
+dex jira update DEV-123 --parent DEV-100
+
+# Clear parent
+dex jira update DEV-123 --parent ""
 ```
 
 ## Transition Issue

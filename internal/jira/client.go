@@ -539,12 +539,61 @@ func (c *Client) ListLinkTypes(ctx context.Context) ([]IssueLinkType, error) {
 	return result.IssueLinkTypes, nil
 }
 
+// UnlinkIssues removes a link between two issues.
+// It fetches the source issue to find the link ID, optionally filtering by link type.
+func (c *Client) UnlinkIssues(ctx context.Context, issueKey, targetKey, linkType string) error {
+	issue, err := c.GetIssue(ctx, issueKey)
+	if err != nil {
+		return fmt.Errorf("failed to fetch issue %s: %w", issueKey, err)
+	}
+
+	targetKey = strings.ToUpper(targetKey)
+	var linkID string
+	for _, link := range issue.Fields.IssueLinks {
+		var matchKey string
+		if link.OutwardIssue != nil {
+			matchKey = link.OutwardIssue.Key
+		} else if link.InwardIssue != nil {
+			matchKey = link.InwardIssue.Key
+		}
+		if strings.ToUpper(matchKey) != targetKey {
+			continue
+		}
+		if linkType != "" && !strings.EqualFold(link.Type.Name, linkType) {
+			continue
+		}
+		linkID = link.ID
+		break
+	}
+
+	if linkID == "" {
+		if linkType != "" {
+			return fmt.Errorf("no %q link found between %s and %s", linkType, issueKey, targetKey)
+		}
+		return fmt.Errorf("no link found between %s and %s", issueKey, targetKey)
+	}
+
+	resp, err := c.doRequest(ctx, "DELETE", "/issueLink/"+linkID, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete link (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
 // UpdateIssueRequest contains the parameters for updating an issue
 type UpdateIssueRequest struct {
 	Summary     *string  // New summary/title (nil = don't change)
 	Description *string  // New description (nil = don't change)
 	Assignee    *string  // New assignee email or account ID (nil = don't change, empty string = unassign)
 	Priority    *string  // New priority name (nil = don't change)
+	Parent       *string  // New parent issue key (nil = don't change, empty string = clear, "KEY" = set)
 	AddLabels   []string // Labels to add
 	RemoveLabels []string // Labels to remove
 }
@@ -587,6 +636,14 @@ func (c *Client) UpdateIssue(ctx context.Context, issueKey string, req UpdateIss
 				accountID = users[0].AccountID
 			}
 			fields["assignee"] = map[string]string{"id": accountID}
+		}
+	}
+
+	if req.Parent != nil {
+		if *req.Parent == "" {
+			fields["parent"] = nil
+		} else {
+			fields["parent"] = map[string]string{"key": *req.Parent}
 		}
 	}
 
