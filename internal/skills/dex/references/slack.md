@@ -96,6 +96,37 @@ dex slack send dev-team "Hey @john.doe check #general"
 ```
 Partial names like `@john` or `#dev` won't resolve - use the full handle like `@john.doe` and exact channel name like `#dev-team`.
 
+## Edit Message
+```bash
+# Edit a message (by channel name or ID + timestamp)
+dex slack edit dev-team 1770257991.873399 "Updated message"
+
+# With @mentions and #channel mentions (auto-resolved)
+dex slack edit dev-team 1770257991.873399 "Hey @john.doe updated info"
+
+# Edit as user instead of bot
+dex slack edit dev-team 1770257991.873399 "Fixed typo" --as user
+```
+
+Notes:
+- The timestamp is returned from `dex slack send`
+- @mentions, @group mentions, and #channel mentions are auto-resolved in the new text
+- Use `--as user` to edit messages sent as yourself (requires user token)
+
+## Delete Message
+```bash
+# Delete a message (by channel name or ID + timestamp)
+dex slack delete dev-team 1770257991.873399
+
+# Delete as user instead of bot
+dex slack delete dev-team 1770257991.873399 --as user
+```
+
+Notes:
+- The timestamp is returned from `dex slack send`
+- Bots can only delete their own messages; users can delete their own messages
+- Use `--as user` to delete messages sent as yourself (requires user token)
+
 ## Search Mentions
 ```bash
 dex slack mentions                    # My mentions today (requires user token)

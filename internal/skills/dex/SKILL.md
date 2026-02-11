@@ -82,6 +82,8 @@ dex jira comment-delete <KEY> <ID>  # Delete a comment
 ```bash
 dex slack send <channel> "msg"    # Send message (@mentions and #channels auto-resolved)
 dex slack send <ch> "msg" -t <ts> # Reply to thread
+dex slack edit <ch> <ts> "msg"   # Edit a message
+dex slack delete <ch> <ts>       # Delete a message
 dex slack mentions [--unhandled]  # My mentions today
 dex slack search "query"          # Search messages
 dex slack thread <url|ch:ts>      # View thread details

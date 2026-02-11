@@ -84,6 +84,24 @@ func (c *Client) PostMessageWithBlocks(channelID, fallbackText string, blocks []
 	return timestamp, nil
 }
 
+// UpdateMessage edits an existing message
+func (c *Client) UpdateMessage(channelID, timestamp, text string) (string, error) {
+	_, ts, _, err := c.api.UpdateMessage(channelID, timestamp, slack.MsgOptionText(text, false))
+	if err != nil {
+		return "", fmt.Errorf("failed to update message: %w", err)
+	}
+	return ts, nil
+}
+
+// DeleteMessage deletes an existing message
+func (c *Client) DeleteMessage(channelID, timestamp string) error {
+	_, _, err := c.api.DeleteMessage(channelID, timestamp)
+	if err != nil {
+		return fmt.Errorf("failed to delete message: %w", err)
+	}
+	return nil
+}
+
 // ReplyToThread sends a reply to a thread
 func (c *Client) ReplyToThread(channelID, threadTS, text string) (string, error) {
 	_, timestamp, err := c.api.PostMessage(

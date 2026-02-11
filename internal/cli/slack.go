@@ -472,6 +472,131 @@ Examples:
 	},
 }
 
+var slackEditCmd = &cobra.Command{
+	Use:   "edit <channel> <timestamp> <message>",
+	Short: "Edit a message",
+	Long: `Edit an existing message in a Slack channel.
+
+The channel can be a name (requires index) or ID.
+The timestamp identifies the message to edit (returned from send).
+Use --as to choose the sender identity (bot or user).
+@mentions, @group mentions, and #channel mentions in the new message are auto-resolved.
+
+Examples:
+  dex slack edit dev-team 1770257991.873399 "Updated message"
+  dex slack edit dev-team 1770257991.873399 "Fixed typo" --as user`,
+	Args: cobra.ExactArgs(3),
+	Run: func(cmd *cobra.Command, args []string) {
+		targetArg := args[0]
+		timestamp := args[1]
+		message := args[2]
+		sendAs, _ := cmd.Flags().GetString("as")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if sendAs != "bot" && sendAs != "user" {
+			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
+			os.Exit(1)
+		}
+
+		var client *slack.Client
+		if sendAs == "user" {
+			if cfg.Slack.UserToken == "" {
+				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
+				os.Exit(1)
+			}
+			client, err = slack.NewClient(cfg.Slack.UserToken)
+		} else {
+			client, err = slack.NewClient(cfg.Slack.BotToken)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		channelID := slack.ResolveChannel(targetArg)
+
+		message = slack.ResolveMentions(message)
+		message = slack.ResolveGroupMentions(message)
+		message = slack.ResolveChannelMentions(message)
+
+		ts, err := client.UpdateMessage(channelID, timestamp, message)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to edit message: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Message edited (ts: %s)\n", ts)
+	},
+}
+
+var slackDeleteCmd = &cobra.Command{
+	Use:   "delete <channel> <timestamp>",
+	Short: "Delete a message",
+	Long: `Delete an existing message from a Slack channel.
+
+The channel can be a name (requires index) or ID.
+The timestamp identifies the message to delete (returned from send).
+Use --as to choose the sender identity (bot or user).
+
+Examples:
+  dex slack delete dev-team 1770257991.873399
+  dex slack delete dev-team 1770257991.873399 --as user`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		targetArg := args[0]
+		timestamp := args[1]
+		sendAs, _ := cmd.Flags().GetString("as")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if sendAs != "bot" && sendAs != "user" {
+			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
+			os.Exit(1)
+		}
+
+		var client *slack.Client
+		if sendAs == "user" {
+			if cfg.Slack.UserToken == "" {
+				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
+				os.Exit(1)
+			}
+			client, err = slack.NewClient(cfg.Slack.UserToken)
+		} else {
+			client, err = slack.NewClient(cfg.Slack.BotToken)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		channelID := slack.ResolveChannel(targetArg)
+
+		if err := client.DeleteMessage(channelID, timestamp); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to delete message: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Message deleted")
+	},
+}
+
 var slackChannelsCmd = &cobra.Command{
 	Use:   "channels",
 	Short: "List Slack channels",
@@ -1646,6 +1771,8 @@ func init() {
 	slackCmd.AddCommand(slackPresenceCmd)
 	slackCmd.AddCommand(slackIndexCmd)
 	slackCmd.AddCommand(slackSendCmd)
+	slackCmd.AddCommand(slackEditCmd)
+	slackCmd.AddCommand(slackDeleteCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackChannelCmd)
 	slackCmd.AddCommand(slackUsersCmd)
@@ -1659,6 +1786,8 @@ func init() {
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
 	slackSendCmd.Flags().String("as", "bot", "Send as 'bot' (default) or 'user'")
+	slackEditCmd.Flags().String("as", "bot", "Edit as 'bot' (default) or 'user'")
+	slackDeleteCmd.Flags().String("as", "bot", "Delete as 'bot' (default) or 'user'")
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackChannelsCmd.Flags().StringP("user", "u", "", "Show only channels this user belongs to")
