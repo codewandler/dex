@@ -218,6 +218,15 @@ func (c *Client) GetChannelMembers(channelID string) ([]string, error) {
 	return allMembers, nil
 }
 
+// ListUserGroups lists all user groups in the workspace
+func (c *Client) ListUserGroups() ([]slack.UserGroup, error) {
+	groups, err := c.api.GetUserGroups(slack.GetUserGroupsOptionIncludeCount(true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list user groups: %w", err)
+	}
+	return groups, nil
+}
+
 // ListUsers lists all users in the workspace
 func (c *Client) ListUsers() ([]slack.User, error) {
 	users, err := c.api.GetUsers()

@@ -139,3 +139,76 @@ func TestResolveMentions(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveGroupMentions(t *testing.T) {
+	// Create a test index with sample user groups and users
+	idx := models.NewSlackIndex("T123", "Test Team")
+	idx.UpsertUserGroup(models.SlackUserGroup{
+		ID:     "S12345",
+		Handle: "sre-team",
+		Name:   "SRE Team",
+	})
+	idx.UpsertUserGroup(models.SlackUserGroup{
+		ID:     "S67890",
+		Handle: "backend",
+		Name:   "Backend Engineers",
+	})
+	// Add a user to verify users take precedence (resolved first by ResolveMentions)
+	idx.UpsertUser(models.SlackUser{
+		ID:       "U11111",
+		Username: "john.doe",
+	})
+	idx.BuildLookupMaps()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single group mention",
+			input:    "Hey @sre-team check this",
+			expected: "Hey <!subteam^S12345> check this",
+		},
+		{
+			name:     "multiple group mentions",
+			input:    "@sre-team and @backend please review",
+			expected: "<!subteam^S12345> and <!subteam^S67890> please review",
+		},
+		{
+			name:     "unknown group left as-is",
+			input:    "Hey @nonexistent check this",
+			expected: "Hey @nonexistent check this",
+		},
+		{
+			name:     "already formatted subteam",
+			input:    "Already formatted <!subteam^S12345>",
+			expected: "Already formatted <!subteam^S12345>",
+		},
+		{
+			name:     "no mentions",
+			input:    "No mentions here",
+			expected: "No mentions here",
+		},
+		{
+			name:     "mixed with already-resolved user mentions",
+			input:    "<@U11111> and @sre-team please check",
+			expected: "<@U11111> and <!subteam^S12345> please check",
+		},
+	}
+
+	// Save the test index temporarily
+	SaveIndex(idx)
+	defer func() {
+		// Clean up is not critical for this test
+	}()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ResolveGroupMentions(tt.input)
+			if result != tt.expected {
+				t.Errorf("ResolveGroupMentions(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

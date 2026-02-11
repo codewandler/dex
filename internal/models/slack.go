@@ -29,33 +29,49 @@ type SlackChannel struct {
 	IndexedAt  time.Time `json:"indexed_at"`
 }
 
-// SlackIndex holds the cached Slack data (channels and users)
+// SlackUserGroup represents a Slack user group in the index
+type SlackUserGroup struct {
+	ID          string    `json:"id"`
+	Handle      string    `json:"handle"`       // e.g., "sre-team"
+	Name        string    `json:"name"`          // e.g., "SRE Team"
+	Description string    `json:"description,omitempty"`
+	UserCount   int       `json:"user_count"`
+	IndexedAt   time.Time `json:"indexed_at"`
+}
+
+// SlackIndex holds the cached Slack data (channels, users, and user groups)
 type SlackIndex struct {
-	Version         int            `json:"version"`
-	TeamID          string         `json:"team_id"`
-	TeamName        string         `json:"team_name"`
-	LastFullIndexAt time.Time      `json:"last_full_index_at"`
-	Channels        []SlackChannel `json:"channels"`
-	Users           []SlackUser    `json:"users"`
+	Version         int               `json:"version"`
+	TeamID          string            `json:"team_id"`
+	TeamName        string            `json:"team_name"`
+	LastFullIndexAt time.Time         `json:"last_full_index_at"`
+	Channels        []SlackChannel    `json:"channels"`
+	Users           []SlackUser       `json:"users"`
+	UserGroups      []SlackUserGroup  `json:"user_groups,omitempty"`
 	// Lookup maps (not persisted)
-	ChannelsByID    map[string]int `json:"-"`
-	ChannelsByName  map[string]int `json:"-"`
-	UsersByID       map[string]int `json:"-"`
-	UsersByUsername map[string]int `json:"-"`
+	ChannelsByID       map[string]int `json:"-"`
+	ChannelsByName     map[string]int `json:"-"`
+	UsersByID          map[string]int `json:"-"`
+	UsersByUsername     map[string]int `json:"-"`
+	UserGroupsByID     map[string]int `json:"-"`
+	UserGroupsByHandle map[string]int `json:"-"`
 }
 
 // NewSlackIndex creates a new empty Slack index
 func NewSlackIndex(teamID, teamName string) *SlackIndex {
 	return &SlackIndex{
-		Version:         1,
-		TeamID:          teamID,
-		TeamName:        teamName,
-		Channels:        []SlackChannel{},
-		Users:           []SlackUser{},
-		ChannelsByID:    make(map[string]int),
-		ChannelsByName:  make(map[string]int),
-		UsersByID:       make(map[string]int),
-		UsersByUsername: make(map[string]int),
+		Version:            1,
+		TeamID:             teamID,
+		TeamName:           teamName,
+		Channels:           []SlackChannel{},
+		Users:              []SlackUser{},
+		UserGroups:         []SlackUserGroup{},
+		ChannelsByID:       make(map[string]int),
+		ChannelsByName:     make(map[string]int),
+		UsersByID:          make(map[string]int),
+		UsersByUsername:     make(map[string]int),
+		UserGroupsByID:     make(map[string]int),
+		UserGroupsByHandle: make(map[string]int),
 	}
 }
 
@@ -65,6 +81,8 @@ func (idx *SlackIndex) BuildLookupMaps() {
 	idx.ChannelsByName = make(map[string]int)
 	idx.UsersByID = make(map[string]int)
 	idx.UsersByUsername = make(map[string]int)
+	idx.UserGroupsByID = make(map[string]int)
+	idx.UserGroupsByHandle = make(map[string]int)
 
 	for i, ch := range idx.Channels {
 		idx.ChannelsByID[ch.ID] = i
@@ -75,6 +93,13 @@ func (idx *SlackIndex) BuildLookupMaps() {
 		idx.UsersByID[u.ID] = i
 		if u.Username != "" {
 			idx.UsersByUsername[u.Username] = i
+		}
+	}
+
+	for i, ug := range idx.UserGroups {
+		idx.UserGroupsByID[ug.ID] = i
+		if ug.Handle != "" {
+			idx.UserGroupsByHandle[ug.Handle] = i
 		}
 	}
 }
@@ -173,6 +198,48 @@ func (idx *SlackIndex) UpsertUser(u SlackUser) {
 		idx.UsersByID[u.ID] = i
 		if u.Username != "" {
 			idx.UsersByUsername[u.Username] = i
+		}
+	}
+}
+
+// User group methods
+
+// FindUserGroup looks up a user group by ID or handle
+func (idx *SlackIndex) FindUserGroup(idOrHandle string) *SlackUserGroup {
+	if idx.UserGroupsByID == nil || idx.UserGroupsByHandle == nil {
+		idx.BuildLookupMaps()
+	}
+
+	if i, ok := idx.UserGroupsByID[idOrHandle]; ok {
+		return &idx.UserGroups[i]
+	}
+	if i, ok := idx.UserGroupsByHandle[idOrHandle]; ok {
+		return &idx.UserGroups[i]
+	}
+	return nil
+}
+
+// UpsertUserGroup adds or updates a user group in the index
+func (idx *SlackIndex) UpsertUserGroup(ug SlackUserGroup) {
+	if idx.UserGroupsByID == nil || idx.UserGroupsByHandle == nil {
+		idx.BuildLookupMaps()
+	}
+
+	if i, ok := idx.UserGroupsByID[ug.ID]; ok {
+		oldHandle := idx.UserGroups[i].Handle
+		if oldHandle != ug.Handle {
+			delete(idx.UserGroupsByHandle, oldHandle)
+		}
+		idx.UserGroups[i] = ug
+		if ug.Handle != "" {
+			idx.UserGroupsByHandle[ug.Handle] = i
+		}
+	} else {
+		i := len(idx.UserGroups)
+		idx.UserGroups = append(idx.UserGroups, ug)
+		idx.UserGroupsByID[ug.ID] = i
+		if ug.Handle != "" {
+			idx.UserGroupsByHandle[ug.Handle] = i
 		}
 	}
 }

@@ -70,8 +70,8 @@ func SaveIndex(idx *models.SlackIndex) error {
 // ProgressFunc is called during indexing with progress updates
 type ProgressFunc func(completed, total int)
 
-// IndexAll fetches all channels and users and builds the index
-func (c *Client) IndexAll(channelProgressFn, userProgressFn, memberProgressFn ProgressFunc) (*models.SlackIndex, error) {
+// IndexAll fetches all channels, users, user groups and builds the index
+func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, memberProgressFn ProgressFunc) (*models.SlackIndex, error) {
 	auth, err := c.TestAuth()
 	if err != nil {
 		return nil, err
@@ -149,6 +149,35 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, memberProgressFn Pr
 	sort.Slice(idx.Users, func(i, j int) bool {
 		return idx.Users[i].Username < idx.Users[j].Username
 	})
+
+	// Index user groups
+	groups, err := c.ListUserGroups()
+	if err != nil {
+		// Non-fatal: user groups are optional (may lack usergroups:read scope)
+		_ = err
+	} else {
+		total = len(groups)
+		for i, g := range groups {
+			ug := models.SlackUserGroup{
+				ID:          g.ID,
+				Handle:      g.Handle,
+				Name:        g.Name,
+				Description: g.Description,
+				UserCount:   g.UserCount,
+				IndexedAt:   time.Now(),
+			}
+			idx.UpsertUserGroup(ug)
+
+			if groupProgressFn != nil {
+				groupProgressFn(i+1, total)
+			}
+		}
+
+		// Sort user groups by handle
+		sort.Slice(idx.UserGroups, func(i, j int) bool {
+			return idx.UserGroups[i].Handle < idx.UserGroups[j].Handle
+		})
+	}
 
 	// Index channel members (public, non-archived only)
 	var memberChannels []int
@@ -306,6 +335,64 @@ func ResolveChannelMentions(text string) string {
 			}
 		}
 		i = hashIdx + 1
+	}
+
+	return result
+}
+
+// ResolveGroupMentions converts @group-handle mentions in text to Slack <!subteam^GROUP_ID> format
+// Example: "Hey @sre-team check this" -> "Hey <!subteam^S0123456789> check this"
+// Run after ResolveMentions so individual users take precedence over groups
+func ResolveGroupMentions(text string) string {
+	idx, err := LoadIndex()
+	if err != nil || len(idx.UserGroups) == 0 {
+		return text
+	}
+
+	result := text
+	i := 0
+	for i < len(result) {
+		// Find next @
+		atIdx := -1
+		for j := i; j < len(result); j++ {
+			if result[j] == '@' {
+				atIdx = j
+				break
+			}
+		}
+		if atIdx == -1 {
+			break
+		}
+
+		// Skip if this @ is already part of a Slack mention format <@...> or <!subteam^...>
+		if atIdx > 0 && result[atIdx-1] == '<' {
+			i = atIdx + 1
+			continue
+		}
+
+		// Extract potential handle (alphanumeric, underscores, hyphens)
+		endIdx := atIdx + 1
+		for endIdx < len(result) {
+			c := result[endIdx]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+				c == '.' || c == '_' || c == '-' {
+				endIdx++
+			} else {
+				break
+			}
+		}
+
+		if endIdx > atIdx+1 {
+			handle := result[atIdx+1 : endIdx]
+			ug := idx.FindUserGroup(handle)
+			if ug != nil {
+				mention := "<!subteam^" + ug.ID + ">"
+				result = result[:atIdx] + mention + result[endIdx:]
+				i = atIdx + len(mention)
+				continue
+			}
+		}
+		i = atIdx + 1
 	}
 
 	return result

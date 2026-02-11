@@ -341,6 +341,9 @@ Examples:
 				fmt.Printf("\rIndexing users... %d/%d   ", completed, total)
 			},
 			func(completed, total int) {
+				fmt.Printf("\rIndexing groups... %d/%d   ", completed, total)
+			},
+			func(completed, total int) {
 				fmt.Printf("\rIndexing members... %d/%d   ", completed, total)
 			},
 		)
@@ -354,7 +357,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		fmt.Printf("\rIndexed %d channels, %d users for %s\n", len(idx.Channels), len(idx.Users), idx.TeamName)
+		fmt.Printf("\rIndexed %d channels, %d users, %d groups for %s\n", len(idx.Channels), len(idx.Users), len(idx.UserGroups), idx.TeamName)
 	},
 }
 
@@ -378,11 +381,12 @@ The target can be:
 
 Use --thread/-t to reply to a specific thread.
 Use --as to choose the sender identity (bot or user).
-@mentions and #channel mentions in the message body are auto-resolved.
+@mentions, @group mentions, and #channel mentions in the message body are auto-resolved.
 
 Examples:
   dex slack send dev-team "Hello from dex!"
   dex slack send dev-team "Hey @john.doe check this!"  # @mention in message
+  dex slack send dev-team "Heads up @sre-team"          # @group mention
   dex slack send dev-team "Check out #general for updates"  # #channel mention
   dex slack send dev-team "Follow up" -t 1770257991.873399  # Reply to thread
   dex slack send @john.doe "Hey, check this out!"      # DM (requires im:write)
@@ -446,8 +450,9 @@ Examples:
 			channelID = slack.ResolveChannel(targetArg)
 		}
 
-		// Resolve @mentions and #channel mentions in message body
+		// Resolve @mentions, @group mentions, and #channel mentions in message body
 		message = slack.ResolveMentions(message)
+		message = slack.ResolveGroupMentions(message)
 		message = slack.ResolveChannelMentions(message)
 
 		var ts string
