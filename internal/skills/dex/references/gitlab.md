@@ -184,8 +184,60 @@ dex gl mr create "Feature" --remove-source-branch  # Delete branch after merge
 dex gl mr create "Feature" -p group/proj -s branch # Explicit project and source
 ```
 
+## Pipelines
+
+### List Pipelines
+```bash
+dex gl pipeline ls <project>                        # List recent pipelines (default 20)
+dex gl pipeline ls group/proj -n 50                 # Show 50 pipelines
+dex gl pipeline ls group/proj --status failed       # Only failed pipelines
+dex gl pipeline ls group/proj --ref main            # Only pipelines on main branch
+dex gl pipeline ls group/proj --source schedule     # Only scheduled pipelines
+```
+
+Aliases: `pipe`, `pl` (e.g., `dex gl pipe ls group/proj`)
+
+### Show Pipeline
+```bash
+dex gl pipeline show <project> <pipeline-id>        # Show pipeline details with jobs
+dex gl pipeline show group/proj 12345 --no-jobs     # Details without jobs
+```
+
+### List Pipeline Jobs
+```bash
+dex gl pipeline jobs <project> <pipeline-id>        # List all jobs grouped by stage
+dex gl pipeline jobs group/proj 12345 --scope failed  # Only failed jobs
+```
+
+### Retry Pipeline
+```bash
+dex gl pipeline retry <project> <pipeline-id>       # Retry failed jobs
+```
+
+### Cancel Pipeline
+```bash
+dex gl pipeline cancel <project> <pipeline-id>      # Cancel running jobs
+```
+
+### Create Pipeline
+```bash
+dex gl pipeline create <project> --ref <branch>     # Trigger pipeline on branch/tag
+dex gl pipeline create group/proj --ref main         # Run on main
+dex gl pipeline create group/proj --ref main --var DEPLOY_ENV=staging  # With variables
+dex gl pipeline create group/proj --ref v1.0 --var K1=v1 --var K2=v2  # Multiple variables
+```
+
+### View Job Logs
+```bash
+dex gl pipeline logs <project> <pipeline-id> <job-name>  # Show job console output
+dex gl pipeline logs group/proj 12345 "build with buildkit"  # Job with spaces
+dex gl pipeline logs group/proj 12345 test               # Simple job name
+```
+
+Use `dex gl pipeline jobs <project> <pipeline-id>` to see available job names first.
+
 ## Tips
 
 - GitLab project names autocomplete from local index
-- Command aliases: `gl`=`gitlab`, `mr`=`merge-request`
+- Command aliases: `gl`=`gitlab`, `mr`=`merge-request`, `pipeline`=`pipe`=`pl`
 - Use `project!iid` format for MR references (e.g., `my-group/my-project!123`)

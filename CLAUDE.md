@@ -37,6 +37,7 @@ dex/
 │   │   ├── client.go              # Main client
 │   │   ├── commits.go             # Commit operations
 │   │   ├── mergerequests.go       # MR operations
+│   │   ├── pipelines.go           # Pipeline operations
 │   │   ├── projects.go            # Project operations
 │   │   ├── index.go               # Local project index
 │   │   └── tags.go                # Tag operations

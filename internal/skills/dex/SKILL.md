@@ -64,6 +64,10 @@ dex gl commit ls <project>        # List project commits
 dex gl mr ls                      # List open MRs
 dex gl mr show <project!iid>      # Show MR details
 dex gl mr create "<title>"        # Create MR from current branch
+dex gl pipeline ls <project>      # List project pipelines
+dex gl pipeline show <proj> <id>  # Show pipeline details + jobs
+dex gl pipeline retry <proj> <id> # Retry failed jobs
+dex gl pipeline logs <proj> <id> <job>  # Show job console logs
 ```
 
 ### Jira (`dex jira`)

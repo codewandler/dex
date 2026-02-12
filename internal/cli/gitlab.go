@@ -916,6 +916,383 @@ Examples:
 	},
 }
 
+// --- Pipeline commands ---
+
+var gitlabPipelineCmd = &cobra.Command{
+	Use:     "pipeline",
+	Aliases: []string{"pipe", "pl"},
+	Short:   "Pipeline commands",
+	Long:    `Commands for listing and managing GitLab CI/CD pipelines.`,
+}
+
+var gitlabPipelineLsCmd = &cobra.Command{
+	Use:   "ls <project>",
+	Short: "List pipelines for a project",
+	Long: `List CI/CD pipelines for a GitLab project.
+
+Status filter options:
+  running, pending, success, failed, canceled, skipped, manual, created
+
+Source filter options:
+  push, web, trigger, schedule, api, merge_request_event
+
+Examples:
+  dex gl pipeline ls group/project                    # List recent pipelines
+  dex gl pipeline ls group/project -n 50              # Show 50 pipelines
+  dex gl pipeline ls group/project --status failed    # Only failed pipelines
+  dex gl pipeline ls group/project --ref main         # Only pipelines on main
+  dex gl pipeline ls group/project --source schedule  # Only scheduled pipelines`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		limit, _ := cmd.Flags().GetInt("limit")
+		status, _ := cmd.Flags().GetString("status")
+		ref, _ := cmd.Flags().GetString("ref")
+		source, _ := cmd.Flags().GetString("source")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		pipelines, err := client.ListPipelines(gitlab.ListPipelinesOptions{
+			ProjectID: projectID,
+			Status:    status,
+			Ref:       ref,
+			Source:    source,
+			Limit:     limit,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list pipelines: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintPipelineList(pipelines)
+	},
+}
+
+var gitlabPipelineShowCmd = &cobra.Command{
+	Use:   "show <project> <pipeline-id>",
+	Short: "Show pipeline details",
+	Long: `Display detailed information about a specific pipeline including its jobs.
+
+Examples:
+  dex gl pipeline show group/project 12345
+  dex gl pipeline show group/project 12345 --no-jobs`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		noJobs, _ := cmd.Flags().GetBool("no-jobs")
+
+		pipelineID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pipeline ID: %s\n", args[1])
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		pipeline, err := client.GetPipeline(projectID, pipelineID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get pipeline: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Fetch jobs unless --no-jobs
+		if !noJobs {
+			jobs, err := client.ListPipelineJobs(projectID, pipelineID, "")
+			if err == nil {
+				pipeline.Jobs = jobs
+			}
+		}
+
+		output.PrintPipelineDetails(pipeline)
+	},
+}
+
+var gitlabPipelineJobsCmd = &cobra.Command{
+	Use:   "jobs <project> <pipeline-id>",
+	Short: "List jobs in a pipeline",
+	Long: `List all jobs for a specific pipeline, grouped by stage.
+
+Scope filter options:
+  created, pending, running, failed, success, canceled, skipped, manual
+
+Examples:
+  dex gl pipeline jobs group/project 12345
+  dex gl pipeline jobs group/project 12345 --scope failed`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		scope, _ := cmd.Flags().GetString("scope")
+
+		pipelineID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pipeline ID: %s\n", args[1])
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		jobs, err := client.ListPipelineJobs(projectID, pipelineID, scope)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list pipeline jobs: %v\n", err)
+			os.Exit(1)
+		}
+
+		output.PrintPipelineJobs(jobs)
+		fmt.Println()
+	},
+}
+
+var gitlabPipelineRetryCmd = &cobra.Command{
+	Use:   "retry <project> <pipeline-id>",
+	Short: "Retry failed jobs in a pipeline",
+	Long: `Retry all failed jobs in a pipeline.
+
+Examples:
+  dex gl pipeline retry group/project 12345`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+
+		pipelineID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pipeline ID: %s\n", args[1])
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		pipeline, err := client.RetryPipeline(projectID, pipelineID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to retry pipeline: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Retried pipeline #%d (%s)\n", pipeline.ID, pipeline.Status)
+		fmt.Printf("  %s\n", pipeline.WebURL)
+	},
+}
+
+var gitlabPipelineCancelCmd = &cobra.Command{
+	Use:   "cancel <project> <pipeline-id>",
+	Short: "Cancel a running pipeline",
+	Long: `Cancel all running jobs in a pipeline.
+
+Examples:
+  dex gl pipeline cancel group/project 12345`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+
+		pipelineID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pipeline ID: %s\n", args[1])
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		pipeline, err := client.CancelPipeline(projectID, pipelineID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to cancel pipeline: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Canceled pipeline #%d (%s)\n", pipeline.ID, pipeline.Status)
+		fmt.Printf("  %s\n", pipeline.WebURL)
+	},
+}
+
+var gitlabPipelineCreateCmd = &cobra.Command{
+	Use:   "create <project>",
+	Short: "Create a new pipeline",
+	Long: `Trigger a new pipeline on a specific branch or tag.
+
+Variables can be passed as KEY=VALUE pairs using the --var flag.
+
+Examples:
+  dex gl pipeline create group/project --ref main
+  dex gl pipeline create group/project --ref develop
+  dex gl pipeline create group/project --ref main --var DEPLOY_ENV=staging
+  dex gl pipeline create group/project --ref v1.0.0 --var KEY1=val1 --var KEY2=val2`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		ref, _ := cmd.Flags().GetString("ref")
+		varFlags, _ := cmd.Flags().GetStringArray("var")
+
+		if ref == "" {
+			fmt.Fprintf(os.Stderr, "Error: --ref is required\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		variables := make(map[string]string)
+		if len(varFlags) > 0 {
+			variables, err = gitlab.ParseVariables(varFlags)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		pipeline, err := client.CreatePipeline(projectID, gitlab.CreatePipelineOptions{
+			Ref:       ref,
+			Variables: variables,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create pipeline: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Created pipeline #%d on %s (%s)\n", pipeline.ID, pipeline.Ref, pipeline.Status)
+		fmt.Printf("  %s\n", pipeline.WebURL)
+	},
+}
+
+var gitlabPipelineLogsCmd = &cobra.Command{
+	Use:   "logs <project> <pipeline-id> <job-name>",
+	Short: "Show logs for a pipeline job",
+	Long: `Display the console output/logs for a specific job in a pipeline.
+
+The job name must match exactly as shown in the pipeline jobs list.
+Use 'dex gl pipeline jobs <project> <pipeline-id>' to see available job names.
+
+Examples:
+  dex gl pipeline logs group/project 12345 "build with buildkit"
+  dex gl pipeline logs group/project 12345 test
+  dex gl pipeline logs group/project 12345 "scan go.mod"`,
+	Args:              cobra.ExactArgs(3),
+	ValidArgsFunction: completeProjectNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID := args[0]
+		jobName := args[2]
+
+		pipelineID, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pipeline ID: %s\n", args[1])
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		// First, get the jobs for this pipeline to find the job ID
+		jobs, err := client.ListPipelineJobs(projectID, pipelineID, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list pipeline jobs: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Find the job with the matching name
+		var targetJobID int
+		found := false
+		for _, job := range jobs {
+			if job.Name == jobName {
+				targetJobID = job.ID
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			fmt.Fprintf(os.Stderr, "Job '%s' not found in pipeline %d\n", jobName, pipelineID)
+			fmt.Fprintf(os.Stderr, "\nAvailable jobs:\n")
+			for _, job := range jobs {
+				fmt.Fprintf(os.Stderr, "  - %s (stage: %s, status: %s)\n", job.Name, job.Stage, job.Status)
+			}
+			os.Exit(1)
+		}
+
+		// Get the job logs
+		logs, err := client.GetJobLogs(projectID, targetJobID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get job logs: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Print the logs
+		fmt.Printf("Logs for job '%s' (ID: %d) in pipeline %d:\n", jobName, targetJobID, pipelineID)
+		fmt.Printf("%s\n", strings.Repeat("=", 80))
+		fmt.Print(logs)
+	},
+}
+
 var gitlabCommitLsCmd = &cobra.Command{
 	Use:   "ls <project>",
 	Short: "List commits for a project",
@@ -1282,6 +1659,7 @@ func init() {
 	gitlabCmd.AddCommand(gitlabProjCmd)
 	gitlabCmd.AddCommand(gitlabCommitCmd)
 	gitlabCmd.AddCommand(gitlabMRCmd)
+	gitlabCmd.AddCommand(gitlabPipelineCmd)
 
 	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
 	gitlabProjCmd.AddCommand(gitlabShowCmd)
@@ -1342,6 +1720,26 @@ func init() {
 	gitlabMRMergeCmd.Flags().Bool("remove-source-branch", false, "Remove source branch after merge")
 	gitlabMRMergeCmd.Flags().Bool("when-pipeline-succeeds", false, "Merge when pipeline succeeds")
 	gitlabMRMergeCmd.Flags().StringP("message", "m", "", "Custom merge commit message")
+
+	gitlabPipelineCmd.AddCommand(gitlabPipelineLsCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineShowCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineJobsCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineRetryCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineCancelCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineCreateCmd)
+	gitlabPipelineCmd.AddCommand(gitlabPipelineLogsCmd)
+
+	gitlabPipelineLsCmd.Flags().IntP("limit", "n", 20, "Number of pipelines to list")
+	gitlabPipelineLsCmd.Flags().String("status", "", "Filter by status: running, pending, success, failed, canceled, skipped, manual, created")
+	gitlabPipelineLsCmd.Flags().String("ref", "", "Filter by branch or tag name")
+	gitlabPipelineLsCmd.Flags().String("source", "", "Filter by source: push, web, trigger, schedule, api, merge_request_event")
+
+	gitlabPipelineShowCmd.Flags().Bool("no-jobs", false, "Don't fetch and display jobs")
+
+	gitlabPipelineJobsCmd.Flags().String("scope", "", "Filter by status: created, pending, running, failed, success, canceled, skipped, manual")
+
+	gitlabPipelineCreateCmd.Flags().StringP("ref", "r", "", "Branch or tag to run pipeline on (required)")
+	gitlabPipelineCreateCmd.Flags().StringArray("var", nil, "Pipeline variable in KEY=VALUE format (can be repeated)")
 
 	gitlabMRCreateCmd.Flags().StringP("target", "t", "main", "Target branch")
 	gitlabMRCreateCmd.Flags().StringP("source", "s", "", "Source branch (default: current branch)")

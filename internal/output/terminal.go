@@ -1136,6 +1136,187 @@ func PrintSearchResults(filePath string, diff *gl.ParsedDiff, pattern string) {
 	fmt.Println()
 }
 
+// formatPipelineStatus returns a color-coded status string for pipelines/jobs
+func formatPipelineStatus(status string) string {
+	switch status {
+	case "success", "passed":
+		return mrMergedColor.Sprintf("%-10s", status)
+	case "failed":
+		return mrClosedColor.Sprintf("%-10s", status)
+	case "running":
+		return mrOpenColor.Sprintf("%-10s", status)
+	case "pending":
+		return projectColor.Sprintf("%-10s", status)
+	case "canceled", "skipped":
+		return dimColor.Sprintf("%-10s", status)
+	case "manual":
+		return labelColor.Sprintf("%-10s", status)
+	case "created":
+		return commitColor.Sprintf("%-10s", status)
+	default:
+		return fmt.Sprintf("%-10s", status)
+	}
+}
+
+// formatDurationSecs formats a duration given in seconds as a human-readable string
+func formatDurationSecs(seconds int) string {
+	if seconds <= 0 {
+		return "-"
+	}
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	if seconds < 3600 {
+		return fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
+	}
+	return fmt.Sprintf("%dh %dm", seconds/3600, (seconds%3600)/60)
+}
+
+// formatDurationSecsFloat formats a float64 duration in seconds
+func formatDurationSecsFloat(seconds float64) string {
+	return formatDurationSecs(int(seconds))
+}
+
+// PrintPipelineList displays a list of pipelines
+func PrintPipelineList(pipelines []models.PipelineSummary) {
+	if len(pipelines) == 0 {
+		dimColor.Println("No pipelines found.")
+		return
+	}
+
+	line := strings.Repeat("═", 90)
+	fmt.Println()
+	headerColor.Println(line)
+	headerColor.Printf("  Pipelines (%d)\n", len(pipelines))
+	headerColor.Println(line)
+	fmt.Println()
+
+	// Header row
+	fmt.Printf("  %-8s  %-10s  %-20s  %-8s  %-14s  %s\n",
+		"ID", "STATUS", "REF", "SHA", "SOURCE", "CREATED")
+	fmt.Printf("  %s\n", strings.Repeat("─", 86))
+
+	for _, p := range pipelines {
+		sha := p.SHA
+		if len(sha) > 8 {
+			sha = sha[:8]
+		}
+		ref := truncate(p.Ref, 20)
+		source := truncate(p.Source, 14)
+		status := formatPipelineStatus(p.Status)
+
+		fmt.Printf("  %-8d  %s  %-20s  ", p.ID, status, ref)
+		dimColor.Printf("%-8s  ", sha)
+		fmt.Printf("%-14s  ", source)
+		dimColor.Printf("%s\n", timeAgo(p.CreatedAt))
+	}
+
+	fmt.Println()
+}
+
+// PrintPipelineDetails displays full pipeline information
+func PrintPipelineDetails(p *models.PipelineDetail) {
+	line := strings.Repeat("═", 70)
+	fmt.Println()
+	headerColor.Println(line)
+
+	statusStr := formatPipelineStatus(p.Status)
+	projectColor.Printf("  Pipeline #%d  %s\n", p.ID, statusStr)
+	headerColor.Println(line)
+	fmt.Println()
+
+	printField("ID", fmt.Sprintf("%d", p.ID))
+	printField("Status", p.Status)
+	printField("Ref", p.Ref)
+	if p.Tag {
+		printField("Tag", "yes")
+	}
+	printField("SHA", p.SHA)
+	printField("Source", p.Source)
+	if p.User != "" {
+		printField("User", p.User)
+	}
+	printField("URL", p.WebURL)
+	printField("Created", formatTimestamp(p.CreatedAt))
+
+	if p.StartedAt != nil {
+		printField("Started", formatTimestamp(*p.StartedAt))
+	}
+	if p.FinishedAt != nil {
+		printField("Finished", formatTimestamp(*p.FinishedAt))
+	}
+	if p.Duration > 0 {
+		printField("Duration", formatDurationSecs(p.Duration))
+	}
+	if p.QueuedDuration > 0 {
+		printField("Queued", formatDurationSecs(p.QueuedDuration))
+	}
+	if p.Coverage != "" {
+		printField("Coverage", p.Coverage+"%")
+	}
+	if p.YamlErrors != "" {
+		fmt.Println()
+		mrClosedColor.Printf("  YAML Errors: %s\n", p.YamlErrors)
+	}
+
+	// Jobs section
+	if len(p.Jobs) > 0 {
+		fmt.Println()
+		PrintPipelineJobs(p.Jobs)
+	}
+
+	fmt.Println()
+}
+
+// PrintPipelineJobs displays a list of jobs grouped by stage
+func PrintPipelineJobs(jobs []models.PipelineJob) {
+	if len(jobs) == 0 {
+		dimColor.Println("  No jobs found.")
+		return
+	}
+
+	// Group jobs by stage, preserving order
+	type stageJobs struct {
+		name string
+		jobs []models.PipelineJob
+	}
+	var stages []stageJobs
+	stageIndex := make(map[string]int)
+
+	for _, j := range jobs {
+		idx, exists := stageIndex[j.Stage]
+		if !exists {
+			idx = len(stages)
+			stageIndex[j.Stage] = idx
+			stages = append(stages, stageJobs{name: j.Stage})
+		}
+		stages[idx].jobs = append(stages[idx].jobs, j)
+	}
+
+	sectionColor.Printf("  Jobs (%d):\n", len(jobs))
+
+	for _, stage := range stages {
+		fmt.Println()
+		labelColor.Printf("    Stage: %s\n", stage.name)
+
+		for _, j := range stage.jobs {
+			status := formatPipelineStatus(j.Status)
+			duration := formatDurationSecsFloat(j.Duration)
+
+			fmt.Printf("      %s  %-30s  ", status, truncate(j.Name, 30))
+			dimColor.Printf("%s", duration)
+
+			if j.FailureReason != "" {
+				mrClosedColor.Printf("  (%s)", j.FailureReason)
+			}
+			if j.AllowFailure {
+				dimColor.Printf("  [allowed to fail]")
+			}
+			fmt.Println()
+		}
+	}
+}
+
 // PrintCommitList displays a list of commits
 func PrintCommitList(commits []models.Commit) {
 	if len(commits) == 0 {
