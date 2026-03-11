@@ -10,3 +10,7 @@
 
 # Environment
 .env
+
+# Agent plans and working files
+.agent/
+

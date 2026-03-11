@@ -29,6 +29,19 @@ dex jira project DEV           # Project overview (types, components, workflow)
 dex jira project DEV -t        # Show only workflow transitions
 ```
 
+## Output Formats
+
+All read commands support `-o` / `--output` for structured output:
+
+```bash
+dex jira view DEV-123 -o json      # JSON output
+dex jira my -o yaml                # YAML output
+dex jira projects -o compact       # Condensed text (one item per line)
+```
+
+Supported formats: `text` (default), `compact`, `json`, `yaml`.  
+When using `json` or `yaml`, errors are also output in the requested format to stdout so they can be piped and parsed.
+
 ## For AI Agents
 
 This CLI is primarily designed as a tool for AI agents (Claude, etc.) to interact with engineering infrastructure. It ships with a Claude Code skill at `.claude/skills/dex/` that provides full command documentation.

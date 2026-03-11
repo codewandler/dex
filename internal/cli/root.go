@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var outputFormat string
+
 var rootCmd = &cobra.Command{
 	Use:   "dex",
 	Short: "The engineer's CLI",
@@ -46,6 +48,9 @@ func getVersion() string {
 }
 
 func init() {
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "text",
+		"Output format: text, compact, json, yaml")
+
 	rootCmd.AddCommand(jiraCmd)
 	rootCmd.AddCommand(confluenceCmd)
 	rootCmd.AddCommand(gitlabCmd)

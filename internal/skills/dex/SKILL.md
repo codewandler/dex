@@ -10,6 +10,17 @@ Use `dex` for Kubernetes, GitLab, Jira, Confluence, Slack, GitHub, Loki, Homer, 
 
 **IMPORTANT:** When the user's request matches an integration (e.g., GitLab MRs, Kubernetes pods, Slack messages), you MUST load the corresponding reference file from the table below before executing commands. The reference files contain the full command documentation needed for correct usage.
 
+## Global Flags
+
+```bash
+dex <command> -o text      # Default: full detail text output
+dex <command> -o compact   # Condensed single-line text output
+dex <command> -o json      # JSON output (machine-readable, errors also go to stdout)
+dex <command> -o yaml      # YAML output (machine-readable, errors also go to stdout)
+```
+
+Use `-o json` or `-o yaml` when you need to parse output programmatically. In structured output modes errors are emitted to stdout (not stderr) so they are pipeable.
+
 ## Setup & Diagnostics
 
 ```bash
