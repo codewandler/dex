@@ -79,6 +79,10 @@ dex gl pipeline ls <project>      # List project pipelines
 dex gl pipeline show <proj> <id>  # Show pipeline details + jobs
 dex gl pipeline retry <proj> <id> # Retry failed jobs
 dex gl pipeline logs <proj> <id> <job>  # Show job console logs
+dex gl snippet ls                 # List your personal snippets
+dex gl snippet show <id>          # Show snippet details + content
+dex gl snippet create "<title>" -f "file.txt:content"  # Create snippet
+dex gl snippet delete <id>        # Delete a snippet
 ```
 
 ### Jira (`dex jira`)
@@ -245,6 +249,7 @@ dex claude statusline             # Generate status line for Claude Code
 ## Tips
 
 - Command aliases: `k8s`=`kube`=`kubernetes`, `gl`=`gitlab`, `gh`=`github`, `cf`=`confluence`
+- GitLab snippet alias: `snip` (e.g. `dex gl snip ls`)
 - Use `-n` for namespace, `-A` for all namespaces in k8s
 - MR format: `project!iid` (e.g., `my-group/my-project!123`)
 - Loki URL: set `LOKI_URL` env var or use `--url` flag (auto-discovers if not set)

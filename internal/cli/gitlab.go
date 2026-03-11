@@ -1653,6 +1653,236 @@ func parseMRReference(ref string) (string, int, error) {
 	return project, iid, nil
 }
 
+// ── Snippet commands ──────────────────────────────────────────────────────────
+
+var gitlabSnippetCmd = &cobra.Command{
+	Use:     "snippet",
+	Aliases: []string{"snip"},
+	Short:   "Snippet commands",
+	Long:    `Commands for managing personal GitLab snippets.`,
+}
+
+var gitlabSnippetLsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "List your snippets",
+	Long: `List all personal snippets for the current user.
+
+Examples:
+  dex gl snippet ls           # List 20 most recent snippets
+  dex gl snippet ls -n 50     # List 50 snippets`,
+	Run: func(cmd *cobra.Command, args []string) {
+		limit, _ := cmd.Flags().GetInt("limit")
+
+		cfg, err := config.Load()
+		if err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+		if err := cfg.RequireGitLab(); err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to create GitLab client: %w", err))
+		}
+
+		result, err := client.ListSnippets(limit)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to list snippets: %w", err))
+		}
+
+		Render(result)
+	},
+}
+
+var gitlabSnippetShowCmd = &cobra.Command{
+	Use:   "show <id>",
+	Short: "Show snippet details and content",
+	Long: `Show details and content of a snippet by its numeric ID.
+
+Examples:
+  dex gl snippet show 42            # Show snippet #42 with content
+  dex gl snippet show 42 --no-content  # Show metadata only`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		noContent, _ := cmd.Flags().GetBool("no-content")
+
+		id, err := strconv.Atoi(args[0])
+		if err != nil {
+			RenderError(fmt.Errorf("invalid snippet ID: %s", args[0]))
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+		if err := cfg.RequireGitLab(); err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to create GitLab client: %w", err))
+		}
+
+		result, err := client.GetSnippet(id, !noContent)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to get snippet: %w", err))
+		}
+
+		Render(result)
+	},
+}
+
+var gitlabSnippetCreateCmd = &cobra.Command{
+	Use:   "create <title>",
+	Short: "Create a new personal snippet",
+	Long: `Create a new personal GitLab snippet.
+
+Files are specified with --file in one of two formats:
+  filename.txt:content here       inline content after the colon
+  @filename.txt:/path/to/file     read content from a local file
+
+Examples:
+  dex gl snippet create "My script" --file "hello.sh:#!/bin/bash\necho hello"
+  dex gl snippet create "Config" --file "@config.yaml:/etc/myapp/config.yaml"
+  dex gl snippet create "Multi-file" -f "a.go:package main" -f "@b.go:./b.go"
+  dex gl snippet create "Public note" --file "note.md:# Hello" --visibility public
+  dex gl snippet create "Internal ref" -f "ref.txt:see docs" -v internal -d "Team reference"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		title := args[0]
+		fileSpecs, _ := cmd.Flags().GetStringArray("file")
+		description, _ := cmd.Flags().GetString("description")
+		visibility, _ := cmd.Flags().GetString("visibility")
+
+		// Validate visibility
+		switch visibility {
+		case "public", "internal", "private":
+			// ok
+		default:
+			RenderError(fmt.Errorf("invalid visibility %q: must be public, internal, or private", visibility))
+		}
+
+		// Parse file specs
+		files, err := parseSnippetFileSpecs(fileSpecs)
+		if err != nil {
+			RenderError(fmt.Errorf("invalid file spec: %w", err))
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+		if err := cfg.RequireGitLab(); err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to create GitLab client: %w", err))
+		}
+
+		snippet, err := client.CreateSnippet(gitlab.CreateSnippetInput{
+			Title:       title,
+			Description: description,
+			Visibility:  visibility,
+			Files:       files,
+		})
+		if err != nil {
+			RenderError(fmt.Errorf("failed to create snippet: %w", err))
+		}
+
+		Render(snippet)
+	},
+}
+
+var gitlabSnippetDeleteCmd = &cobra.Command{
+	Use:   "delete <id>",
+	Short: "Delete a snippet",
+	Long: `Delete a personal snippet by its numeric ID.
+
+Examples:
+  dex gl snippet delete 42`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id, err := strconv.Atoi(args[0])
+		if err != nil {
+			RenderError(fmt.Errorf("invalid snippet ID: %s", args[0]))
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+		if err := cfg.RequireGitLab(); err != nil {
+			RenderError(fmt.Errorf("configuration error: %w", err))
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			RenderError(fmt.Errorf("failed to create GitLab client: %w", err))
+		}
+
+		if err := client.DeleteSnippet(id); err != nil {
+			RenderError(fmt.Errorf("failed to delete snippet: %w", err))
+		}
+
+		fmt.Printf("Snippet #%d deleted.\n", id)
+	},
+}
+
+// parseSnippetFileSpecs parses --file flag values into CreateSnippetFileInput entries.
+// Supported formats:
+//
+//	"filename.txt:inline content"   – inline content after first colon
+//	"@filename.txt:/path/to/file"   – read content from a local file
+func parseSnippetFileSpecs(specs []string) ([]gitlab.CreateSnippetFileInput, error) {
+	var files []gitlab.CreateSnippetFileInput
+	for _, spec := range specs {
+		if spec == "" {
+			continue
+		}
+		// @name:path  → read from disk
+		if strings.HasPrefix(spec, "@") {
+			rest := spec[1:]
+			idx := strings.Index(rest, ":")
+			if idx < 0 {
+				return nil, fmt.Errorf("format must be @filename:path, got %q", spec)
+			}
+			name := rest[:idx]
+			path := rest[idx+1:]
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read file %q: %w", path, err)
+			}
+			files = append(files, gitlab.CreateSnippetFileInput{
+				FilePath: name,
+				Content:  string(data),
+			})
+			continue
+		}
+		// name:content  → inline
+		idx := strings.Index(spec, ":")
+		if idx < 0 {
+			return nil, fmt.Errorf("format must be filename:content or @filename:path, got %q", spec)
+		}
+		name := spec[:idx]
+		content := spec[idx+1:]
+		// Unescape \n and \t so callers can pass multi-line content from the shell
+		content = strings.ReplaceAll(content, `\n`, "\n")
+		content = strings.ReplaceAll(content, `\t`, "\t")
+		files = append(files, gitlab.CreateSnippetFileInput{
+			FilePath: name,
+			Content:  content,
+		})
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("at least one --file is required")
+	}
+	return files, nil
+}
+
 func init() {
 	gitlabCmd.AddCommand(gitlabActivityCmd)
 	gitlabCmd.AddCommand(gitlabIndexCmd)
@@ -1660,6 +1890,7 @@ func init() {
 	gitlabCmd.AddCommand(gitlabCommitCmd)
 	gitlabCmd.AddCommand(gitlabMRCmd)
 	gitlabCmd.AddCommand(gitlabPipelineCmd)
+	gitlabCmd.AddCommand(gitlabSnippetCmd)
 
 	gitlabProjCmd.AddCommand(gitlabProjLsCmd)
 	gitlabProjCmd.AddCommand(gitlabShowCmd)
@@ -1748,6 +1979,20 @@ func init() {
 	gitlabMRCreateCmd.Flags().Bool("draft", false, "Create as draft/WIP")
 	gitlabMRCreateCmd.Flags().Bool("remove-source-branch", false, "Remove source branch after merge")
 	gitlabMRCreateCmd.Flags().Bool("squash", false, "Squash commits on merge")
+
+	gitlabSnippetCmd.AddCommand(gitlabSnippetLsCmd)
+	gitlabSnippetCmd.AddCommand(gitlabSnippetShowCmd)
+	gitlabSnippetCmd.AddCommand(gitlabSnippetCreateCmd)
+	gitlabSnippetCmd.AddCommand(gitlabSnippetDeleteCmd)
+
+	gitlabSnippetLsCmd.Flags().IntP("limit", "n", 20, "Number of snippets to list")
+
+	gitlabSnippetShowCmd.Flags().Bool("no-content", false, "Don't fetch and display file content")
+
+	gitlabSnippetCreateCmd.Flags().StringArrayP("file", "f", nil, "File in format 'filename:content' or '@filename:path/to/file' (can be repeated)")
+	gitlabSnippetCreateCmd.Flags().StringP("description", "d", "", "Snippet description")
+	gitlabSnippetCreateCmd.Flags().StringP("visibility", "v", "private", "Visibility: public, internal, private")
+	gitlabSnippetCreateCmd.MarkFlagRequired("file")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration

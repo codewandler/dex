@@ -239,5 +239,66 @@ Use `dex gl pipeline jobs <project> <pipeline-id>` to see available job names fi
 ## Tips
 
 - GitLab project names autocomplete from local index
-- Command aliases: `gl`=`gitlab`, `mr`=`merge-request`, `pipeline`=`pipe`=`pl`
+- Command aliases: `gl`=`gitlab`, `mr`=`merge-request`, `pipeline`=`pipe`=`pl`, `snippet`=`snip`
 - Use `project!iid` format for MR references (e.g., `my-group/my-project!123`)
+
+## Snippets
+
+Personal GitLab snippets (like Gists). Aliases: `snip`.
+
+### List Snippets
+```bash
+dex gl snippet ls             # List 20 most recent snippets
+dex gl snippet ls -n 50       # List 50 snippets
+```
+
+### Show Snippet
+```bash
+dex gl snippet show <id>             # Show details and content
+dex gl snippet show 42               # Example
+dex gl snippet show 42 --no-content  # Metadata only (skip content fetch)
+```
+
+### Create Snippet
+```bash
+dex gl snippet create "<title>" --file "<name>:<content>"
+```
+
+**File formats:**
+- `filename.txt:inline content`  — content provided inline (use `\n` for newlines)
+- `@filename.txt:/path/to/file`  — read content from a local file
+
+**Examples:**
+```bash
+# Single inline file, default private visibility
+dex gl snippet create "Quick note" --file "note.txt:remember this"
+
+# Multi-line content using \n
+dex gl snippet create "Bash snippet" -f "hello.sh:#!/bin/bash\necho hello"
+
+# Read content from a local file
+dex gl snippet create "My config" --file "@config.yaml:/path/to/config.yaml"
+
+# Multiple files
+dex gl snippet create "Debug kit" \
+  -f "README.md:# Debug kit" \
+  -f "@script.sh:./scripts/debug.sh"
+
+# Public snippet with description
+dex gl snippet create "Useful regex" \
+  --file "patterns.txt:email: ^[a-z]+@[a-z]+\.[a-z]+$" \
+  --visibility public \
+  --description "Handy regex patterns"
+
+# Internal snippet
+dex gl snippet create "Team runbook" -f "runbook.md:# Steps..." -v internal
+```
+
+**Visibility options:** `private` (default), `internal`, `public`
+> Note: `internal` is not available on GitLab.com (SaaS), only on self-managed instances.
+
+### Delete Snippet
+```bash
+dex gl snippet delete <id>    # Delete snippet by ID
+dex gl snippet delete 42      # Example
+```
