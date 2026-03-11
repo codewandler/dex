@@ -51,7 +51,8 @@ func (r *UnreadResult) RenderText(mode render.Mode) string {
 			if from == "" {
 				from = msg.UserID
 			}
-			text := truncateUnread(msg.Text, 80)
+			text := messageDisplayText(msg.Text, msg.Attachments)
+			text = truncateUnread(text, 80)
 			fmt.Fprintf(&b, "  %s  %-20s %s\n", ts, "@"+from, text)
 		}
 		b.WriteString("\n")
@@ -114,6 +115,16 @@ func parseUnixTS(ts string) time.Time {
 	return time.Unix(sec, 0)
 }
 
+// MessageDisplayText is the exported counterpart of messageDisplayText.
+func MessageDisplayText(text string, attachments []MessageAttachment) string {
+	return messageDisplayText(text, attachments)
+}
+
+// RenderAttachments is the exported counterpart of renderAttachments.
+func RenderAttachments(attachments []MessageAttachment) string {
+	return renderAttachments(attachments)
+}
+
 func truncateUnread(s string, max int) string {
 	// Collapse newlines for single-line display
 	s = strings.ReplaceAll(s, "\n", " ")
@@ -121,4 +132,58 @@ func truncateUnread(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+// messageDisplayText returns the best human-readable text for a message.
+// It prefers the message text; if empty it falls back to attachments.
+func messageDisplayText(text string, attachments []MessageAttachment) string {
+	if text != "" {
+		return text
+	}
+	for _, a := range attachments {
+		if a.Text != "" {
+			return a.Text
+		}
+		if a.Fallback != "" {
+			return a.Fallback
+		}
+	}
+	return ""
+}
+
+// renderAttachments produces a multi-line text block for a list of attachments.
+func renderAttachments(attachments []MessageAttachment) string {
+	if len(attachments) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, a := range attachments {
+		if a.Pretext != "" {
+			fmt.Fprintf(&b, "  %s\n", a.Pretext)
+		}
+		if a.Title != "" {
+			if a.TitleLink != "" {
+				fmt.Fprintf(&b, "  %s (%s)\n", a.Title, a.TitleLink)
+			} else {
+				fmt.Fprintf(&b, "  %s\n", a.Title)
+			}
+		}
+		if a.AuthorName != "" {
+			fmt.Fprintf(&b, "  %s\n", a.AuthorName)
+		}
+		if a.Text != "" {
+			for _, line := range strings.Split(strings.TrimRight(a.Text, "\n"), "\n") {
+				fmt.Fprintf(&b, "  %s\n", line)
+			}
+		} else if a.Fallback != "" && a.Title == "" {
+			// Only show fallback if we have nothing better
+			for _, line := range strings.Split(strings.TrimRight(a.Fallback, "\n"), "\n") {
+				fmt.Fprintf(&b, "  %s\n", line)
+			}
+		}
+		if a.Footer != "" {
+			fmt.Fprintf(&b, "  ─ %s\n", a.Footer)
+		}
+	}
+	return b.String()
 }

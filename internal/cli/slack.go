@@ -880,7 +880,8 @@ Examples:
 					UserID:      m.User,
 					Username:    username,
 					Timestamp:   m.Timestamp,
-					Text:        m.Text,
+					Text:        slack.ExtractMessageText(m),
+					Attachments: slack.ConvertAttachments(m.Attachments),
 					ThreadTS:    m.ThreadTimestamp,
 				})
 			}
@@ -1547,11 +1548,11 @@ Examples:
 			ts := parseSlackTimestamp(m.Timestamp)
 
 			if compact {
-				text := truncateText(m.Text, 50)
+				text := truncateText(slack.MessageDisplayText(m.Text, m.Attachments), 50)
 				printMentionCompactWithStatus(ts, channelName, username, string(m.Status), text)
 			} else {
-				text := resolveUserMentions(m.Text, idx)
-				printMentionExpandedWithStatus(i+1, ts, channelName, username, string(m.Status), text, m.Permalink)
+				text := resolveUserMentions(slack.MessageDisplayText(m.Text, m.Attachments), idx)
+				printMentionExpandedWithStatus(i+1, ts, channelName, username, string(m.Status), text, m.Permalink, m.Attachments)
 			}
 		}
 		if unhandled {
@@ -1573,7 +1574,7 @@ func printMentionCompactWithStatus(ts, channel, from, status, text string) {
 	fmt.Printf("%-19s %-20s %-15s %-8s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), status, text)
 }
 
-func printMentionExpandedWithStatus(num int, ts, channel, from, status, text, permalink string) {
+func printMentionExpandedWithStatus(num int, ts, channel, from, status, text, permalink string, attachments []slack.MessageAttachment) {
 	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
 	fmt.Printf("#%s  •  %s  •  @%s  •  [%s]\n", channel, ts, from, status)
 	if permalink != "" {
@@ -1581,6 +1582,9 @@ func printMentionExpandedWithStatus(num int, ts, channel, from, status, text, pe
 	}
 	fmt.Println()
 	fmt.Println(text)
+	if attText := slack.RenderAttachments(attachments); attText != "" {
+		fmt.Print(attText)
+	}
 	fmt.Println()
 }
 
@@ -1850,11 +1854,11 @@ Examples:
 				ts := parseSlackTimestamp(r.Timestamp)
 
 				if compact {
-					text := truncateText(r.Text, 60)
+					text := truncateText(slack.MessageDisplayText(r.Text, r.Attachments), 60)
 					printSearchCompact(ts, channelName, username, text)
 				} else {
-					text := resolveUserMentions(r.Text, idx)
-					printSearchExpanded(i+1, ts, channelName, username, text, r.Permalink)
+					text := resolveUserMentions(slack.MessageDisplayText(r.Text, r.Attachments), idx)
+					printSearchExpanded(i+1, ts, channelName, username, text, r.Permalink, r.Attachments)
 				}
 			}
 
@@ -2008,8 +2012,24 @@ Examples:
 			}
 
 			fmt.Printf("\n[%d] %s - %s - @%s (User:%s Bot:%s)%s\n", i, label, ts, username, msg.User, msg.BotID, meMarker)
-			text := resolveUserMentions(msg.Text, idx)
-			fmt.Printf("    %s\n", truncateText(text, 100))
+			text := resolveUserMentions(slack.ExtractMessageText(msg), idx)
+			if text == "" {
+				// last resort: raw text field
+				text = msg.Text
+			}
+			fmt.Printf("    %s\n", truncateText(text, 200))
+			// Show attachments (the rich content)
+			for _, att := range msg.Attachments {
+				if att.Text != "" {
+					for _, line := range strings.Split(strings.TrimRight(att.Text, "\n"), "\n") {
+						fmt.Printf("    │ %s\n", line)
+					}
+				} else if att.Fallback != "" {
+					for _, line := range strings.Split(strings.TrimRight(att.Fallback, "\n"), "\n") {
+						fmt.Printf("    │ %s\n", line)
+					}
+				}
+			}
 		}
 
 		fmt.Println()
@@ -2154,7 +2174,7 @@ func printSearchCompact(ts, channel, from, text string) {
 	fmt.Printf("%-19s %-20s %-15s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), text)
 }
 
-func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
+func printSearchExpanded(num int, ts, channel, from, text, permalink string, attachments []slack.MessageAttachment) {
 	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
 	fmt.Printf("#%s  •  %s  •  @%s\n", channel, ts, from)
 	if permalink != "" {
@@ -2162,6 +2182,9 @@ func printSearchExpanded(num int, ts, channel, from, text, permalink string) {
 	}
 	fmt.Println()
 	fmt.Println(text)
+	if attText := slack.RenderAttachments(attachments); attText != "" {
+		fmt.Print(attText)
+	}
 	fmt.Println()
 }
 

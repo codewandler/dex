@@ -332,6 +332,7 @@ func (c *Client) SearchMentions(userID string, limit int, since int64) ([]Mentio
 			Timestamp:   msg.Timestamp,
 			ThreadTS:    extractThreadTS(msg.Permalink),
 			Text:        msg.Text,
+			Attachments: convertAttachments(msg.Attachments),
 			Permalink:   msg.Permalink,
 		})
 	}
@@ -357,6 +358,7 @@ type Mention struct {
 	Timestamp   string
 	ThreadTS    string // Parent thread timestamp (if this is a reply)
 	Text        string
+	Attachments []MessageAttachment
 	Permalink   string
 	Status      MentionStatus
 }
@@ -405,11 +407,12 @@ func (c *Client) GetMentionsInChannels(userID string, channels []string, limit i
 					Ts:      msg.Timestamp,
 				})
 				mentions = append(mentions, Mention{
-					ChannelID: channelID,
-					UserID:    msg.User,
-					Timestamp: msg.Timestamp,
-					Text:      msg.Text,
-					Permalink: permalink,
+					ChannelID:   channelID,
+					UserID:      msg.User,
+					Timestamp:   msg.Timestamp,
+					Text:        extractMessageText(msg),
+					Attachments: convertAttachments(msg.Attachments),
+					Permalink:   permalink,
 				})
 
 				if len(mentions) >= limit {
@@ -624,15 +627,27 @@ type UnreadChannel struct {
 	LastRead    string `json:"last_read"` // timestamp of last read message
 }
 
+// MessageAttachment holds a simplified view of a Slack attachment for rendering.
+type MessageAttachment struct {
+	Fallback   string `json:"fallback,omitempty"`
+	AuthorName string `json:"author_name,omitempty"`
+	Title      string `json:"title,omitempty"`
+	TitleLink  string `json:"title_link,omitempty"`
+	Pretext    string `json:"pretext,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Footer     string `json:"footer,omitempty"`
+}
+
 // UnreadMessage holds a single unread message
 type UnreadMessage struct {
-	ChannelID   string `json:"channel_id"`
-	ChannelName string `json:"channel_name"`
-	UserID      string `json:"user_id"`
-	Username    string `json:"username,omitempty"`
-	Timestamp   string `json:"ts"`
-	Text        string `json:"text"`
-	ThreadTS    string `json:"thread_ts,omitempty"`
+	ChannelID   string              `json:"channel_id"`
+	ChannelName string              `json:"channel_name"`
+	UserID      string              `json:"user_id"`
+	Username    string              `json:"username,omitempty"`
+	Timestamp   string              `json:"ts"`
+	Text        string              `json:"text"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	ThreadTS    string              `json:"thread_ts,omitempty"`
 }
 
 // ListUnreadChannels returns all channels the user is a member of that have
@@ -872,6 +887,7 @@ type SearchResult struct {
 	Username    string
 	Timestamp   string
 	Text        string
+	Attachments []MessageAttachment
 	Permalink   string
 }
 
@@ -908,6 +924,7 @@ func (c *Client) Search(query string, count int, since int64) ([]SearchResult, i
 			Username:    msg.Username,
 			Timestamp:   msg.Timestamp,
 			Text:        msg.Text,
+			Attachments: convertAttachments(msg.Attachments),
 			Permalink:   msg.Permalink,
 		})
 	}
@@ -973,4 +990,148 @@ func toUpper(s string) string {
 		result[i] = c
 	}
 	return string(result)
+}
+
+// ConvertAttachments converts slack-go Attachment structs into our lightweight MessageAttachment type.
+func ConvertAttachments(in []slack.Attachment) []MessageAttachment {
+	return convertAttachments(in)
+}
+
+// ExtractMessageText returns the best available plain-text representation of a Slack message.
+func ExtractMessageText(msg slack.Message) string {
+	return extractMessageText(msg)
+}
+
+func convertAttachments(in []slack.Attachment) []MessageAttachment {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]MessageAttachment, 0, len(in))
+	for _, a := range in {
+		out = append(out, MessageAttachment{
+			Fallback:   a.Fallback,
+			AuthorName: a.AuthorName,
+			Title:      a.Title,
+			TitleLink:  a.TitleLink,
+			Pretext:    a.Pretext,
+			Text:       a.Text,
+			Footer:     a.Footer,
+		})
+	}
+	return out
+}
+
+// extractMessageText returns the best available plain-text representation
+// of a Slack message, falling back through Blocks → Attachments → Text.
+func extractMessageText(msg slack.Message) string {
+	// 1. Try to extract text from Block Kit blocks (rich_text / section / header)
+	if blockText := blocksToText(msg.Blocks.BlockSet); blockText != "" {
+		return blockText
+	}
+
+	// 2. Plain text field
+	if msg.Text != "" {
+		return msg.Text
+	}
+
+	// 3. Try attachments
+	for _, a := range msg.Attachments {
+		if a.Text != "" {
+			return a.Text
+		}
+		if a.Fallback != "" {
+			return a.Fallback
+		}
+	}
+
+	return ""
+}
+
+// blocksToText converts a slice of Block Kit blocks into a plain-text string.
+func blocksToText(blocks []slack.Block) string {
+	var b strings.Builder
+	for _, block := range blocks {
+		switch bl := block.(type) {
+		case *slack.HeaderBlock:
+			if bl.Text != nil {
+				b.WriteString(bl.Text.Text)
+				b.WriteString("\n")
+			}
+		case *slack.SectionBlock:
+			if bl.Text != nil {
+				b.WriteString(bl.Text.Text)
+				b.WriteString("\n")
+			}
+			for _, f := range bl.Fields {
+				b.WriteString(f.Text)
+				b.WriteString("\n")
+			}
+		case *slack.RichTextBlock:
+			b.WriteString(richTextBlockToText(bl))
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// richTextBlockToText converts a RichTextBlock into a plain string.
+func richTextBlockToText(block *slack.RichTextBlock) string {
+	var b strings.Builder
+	for _, elem := range block.Elements {
+		switch e := elem.(type) {
+		case *slack.RichTextSection:
+			b.WriteString(richTextSectionToText(e.Elements))
+			b.WriteString("\n")
+		case *slack.RichTextQuote:
+			rts := slack.RichTextSection(*e)
+			b.WriteString("> ")
+			b.WriteString(richTextSectionToText(rts.Elements))
+			b.WriteString("\n")
+		case *slack.RichTextPreformatted:
+			rts := slack.RichTextSection(e.RichTextSection)
+			b.WriteString("```\n")
+			b.WriteString(richTextSectionToText(rts.Elements))
+			b.WriteString("\n```\n")
+		case *slack.RichTextList:
+			for i, item := range e.Elements {
+				if section, ok := item.(*slack.RichTextSection); ok {
+					if e.Style == slack.RTEListOrdered {
+						fmt.Fprintf(&b, "%d. %s\n", i+1, richTextSectionToText(section.Elements))
+					} else {
+						b.WriteString("• ")
+						b.WriteString(richTextSectionToText(section.Elements))
+						b.WriteString("\n")
+					}
+				}
+			}
+		}
+	}
+	return b.String()
+}
+
+// richTextSectionToText converts a slice of RichTextSectionElement into a plain string.
+func richTextSectionToText(elements []slack.RichTextSectionElement) string {
+	var b strings.Builder
+	for _, elem := range elements {
+		switch e := elem.(type) {
+		case *slack.RichTextSectionTextElement:
+			b.WriteString(e.Text)
+		case *slack.RichTextSectionUserElement:
+			b.WriteString("<@" + e.UserID + ">")
+		case *slack.RichTextSectionChannelElement:
+			b.WriteString("<#" + e.ChannelID + ">")
+		case *slack.RichTextSectionEmojiElement:
+			b.WriteString(":" + e.Name + ":")
+		case *slack.RichTextSectionLinkElement:
+			if e.Text != "" {
+				b.WriteString(e.Text)
+			} else {
+				b.WriteString(e.URL)
+			}
+		case *slack.RichTextSectionUserGroupElement:
+			b.WriteString("<!subteam^" + e.UsergroupID + ">")
+		case *slack.RichTextSectionBroadcastElement:
+			b.WriteString("<!" + e.Range + ">")
+		}
+	}
+	return b.String()
 }
