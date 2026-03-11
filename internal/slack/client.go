@@ -559,9 +559,27 @@ func (c *Client) GetThreadReplies(channelID, threadTS string) ([]slack.Message, 
 // myUserIDs should include user IDs (U...) for the bot and authenticated user
 // myBotIDs should include bot IDs (B...) to check against message BotID field
 func (c *Client) ClassifyMentionStatus(channelID, timestamp string, myUserIDs, myBotIDs []string) MentionStatus {
-	// Check for thread replies first (takes precedence over reactions)
-	replies, err := c.GetThreadReplies(channelID, timestamp)
-	if err == nil && len(replies) > 1 { // First message is the parent, replies start from index 1
+	// Check if the mention was sent by ourselves (bot or user identity).
+	// This handles the case where e.g. timo-ai sends a DM to Timo that mentions him —
+	// the message is self-authored and should not appear as an unhandled mention.
+	replies, err0 := c.GetThreadReplies(channelID, timestamp)
+	if err0 == nil && len(replies) > 0 {
+		parent := replies[0]
+		for _, myID := range myUserIDs {
+			if parent.User == myID {
+				return MentionStatusReplied
+			}
+		}
+		for _, botID := range myBotIDs {
+			if parent.BotID == botID {
+				return MentionStatusReplied
+			}
+		}
+	}
+
+	// Check for thread replies (takes precedence over reactions).
+	// Reuse the replies already fetched above for the self-check.
+	if err0 == nil && len(replies) > 1 { // First message is the parent, replies start from index 1
 		for _, reply := range replies[1:] {
 			// Check if reply is from one of our user IDs
 			for _, myID := range myUserIDs {
