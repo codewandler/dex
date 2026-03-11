@@ -689,6 +689,78 @@ Examples:
 	},
 }
 
+var ghReleaseEditCmd = &cobra.Command{
+	Use:   "edit <tag>",
+	Short: "Edit an existing release",
+	Long: `Edit an existing GitHub release.
+
+At least one edit flag must be provided. Boolean flags like --draft and
+--prerelease accept an explicit =false to unset them.
+
+Examples:
+  dex gh release edit v1.0.0 --notes "Updated release notes"
+  dex gh release edit v1.0.0 -t "New Title"
+  dex gh release edit v1.0.0 --draft=false          # Publish a draft
+  dex gh release edit v1.0.0 --prerelease=false      # Promote to stable
+  dex gh release edit v1.0.0 --latest                # Mark as latest
+  dex gh release edit v1.0.0 --notes-file NOTES.md
+  dex gh release edit v1.0.0 --tag v1.0.1            # Rename the tag
+  dex gh release edit v1.0.0 --repo owner/repo`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := gh.NewClient()
+		if !client.IsAvailable() {
+			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
+		}
+
+		tag := args[0]
+		title, _ := cmd.Flags().GetString("title")
+		notes, _ := cmd.Flags().GetString("notes")
+		notesFile, _ := cmd.Flags().GetString("notes-file")
+		newTag, _ := cmd.Flags().GetString("tag")
+		target, _ := cmd.Flags().GetString("target")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		opts := gh.ReleaseEditOptions{
+			Tag:       tag,
+			Title:     title,
+			Notes:     notes,
+			NotesFile: notesFile,
+			NewTag:    newTag,
+			Target:    target,
+			Repo:      repo,
+		}
+
+		// Handle tristate booleans (unset / true / false)
+		if cmd.Flags().Changed("draft") {
+			v, _ := cmd.Flags().GetBool("draft")
+			opts.Draft = &v
+		}
+		if cmd.Flags().Changed("prerelease") {
+			v, _ := cmd.Flags().GetBool("prerelease")
+			opts.Prerelease = &v
+		}
+		if cmd.Flags().Changed("latest") {
+			v, _ := cmd.Flags().GetBool("latest")
+			opts.Latest = &v
+		}
+
+		// Require at least one change
+		if title == "" && notes == "" && notesFile == "" && newTag == "" && target == "" &&
+			opts.Draft == nil && opts.Prerelease == nil && opts.Latest == nil {
+			return fmt.Errorf("at least one edit flag is required (--title, --notes, --notes-file, --draft, --prerelease, --latest, --tag)")
+		}
+
+		release, err := client.ReleaseEdit(opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated release %s: %s\n", release.TagName, release.URL)
+		return nil
+	},
+}
+
 // Repo commands
 var ghRepoCmd = &cobra.Command{
 	Use:   "repo",
@@ -847,8 +919,19 @@ func init() {
 	ghReleaseCreateCmd.Flags().String("target", "", "Target branch or commit SHA")
 	ghReleaseCreateCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
 
+	ghReleaseEditCmd.Flags().StringP("title", "t", "", "Release title")
+	ghReleaseEditCmd.Flags().StringP("notes", "n", "", "Release notes")
+	ghReleaseEditCmd.Flags().StringP("notes-file", "F", "", "Read release notes from file")
+	ghReleaseEditCmd.Flags().Bool("draft", false, "Save as draft (use --draft=false to publish)")
+	ghReleaseEditCmd.Flags().Bool("prerelease", false, "Mark as prerelease (use --prerelease=false to unset)")
+	ghReleaseEditCmd.Flags().Bool("latest", false, "Mark as latest (use --latest=false to unset)")
+	ghReleaseEditCmd.Flags().String("tag", "", "Rename the tag")
+	ghReleaseEditCmd.Flags().String("target", "", "Target branch or commit SHA")
+	ghReleaseEditCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
+
 	// Add release subcommands
 	ghReleaseCmd.AddCommand(ghReleaseCreateCmd)
+	ghReleaseCmd.AddCommand(ghReleaseEditCmd)
 	ghReleaseCmd.AddCommand(ghReleaseListCmd)
 	ghReleaseCmd.AddCommand(ghReleaseViewCmd)
 

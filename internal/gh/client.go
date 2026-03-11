@@ -635,6 +635,84 @@ func (c *Client) ReleaseCreate(opts ReleaseCreateOptions) (*Release, error) {
 	}, nil
 }
 
+// ReleaseEditOptions contains options for editing a release
+type ReleaseEditOptions struct {
+	Tag           string // required: the tag to edit
+	Title         string
+	Notes         string
+	NotesFile     string
+	Draft         *bool  // nil = don't change, true/false = set explicitly
+	Prerelease    *bool  // nil = don't change
+	Latest        *bool  // nil = don't change
+	NewTag        string // rename the tag
+	Target        string
+	Repo          string
+}
+
+// ReleaseEdit edits an existing release
+func (c *Client) ReleaseEdit(opts ReleaseEditOptions) (*Release, error) {
+	args := []string{"release", "edit", opts.Tag}
+
+	if opts.Title != "" {
+		args = append(args, "--title", opts.Title)
+	}
+	if opts.Notes != "" {
+		args = append(args, "--notes", opts.Notes)
+	}
+	if opts.NotesFile != "" {
+		args = append(args, "--notes-file", opts.NotesFile)
+	}
+	if opts.Draft != nil {
+		if *opts.Draft {
+			args = append(args, "--draft")
+		} else {
+			args = append(args, "--draft=false")
+		}
+	}
+	if opts.Prerelease != nil {
+		if *opts.Prerelease {
+			args = append(args, "--prerelease")
+		} else {
+			args = append(args, "--prerelease=false")
+		}
+	}
+	if opts.Latest != nil {
+		if *opts.Latest {
+			args = append(args, "--latest")
+		} else {
+			args = append(args, "--latest=false")
+		}
+	}
+	if opts.NewTag != "" {
+		args = append(args, "--tag", opts.NewTag)
+	}
+	if opts.Target != "" {
+		args = append(args, "--target", opts.Target)
+	}
+	if opts.Repo != "" {
+		args = append(args, "--repo", opts.Repo)
+	}
+
+	cmd := exec.Command("gh", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh release edit failed: %s", string(output))
+	}
+
+	// gh release edit returns the URL of the edited release
+	url := strings.TrimSpace(string(output))
+
+	tag := opts.Tag
+	if opts.NewTag != "" {
+		tag = opts.NewTag
+	}
+	return &Release{
+		TagName: tag,
+		Name:    opts.Title,
+		URL:     url,
+	}, nil
+}
+
 // Label represents a GitHub label
 type Label struct {
 	Name        string `json:"name"`
