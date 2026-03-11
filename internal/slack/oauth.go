@@ -60,8 +60,13 @@ var botScopes = []string{
 var userScopes = []string{
 	"bookmarks:read",
 	"channels:history",
+	"channels:read",
+	"channels:write",
 	"groups:history",
+	"groups:read",
+	"groups:write",
 	"im:history",
+	"im:write",
 	"mpim:history",
 	"search:read",
 	"users:write",

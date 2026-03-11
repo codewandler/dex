@@ -111,6 +111,33 @@ Notes:
 - Alias entries are hidden by default; use `--aliases` to show them
 - Emoji names from this list can be used directly with `dex slack react`
 
+## Unread Messages
+```bash
+dex slack unreads                        # All channels with unread messages + previews
+dex slack unreads --channel dev-team     # Only one specific channel
+dex slack unreads -o compact             # Summary: one line per channel
+dex slack unreads -o json                # Machine-readable structured output
+```
+
+Notes:
+- Requires user token with `channels:read` and `groups:read` scopes — re-run `dex slack auth` if needed
+- Messages are shown oldest-first within each channel, with timestamps and sender
+- The message `ts` printed here can be passed directly to `dex slack mark-read`
+
+## Mark Channel as Read
+```bash
+dex slack mark-read dev-team 1770257991.873399    # Mark up to a specific message ts
+dex slack mark-read dev-team latest               # Mark entire channel as read
+dex slack mark-read C0123456789 1770257991.873399 # Using channel ID
+```
+
+Notes:
+- Moves the read cursor for your user — all Slack clients (web, mobile, desktop) reflect the change immediately
+- Requires user token with `channels:write` / `groups:write` scope
+- `latest` is a convenience shorthand that fetches the most recent message ts automatically
+- Use `dex slack unreads` to discover which channels have unreads and get their message timestamps
+- Timestamps can be in API format (`1770257991.873399`) or Slack URL format (`p1770257991873399`)
+
 ## React to Message
 ```bash
 # Add a reaction to a message (by channel name or ID + timestamp)

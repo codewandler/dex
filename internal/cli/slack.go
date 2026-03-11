@@ -772,6 +772,185 @@ Examples:
 	},
 }
 
+var slackUnreadsCmd = &cobra.Command{
+	Use:   "unreads",
+	Short: "Show unread messages across channels",
+	Long: `Show all channels that have unread messages, grouped with their messages.
+
+Requires user token with channels:read and groups:read scopes.
+Re-run 'dex slack auth' if you haven't authenticated since these scopes were added.
+
+Use -o json/yaml for structured output. Use -o compact for a one-line-per-channel summary.
+
+Examples:
+  dex slack unreads                      # All channels with unread messages
+  dex slack unreads --channel dev-team   # Only a specific channel
+  dex slack unreads -o compact           # Summary view
+  dex slack unreads -o json              # Machine-readable output`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		channelFilter, _ := cmd.Flags().GetString("channel")
+		limit, _ := cmd.Flags().GetInt("limit")
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			return err
+		}
+		if cfg.Slack.UserToken == "" {
+			return fmt.Errorf("user token required for unreads (set SLACK_USER_TOKEN and re-run 'dex slack auth')")
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			return fmt.Errorf("failed to create Slack client: %w", err)
+		}
+
+		idx, _ := slack.LoadIndex()
+
+		// Fetch channels with unreads
+		unreads, err := client.ListUnreadChannels()
+		if err != nil {
+			return fmt.Errorf("failed to list unread channels: %w", err)
+		}
+
+		// Filter to specific channel if requested
+		if channelFilter != "" {
+			channelID := slack.ResolveChannel(channelFilter)
+			var filtered []slack.UnreadChannel
+			for _, u := range unreads {
+				if u.ID == channelID || u.Name == channelFilter {
+					filtered = append(filtered, u)
+					break
+				}
+			}
+			unreads = filtered
+		}
+
+		if len(unreads) == 0 {
+			fmt.Println("No unread messages.")
+			return nil
+		}
+
+		// Fetch messages for each channel
+		result := &slack.UnreadResult{}
+		for _, ch := range unreads {
+			msgs, err := client.GetUnreadMessages(ch.ID, ch.LastRead, limit)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not fetch messages for %s: %v\n", ch.ID, err)
+				continue
+			}
+
+			// Resolve usernames
+			var unreadMsgs []slack.UnreadMessage
+			for _, m := range msgs {
+				username := ""
+				if idx != nil {
+					if u := idx.FindUser(m.User); u != nil {
+						username = u.Username
+					}
+				}
+				unreadMsgs = append(unreadMsgs, slack.UnreadMessage{
+					ChannelID:   ch.ID,
+					ChannelName: ch.Name,
+					UserID:      m.User,
+					Username:    username,
+					Timestamp:   m.Timestamp,
+					Text:        m.Text,
+					ThreadTS:    m.ThreadTimestamp,
+				})
+			}
+
+			result.Channels = append(result.Channels, slack.UnreadChannelMessages{
+				Channel:  ch,
+				Messages: unreadMsgs,
+			})
+			result.Total += len(unreadMsgs)
+		}
+
+		Render(result)
+		return nil
+	},
+}
+
+var slackMarkReadCmd = &cobra.Command{
+	Use:   "mark-read <channel> <timestamp>",
+	Short: "Mark a channel as read up to a specific message",
+	Long: `Mark a Slack channel as read up to the given message timestamp.
+
+This moves your read cursor in Slack — the same effect as opening the channel
+in the web app and reading down to that message. All clients (web, mobile, desktop)
+will reflect the updated read state.
+
+The timestamp must identify a specific message. Use 'dex slack unreads' to see
+message timestamps, or use the special value 'latest' to mark the entire channel
+as read up to the most recent message.
+
+Requires user token with channels:write / groups:write scope.
+
+Examples:
+  dex slack mark-read dev-team 1770257991.873399    # Mark up to a specific message
+  dex slack mark-read dev-team latest               # Mark the whole channel as read
+  dex slack mark-read C0123456789 1770257991.873399 # Using channel ID`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeSlackTargets,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		targetArg := args[0]
+		tsArg := args[1]
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			return err
+		}
+		if cfg.Slack.UserToken == "" {
+			return fmt.Errorf("user token required for mark-read (set SLACK_USER_TOKEN)")
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			return fmt.Errorf("failed to create Slack client: %w", err)
+		}
+
+		channelID := slack.ResolveChannel(targetArg)
+		channelName := targetArg
+
+		// Resolve channel name from index
+		idx, _ := slack.LoadIndex()
+		if idx != nil {
+			if ch := idx.FindChannel(channelID); ch != nil {
+				channelName = ch.Name
+			}
+		}
+
+		// Handle 'latest' shorthand
+		ts := normalizeTimestamp(tsArg)
+		if tsArg == "latest" {
+			msgs, err := client.GetUnreadMessages(channelID, "0", 1)
+			if err != nil || len(msgs) == 0 {
+				// Fall back: fetch last message via history
+				return fmt.Errorf("could not determine latest message timestamp: %w", err)
+			}
+			// GetUnreadMessages returns oldest-first; we passed oldest=0 so take the last one
+			ts = msgs[len(msgs)-1].Timestamp
+		}
+
+		if err := client.MarkAsRead(channelID, ts); err != nil {
+			return err
+		}
+
+		Render(&slack.MarkReadResult{
+			ChannelID:   channelID,
+			ChannelName: channelName,
+			Timestamp:   ts,
+		})
+		return nil
+	},
+}
+
 var slackChannelsCmd = &cobra.Command{
 	Use:   "channels",
 	Short: "List Slack channels",
@@ -1987,6 +2166,8 @@ func init() {
 	slackCmd.AddCommand(slackDeleteCmd)
 	slackCmd.AddCommand(slackEmojiCmd)
 	slackCmd.AddCommand(slackReactCmd)
+	slackCmd.AddCommand(slackUnreadsCmd)
+	slackCmd.AddCommand(slackMarkReadCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackChannelCmd)
 	slackCmd.AddCommand(slackUsersCmd)
@@ -2007,6 +2188,11 @@ func init() {
 	slackEmojiCmd.Flags().Bool("builtin", false, "Show built-in Unicode emoji only (no API call needed)")
 	slackEmojiCmd.Flags().Bool("all", false, "Show all emoji: built-in + custom workspace emoji")
 	slackReactCmd.Flags().String("as", "bot", "React as 'bot' (default) or 'user'")
+	slackUnreadsCmd.Flags().StringP("channel", "C", "", "Limit to a specific channel (name or ID)")
+	slackUnreadsCmd.Flags().IntP("limit", "l", 100, "Max messages to fetch per channel")
+	_ = slackUnreadsCmd.RegisterFlagCompletionFunc("channel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeSlackChannelNames(cmd, nil, toComplete)
+	})
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackChannelsCmd.Flags().StringP("user", "u", "", "Show only channels this user belongs to")

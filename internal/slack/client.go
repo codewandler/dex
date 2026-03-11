@@ -595,6 +595,118 @@ func (c *Client) ClassifyMentionStatus(channelID, timestamp string, myUserIDs, m
 	return MentionStatusPending
 }
 
+// UnreadChannel holds a channel that has unread messages for the authenticated user
+type UnreadChannel struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	IsPrivate   bool   `json:"is_private"`
+	IsDM        bool   `json:"is_dm"`
+	UnreadCount int    `json:"unread_count"`
+	LastRead    string `json:"last_read"` // timestamp of last read message
+}
+
+// UnreadMessage holds a single unread message
+type UnreadMessage struct {
+	ChannelID   string `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+	UserID      string `json:"user_id"`
+	Username    string `json:"username,omitempty"`
+	Timestamp   string `json:"ts"`
+	Text        string `json:"text"`
+	ThreadTS    string `json:"thread_ts,omitempty"`
+}
+
+// ListUnreadChannels returns all channels the user is a member of that have
+// unread messages (unread_count_display > 0). Requires user token with
+// channels:read and groups:read scopes.
+func (c *Client) ListUnreadChannels() ([]UnreadChannel, error) {
+	if c.userAPI == nil {
+		return nil, fmt.Errorf("user token required for listing unreads")
+	}
+
+	var unreads []UnreadChannel
+	cursor := ""
+
+	for {
+		params := &slack.GetConversationsParameters{
+			Cursor:          cursor,
+			Limit:           200,
+			ExcludeArchived: true,
+			Types:           []string{"public_channel", "private_channel", "im", "mpim"},
+		}
+
+		channels, nextCursor, err := c.userAPI.GetConversations(params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list conversations: %w", err)
+		}
+
+		for _, ch := range channels {
+			if ch.UnreadCountDisplay > 0 {
+				unreads = append(unreads, UnreadChannel{
+					ID:          ch.ID,
+					Name:        ch.Name,
+					IsPrivate:   ch.IsPrivate,
+					IsDM:        ch.IsIM,
+					UnreadCount: ch.UnreadCountDisplay,
+					LastRead:    ch.LastRead,
+				})
+			}
+		}
+
+		if nextCursor == "" {
+			break
+		}
+		cursor = nextCursor
+	}
+
+	return unreads, nil
+}
+
+// GetUnreadMessages fetches messages in a channel newer than lastRead.
+// Uses user token for access. Pass limit=0 for the default (100).
+func (c *Client) GetUnreadMessages(channelID, lastRead string, limit int) ([]slack.Message, error) {
+	if c.userAPI == nil {
+		return nil, fmt.Errorf("user token required for fetching unread messages")
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	params := &slack.GetConversationHistoryParameters{
+		ChannelID: channelID,
+		Oldest:    lastRead,
+		Limit:     limit,
+		Inclusive: false, // exclude the last-read message itself
+	}
+
+	history, err := c.userAPI.GetConversationHistory(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unread messages: %w", err)
+	}
+
+	// Reverse so oldest-first
+	msgs := history.Messages
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+
+	return msgs, nil
+}
+
+// MarkAsRead moves the read cursor for the authenticated user to the given
+// message timestamp in the channel. Requires user token with channels:write /
+// groups:write / im:write scope.
+func (c *Client) MarkAsRead(channelID, ts string) error {
+	if c.userAPI == nil {
+		return fmt.Errorf("user token required for marking messages as read")
+	}
+	if err := c.userAPI.MarkConversation(channelID, ts); err != nil {
+		return fmt.Errorf("failed to mark as read: %w", err)
+	}
+	return nil
+}
+
 // SearchResult holds a search result with metadata
 type SearchResult struct {
 	ChannelID   string
