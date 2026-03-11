@@ -48,6 +48,7 @@ var botScopes = []string{
 	"groups:read",
 	"im:read",
 	"im:write",
+	"emoji:read",
 	"reactions:read",
 	"reactions:write",
 	"usergroups:read",

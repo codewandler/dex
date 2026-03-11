@@ -597,6 +597,181 @@ Examples:
 	},
 }
 
+var slackEmojiCmd = &cobra.Command{
+	Use:   "emoji",
+	Short: "List available emoji",
+	Long: `List emoji available for reactions in this workspace.
+
+By default shows only custom (workspace-uploaded) emoji. Use --builtin to include
+the ~1972 standard Unicode emoji supported by all Slack workspaces, or --all to
+show everything together.
+
+Use --filter to search by name.
+
+Examples:
+  dex slack emoji                     # List custom emoji only
+  dex slack emoji --builtin           # List built-in Unicode emoji only
+  dex slack emoji --all               # List everything (custom + built-in)
+  dex slack emoji --all --filter dog  # Search across all emoji
+  dex slack emoji --aliases           # Include alias entries`,
+	Run: func(cmd *cobra.Command, args []string) {
+		filter, _ := cmd.Flags().GetString("filter")
+		showAliases, _ := cmd.Flags().GetBool("aliases")
+		builtinOnly, _ := cmd.Flags().GetBool("builtin")
+		showAll, _ := cmd.Flags().GetBool("all")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClient(cfg.Slack.BotToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		var emoji map[string]string
+
+		if builtinOnly {
+			// Only show built-in emoji, no API call needed
+			emoji = make(map[string]string, len(slack.BuiltinEmojiNames()))
+			for _, name := range slack.BuiltinEmojiNames() {
+				emoji[name] = "builtin"
+			}
+		} else if showAll {
+			emoji, err = client.ListAllEmoji()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to list emoji: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			emoji, err = client.ListEmoji()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to list emoji: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		// Sort names for deterministic output
+		names := make([]string, 0, len(emoji))
+		for name := range emoji {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		count := 0
+		aliasCount := 0
+		for _, name := range names {
+			url := emoji[name]
+			isAlias := strings.HasPrefix(url, "alias:")
+
+			if isAlias {
+				aliasCount++
+				if !showAliases {
+					continue
+				}
+			}
+			if filter != "" && !strings.Contains(name, filter) {
+				continue
+			}
+
+			switch {
+			case isAlias:
+				fmt.Printf("%-40s  → %s\n", name, strings.TrimPrefix(url, "alias:"))
+			case url == "builtin":
+				fmt.Printf("%s\n", name)
+			default:
+				fmt.Printf("%-40s  (custom)\n", name)
+			}
+			count++
+		}
+
+		fmt.Printf("\n%d emoji", count)
+		if !showAliases && aliasCount > 0 {
+			fmt.Printf(" (%d aliases hidden, use --aliases to show)", aliasCount)
+		}
+		fmt.Println()
+	},
+}
+
+var slackReactCmd = &cobra.Command{
+	Use:   "react <channel> <timestamp> <emoji>",
+	Short: "Add a reaction to a message",
+	Long: `Add an emoji reaction to a Slack message.
+
+The channel can be a name (requires index) or ID.
+The timestamp identifies the message to react to (returned from send, or from thread/search).
+The emoji is the reaction name without colons (e.g. thumbsup, white_check_mark, eyes).
+
+Timestamps can be in Slack URL format (p1769777574026209) or API format (1769777574.026209).
+
+Use --as to choose the identity that adds the reaction (bot or user).
+
+Examples:
+  dex slack react dev-team 1770257991.873399 thumbsup
+  dex slack react dev-team p1770257991873399 white_check_mark
+  dex slack react dev-team 1770257991.873399 eyes --as user`,
+	Args: cobra.ExactArgs(3),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		switch len(args) {
+		case 0:
+			return completeSlackTargets(cmd, args, toComplete)
+		case 2:
+			return completeSlackEmojiNames(toComplete), cobra.ShellCompDirectiveNoFileComp
+		default:
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		targetArg := args[0]
+		timestamp := normalizeTimestamp(args[1])
+		emoji := strings.Trim(args[2], ":")
+		reactAs, _ := cmd.Flags().GetString("as")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if reactAs != "bot" && reactAs != "user" {
+			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", reactAs)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		channelID := slack.ResolveChannel(targetArg)
+
+		useUserToken := reactAs == "user"
+		if useUserToken && cfg.Slack.UserToken == "" {
+			fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
+			os.Exit(1)
+		}
+
+		if err := client.AddReaction(channelID, timestamp, emoji, useUserToken); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to add reaction: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Reaction :%s: added\n", emoji)
+	},
+}
+
 var slackChannelsCmd = &cobra.Command{
 	Use:   "channels",
 	Short: "List Slack channels",
@@ -1708,6 +1883,43 @@ Examples:
 	},
 }
 
+// completeSlackEmojiNames provides shell completion for emoji names (custom + built-in)
+func completeSlackEmojiNames(toComplete string) []string {
+	toLower := strings.ToLower(toComplete)
+
+	// Start with built-ins (always available, no API call)
+	seen := make(map[string]bool)
+	var names []string
+	for _, name := range slack.BuiltinEmojiNames() {
+		if strings.Contains(name, toLower) {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+
+	// Add custom emoji from the workspace if possible
+	cfg, err := config.Load()
+	if err == nil && cfg.Slack.BotToken != "" {
+		client, err := slack.NewClient(cfg.Slack.BotToken)
+		if err == nil {
+			custom, err := client.ListEmoji()
+			if err == nil {
+				for name, url := range custom {
+					if strings.HasPrefix(url, "alias:") || seen[name] {
+						continue
+					}
+					if strings.Contains(name, toLower) {
+						names = append(names, name)
+					}
+				}
+			}
+		}
+	}
+
+	sort.Strings(names)
+	return names
+}
+
 // completeSlackChannelNames provides shell completion for channel names
 func completeSlackChannelNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
@@ -1773,6 +1985,8 @@ func init() {
 	slackCmd.AddCommand(slackSendCmd)
 	slackCmd.AddCommand(slackEditCmd)
 	slackCmd.AddCommand(slackDeleteCmd)
+	slackCmd.AddCommand(slackEmojiCmd)
+	slackCmd.AddCommand(slackReactCmd)
 	slackCmd.AddCommand(slackChannelsCmd)
 	slackCmd.AddCommand(slackChannelCmd)
 	slackCmd.AddCommand(slackUsersCmd)
@@ -1788,6 +2002,11 @@ func init() {
 	slackSendCmd.Flags().String("as", "bot", "Send as 'bot' (default) or 'user'")
 	slackEditCmd.Flags().String("as", "bot", "Edit as 'bot' (default) or 'user'")
 	slackDeleteCmd.Flags().String("as", "bot", "Delete as 'bot' (default) or 'user'")
+	slackEmojiCmd.Flags().StringP("filter", "f", "", "Filter emoji by name substring")
+	slackEmojiCmd.Flags().Bool("aliases", false, "Include alias entries in output")
+	slackEmojiCmd.Flags().Bool("builtin", false, "Show built-in Unicode emoji only (no API call needed)")
+	slackEmojiCmd.Flags().Bool("all", false, "Show all emoji: built-in + custom workspace emoji")
+	slackReactCmd.Flags().String("as", "bot", "React as 'bot' (default) or 'user'")
 	slackChannelsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
 	slackChannelsCmd.Flags().BoolP("member", "m", false, "Only show channels bot is a member of")
 	slackChannelsCmd.Flags().StringP("user", "u", "", "Show only channels this user belongs to")

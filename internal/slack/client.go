@@ -453,6 +453,56 @@ func (c *Client) GetBotID() (string, error) {
 	return resp.BotID, nil
 }
 
+// AddReaction adds an emoji reaction to a message.
+// Uses the bot token by default. Pass useUserToken=true to react as the authenticated user.
+func (c *Client) AddReaction(channelID, timestamp, emoji string, useUserToken bool) error {
+	item := slack.NewRefToMessage(channelID, timestamp)
+
+	if useUserToken {
+		if c.userAPI == nil {
+			return fmt.Errorf("user token not configured")
+		}
+		if err := c.userAPI.AddReaction(emoji, item); err != nil {
+			return fmt.Errorf("failed to add reaction: %w", err)
+		}
+		return nil
+	}
+
+	if err := c.api.AddReaction(emoji, item); err != nil {
+		return fmt.Errorf("failed to add reaction: %w", err)
+	}
+	return nil
+}
+
+// ListEmoji returns all custom emoji for the workspace (requires emoji:read scope).
+// The returned map is name -> URL (or "alias:<other_name>" for aliases).
+func (c *Client) ListEmoji() (map[string]string, error) {
+	emoji, err := c.api.GetEmoji()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list emoji: %w", err)
+	}
+	return emoji, nil
+}
+
+// ListAllEmoji returns all emoji available in the workspace: custom emoji from the API
+// merged with the built-in Unicode emoji supported by Slack.
+// Custom emoji take precedence over built-ins with the same name.
+// Built-in emoji are represented as name -> "builtin".
+func (c *Client) ListAllEmoji() (map[string]string, error) {
+	all := make(map[string]string, len(builtinEmojiNames))
+	for _, name := range builtinEmojiNames {
+		all[name] = "builtin"
+	}
+	custom, err := c.ListEmoji()
+	if err != nil {
+		return nil, err
+	}
+	for name, url := range custom {
+		all[name] = url
+	}
+	return all, nil
+}
+
 // GetReactions returns reactions on a message
 // Uses user token if available (for channels bot isn't a member of), falls back to bot token
 func (c *Client) GetReactions(channelID, timestamp string) ([]slack.ItemReaction, error) {

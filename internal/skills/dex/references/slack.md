@@ -96,6 +96,38 @@ dex slack send dev-team "Hey @john.doe check #general"
 ```
 Partial names like `@john` or `#dev` won't resolve - use the full handle like `@john.doe` and exact channel name like `#dev-team`.
 
+## List Emoji
+```bash
+dex slack emoji                        # List custom (workspace-uploaded) emoji only
+dex slack emoji --builtin              # List all ~1972 built-in Unicode emoji
+dex slack emoji --all                  # List everything: built-in + custom
+dex slack emoji --all --filter dog     # Search across all emoji
+dex slack emoji --aliases              # Include alias entries (e.g. shipit → squirrel)
+```
+
+Notes:
+- **Custom emoji** are workspace-uploaded and returned by the Slack API (requires `emoji:read` scope)
+- **Built-in emoji** (~1972 names like `thumbsup`, `heart`, `white_check_mark`) are sourced from [iamcal/emoji-data](https://github.com/iamcal/emoji-data) and compiled into the binary — no API call needed
+- Alias entries are hidden by default; use `--aliases` to show them
+- Emoji names from this list can be used directly with `dex slack react`
+
+## React to Message
+```bash
+# Add a reaction to a message (by channel name or ID + timestamp)
+dex slack react dev-team 1770257991.873399 thumbsup
+dex slack react dev-team p1770257991873399 white_check_mark  # URL-style timestamp
+dex slack react C0123456789 1770257991.873399 eyes
+
+# React as user instead of bot (requires user token with reactions:write scope)
+dex slack react dev-team 1770257991.873399 thumbsup --as user
+```
+
+Notes:
+- Emoji name is specified without colons (e.g. `thumbsup`, not `:thumbsup:`)
+- Timestamps can be in Slack URL format (`p1769777574026209`) or API format (`1769777574.026209`)
+- Bot reacts by default; use `--as user` to react as yourself (requires user token)
+- The bot can react to any message it can see, including messages from other users
+
 ## Edit Message
 ```bash
 # Edit a message (by channel name or ID + timestamp)
