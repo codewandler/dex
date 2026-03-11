@@ -113,15 +113,20 @@ Notes:
 
 ## Unread Messages
 ```bash
-dex slack unreads                        # All channels with unread messages + previews
+dex slack unreads                        # Unread messages from last 14 days (default)
+dex slack unreads --since 7d             # Last 7 days only
+dex slack unreads --since 1d             # Last 24 hours
 dex slack unreads --channel dev-team     # Only one specific channel
 dex slack unreads -o compact             # Summary: one line per channel
 dex slack unreads -o json                # Machine-readable structured output
 ```
 
 Notes:
-- Requires user token with `channels:read` and `groups:read` scopes — re-run `dex slack auth` if needed
-- Messages are shown oldest-first within each channel, with timestamps and sender
+- Requires user token with `channels:read`, `groups:read`, `im:read`, `mpim:read` scopes — re-run `dex slack auth` if needed
+- Defaults to **14 days** (`--since 14d`) to keep the scan fast and relevant
+- Only scans channels you are a member of, and only open DMs/MPIMs (not dormant old conversations)
+- Channels are probed concurrently (5 workers) with automatic retry on Slack rate limits
+- Messages are shown oldest-first within each channel, with timestamps (time today, date+time for older messages)
 - The message `ts` printed here can be passed directly to `dex slack mark-read`
 
 ## Mark Channel as Read

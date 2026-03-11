@@ -10,7 +10,7 @@ Swiss army knife CLI for engineers. Usable standalone but primarily designed as 
 - **GitHub** - Repository operations via gh CLI (avoids API rate limits)
 - **Jira** - Issue management (OAuth)
 - **Confluence** - Wiki search and page viewing (OAuth)
-- **Slack** - Messaging (send, reply, channel index)
+- **Slack** - Messaging (send, reply, edit, delete, react, emoji listing, unread messages, mark as read, mentions, search)
 - **Prometheus** - PromQL queries, scrape targets, alerts
 
 ## Project Structure
@@ -45,8 +45,11 @@ dex/
 │   ├── k8s/                       # Kubernetes client
 │   ├── prometheus/                # Prometheus API client
 │   ├── slack/                     # Slack API client
-│   │   ├── client.go              # Main client
-│   │   └── index.go               # Channel index
+│   │   ├── client.go              # Main client (messages, reactions, unreads, mark-read)
+│   │   ├── render.go              # Renderable output structs (UnreadResult, MarkReadResult)
+│   │   ├── builtin_emoji.go       # Built-in Unicode emoji names (generated, Emoji 16.0)
+│   │   ├── oauth.go               # OAuth flow
+│   │   └── index.go               # Channel/user index
 │   ├── models/                    # Data structures
 │   ├── output/                    # Terminal formatting
 │   └── skills/dex/                # Claude skill definition
@@ -137,6 +140,8 @@ This CLI ships with a Claude Code skill at `internal/skills/dex/SKILL.md` that d
 - Search and view Confluence pages
 - Interact with MRs (comment, react, view diffs)
 - Send Slack messages and reply to threads
+- React to Slack messages, list emoji
+- Browse unread Slack messages and mark channels as read
 
 ## Jira OAuth Setup
 
@@ -162,12 +167,12 @@ Token stored in `~/.dex/config.json` under `confluence.token`.
 
 1. Create Slack app at https://api.slack.com/apps
 2. Add OAuth redirect URL: `https://localhost:8089/callback`
-3. Add Bot Token Scopes: `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`, `users:read`
-4. Add User Token Scopes: `search:read`, `users:read`, `users:write`, `chat:write`
+3. Add **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `chat:write.public`, `emoji:read`, `groups:history`, `groups:read`, `im:read`, `im:write`, `reactions:read`, `reactions:write`, `usergroups:read`, `users.profile:read`, `users:read`
+4. Add **User Token Scopes**: `bookmarks:read`, `channels:history`, `channels:read`, `channels:write`, `groups:history`, `groups:read`, `groups:write`, `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`, `search:read`, `users:write`
 5. Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` (env or config file)
 6. Run `dex slack auth`
 
-Tokens stored in `~/.dex/config.json` under `slack.token`, `slack.bot_token`, and `slack.user_token`.
+Tokens stored in `~/.dex/config.json` under `slack.bot_token` and `slack.user_token`.
 
 ## Development
 

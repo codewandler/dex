@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -617,16 +618,33 @@ type UnreadMessage struct {
 }
 
 // ListUnreadChannels returns all channels the user is a member of that have
-// unread messages (unread_count_display > 0). Requires user token with
-// channels:read and groups:read scopes.
-func (c *Client) ListUnreadChannels() ([]UnreadChannel, error) {
+// unread messages newer than sinceUnix (Unix timestamp). Pass 0 for no lower
+// bound (all unreads ever). A 14-day window is a sensible default.
+//
+// Because unread_count_display is not returned by the public API, we use
+// conversations.info per channel to get last_read, then fetch messages newer
+// than max(last_read, sinceUnix) via conversations.history.
+//
+// progress is called after each channel is checked: (done, total, channelName).
+// channelName is non-empty only when unreads were found. Pass nil for no reporting.
+//
+// Channels are probed concurrently (5 workers) with automatic retry on rate limits.
+// Requires user token with channels:read, groups:read, im:read, mpim:read scopes.
+func (c *Client) ListUnreadChannels(sinceUnix int64, progress func(done, total int, name string)) ([]UnreadChannel, error) {
 	if c.userAPI == nil {
 		return nil, fmt.Errorf("user token required for listing unreads")
 	}
 
-	var unreads []UnreadChannel
-	cursor := ""
+	// Build the oldest timestamp: the later of last_read and sinceUnix.
+	// This is computed per-channel, but sinceFloor is the minimum oldest we'll ever use.
+	sinceFloor := ""
+	if sinceUnix > 0 {
+		sinceFloor = fmt.Sprintf("%d.000000", sinceUnix)
+	}
 
+	// Step 1: enumerate member channels only
+	var allChannels []slack.Channel
+	cursor := ""
 	for {
 		params := &slack.GetConversationsParameters{
 			Cursor:          cursor,
@@ -634,29 +652,150 @@ func (c *Client) ListUnreadChannels() ([]UnreadChannel, error) {
 			ExcludeArchived: true,
 			Types:           []string{"public_channel", "private_channel", "im", "mpim"},
 		}
-
 		channels, nextCursor, err := c.userAPI.GetConversations(params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list conversations: %w", err)
 		}
-
 		for _, ch := range channels {
-			if ch.UnreadCountDisplay > 0 {
-				unreads = append(unreads, UnreadChannel{
-					ID:          ch.ID,
-					Name:        ch.Name,
-					IsPrivate:   ch.IsPrivate,
-					IsDM:        ch.IsIM,
-					UnreadCount: ch.UnreadCountDisplay,
-					LastRead:    ch.LastRead,
-				})
+			// Only probe channels we are actually a member of.
+			// DMs and MPIMs must be open (visible in sidebar) to count.
+			if ch.IsMember || (ch.IsIM && ch.IsOpen) || (ch.IsMpIM && ch.IsOpen) {
+				allChannels = append(allChannels, ch)
 			}
 		}
-
 		if nextCursor == "" {
 			break
 		}
 		cursor = nextCursor
+	}
+
+	total := len(allChannels)
+
+	// Step 2: fan-out with a worker pool — probe each channel concurrently.
+	// Each channel requires 2 Tier-3 API calls (conversations.info + conversations.history).
+	// Tier 3 = 50+ req/min. 5 workers × 2 calls = up to ~10 concurrent calls,
+	// rate-limit retries handle any bursts that exceed the limit.
+	type probeResult struct {
+		ch  UnreadChannel
+		has bool
+	}
+
+	jobs := make(chan slack.Channel, total)
+	results := make(chan probeResult, total)
+
+	const (
+		workers = 5
+	)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ch := range jobs {
+				// Get last_read from conversations.info (with retry on rate limit)
+				var info *slack.Channel
+				var err error
+				for attempt := 0; attempt < 5; attempt++ {
+					info, err = c.userAPI.GetConversationInfo(&slack.GetConversationInfoInput{
+						ChannelID:         ch.ID,
+						IncludeNumMembers: false,
+					})
+					if err == nil {
+						break
+					}
+					if rateLimitErr, ok := err.(*slack.RateLimitedError); ok {
+						time.Sleep(rateLimitErr.RetryAfter + 200*time.Millisecond)
+						continue
+					}
+					break // non-rate-limit error, give up
+				}
+				if err != nil || info == nil {
+					results <- probeResult{}
+					continue
+				}
+				lastRead := info.LastRead
+				if lastRead == "" {
+					lastRead = "0"
+				}
+
+				// Use the later of last_read and sinceFloor as our oldest boundary.
+				// This means we only surface unreads within the requested time window.
+				oldest := lastRead
+				if sinceFloor != "" && sinceFloor > lastRead {
+					oldest = sinceFloor
+				}
+
+				// Fetch unread messages (up to 100), with retry on rate limit
+				var history *slack.GetConversationHistoryResponse
+				histParams := &slack.GetConversationHistoryParameters{
+					ChannelID: ch.ID,
+					Oldest:    oldest,
+					Limit:     100,
+					Inclusive: false,
+				}
+				for attempt := 0; attempt < 5; attempt++ {
+					history, err = c.userAPI.GetConversationHistory(histParams)
+					if err == nil {
+						break
+					}
+					if rateLimitErr, ok := err.(*slack.RateLimitedError); ok {
+						time.Sleep(rateLimitErr.RetryAfter + 200*time.Millisecond)
+						continue
+					}
+					break
+				}
+				if err != nil || len(history.Messages) == 0 {
+					results <- probeResult{}
+					continue
+				}
+
+				name := ch.Name
+				if ch.IsIM {
+					name = ch.User
+				}
+
+				results <- probeResult{
+					has: true,
+					ch: UnreadChannel{
+						ID:          ch.ID,
+						Name:        name,
+						IsPrivate:   ch.IsPrivate,
+						IsDM:        ch.IsIM,
+						UnreadCount: len(history.Messages),
+						LastRead:    oldest,
+					},
+				}
+			}
+		}()
+	}
+
+	// Feed jobs
+	for _, ch := range allChannels {
+		jobs <- ch
+	}
+	close(jobs)
+
+	// Close results when all workers are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results with progress reporting
+	var unreads []UnreadChannel
+	done := 0
+	for r := range results {
+		done++
+		if progress != nil {
+			name := ""
+			if r.has {
+				name = r.ch.Name
+			}
+			progress(done, total, name)
+		}
+		if r.has {
+			unreads = append(unreads, r.ch)
+		}
 	}
 
 	return unreads, nil

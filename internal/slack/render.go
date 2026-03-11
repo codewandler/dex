@@ -90,13 +90,18 @@ func channelDisplayName(ch UnreadChannel) string {
 	return ch.ID
 }
 
-// formatUnreadTS formats a Slack timestamp into HH:MM.
+// formatUnreadTS formats a Slack timestamp, showing date if not today.
 func formatUnreadTS(ts string) string {
 	t := parseUnixTS(ts)
 	if t.IsZero() {
 		return ts
 	}
-	return t.Local().Format("15:04")
+	t = t.Local()
+	now := time.Now().Local()
+	if t.Year() == now.Year() && t.Month() == now.Month() && t.Day() == now.Day() {
+		return t.Format("15:04")
+	}
+	return t.Format("Jan 02 15:04")
 }
 
 func parseUnixTS(ts string) time.Time {

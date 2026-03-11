@@ -108,19 +108,23 @@ dex confluence page <id>          # View page content
 ```
 
 ### Slack (`dex slack`)
+
+See full reference: [references/slack.md](references/slack.md)
+
 ```bash
-dex slack send <channel> "msg"    # Send message (@mentions and #channels auto-resolved)
-dex slack send <ch> "msg" -t <ts> # Reply to thread
-dex slack edit <ch> <ts> "msg"   # Edit a message
-dex slack delete <ch> <ts>       # Delete a message
-dex slack mentions [--unhandled]  # My mentions today
-dex slack search "query"          # Search messages
-dex slack thread <url|ch:ts>      # View thread details
-dex slack users [query]           # Search/list users (resolve handles)
-dex slack users --channel <name>  # List users in a channel
-dex slack channels                # List channels (resolve names)
-dex slack channels --user <name>  # Channels a user belongs to
-dex slack channel members <name>  # List members of a channel
+dex slack send <channel> "msg"        # Send message (bot or --as user)
+dex slack send <ch> "msg" -t <ts>     # Reply to thread
+dex slack edit <ch> <ts> "msg"        # Edit a message
+dex slack delete <ch> <ts>            # Delete a message
+dex slack react <ch> <ts> <emoji>     # Add reaction (bot or --as user)
+dex slack emoji [--builtin] [--all]   # List available emoji
+dex slack unreads [--since 14d]       # Browse unread messages
+dex slack mark-read <ch> <ts|latest>  # Move read cursor
+dex slack mentions [--unhandled]      # My mentions (pending/acked/replied)
+dex slack search "query"              # Full-text search
+dex slack thread <url|ch:ts>          # View thread
+dex slack users/channels              # Resolve names and IDs
+dex slack index                       # Rebuild local channel/user index
 ```
 
 ### GitHub (`dex gh`)
@@ -145,6 +149,11 @@ dex gh release ls                 # List releases
 dex gh release view [tag]         # View release (latest if no tag)
 dex gh release create <tag> -n "notes"  # Create release
 dex gh release create <tag> --generate-notes  # Auto-generate notes
+dex gh release edit <tag> -t "New Title"       # Edit release title
+dex gh release edit <tag> -n "Updated notes"   # Update release notes
+dex gh release edit <tag> --draft=false        # Publish a draft
+dex gh release edit <tag> --prerelease=false   # Promote to stable
+dex gh release edit <tag> --latest             # Mark as latest
 ```
 
 ### Loki (`dex loki`)

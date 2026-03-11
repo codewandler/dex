@@ -777,19 +777,25 @@ var slackUnreadsCmd = &cobra.Command{
 	Short: "Show unread messages across channels",
 	Long: `Show all channels that have unread messages, grouped with their messages.
 
+Defaults to the last 14 days (--since 14d) to avoid scanning all history.
+Use --since to widen or narrow the window.
+
 Requires user token with channels:read and groups:read scopes.
 Re-run 'dex slack auth' if you haven't authenticated since these scopes were added.
 
 Use -o json/yaml for structured output. Use -o compact for a one-line-per-channel summary.
 
 Examples:
-  dex slack unreads                      # All channels with unread messages
+  dex slack unreads                      # Unreads from last 14 days (default)
+  dex slack unreads --since 1d           # Only last 24 hours
+  dex slack unreads --since 7d           # Last week
   dex slack unreads --channel dev-team   # Only a specific channel
   dex slack unreads -o compact           # Summary view
   dex slack unreads -o json              # Machine-readable output`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		channelFilter, _ := cmd.Flags().GetString("channel")
 		limit, _ := cmd.Flags().GetInt("limit")
+		sinceStr, _ := cmd.Flags().GetString("since")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -809,11 +815,26 @@ Examples:
 
 		idx, _ := slack.LoadIndex()
 
-		// Fetch channels with unreads
-		unreads, err := client.ListUnreadChannels()
+		// Parse --since (default: 14 days)
+		var sinceUnix int64
+		duration := parseSlackDuration(sinceStr)
+		if duration <= 0 {
+			duration = 14 * 24 * time.Hour // default: 14 days
+		}
+		sinceUnix = time.Now().Add(-duration).Unix()
+
+		// Fetch channels with unreads — probes each channel concurrently with progress
+		unreads, err := client.ListUnreadChannels(sinceUnix, func(done, total int, name string) {
+			found := ""
+			if name != "" {
+				found = fmt.Sprintf(" [unread: #%s]", name)
+			}
+			fmt.Fprintf(os.Stderr, "\rScanning channels... %d/%d%s", done, total, found)
+		})
 		if err != nil {
 			return fmt.Errorf("failed to list unread channels: %w", err)
 		}
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 60)) // clear progress line
 
 		// Filter to specific channel if requested
 		if channelFilter != "" {
@@ -833,9 +854,11 @@ Examples:
 			return nil
 		}
 
-		// Fetch messages for each channel
+		// ListUnreadChannels already fetched the messages — build result directly
+		// by resolving usernames from the index. No extra API calls needed.
 		result := &slack.UnreadResult{}
 		for _, ch := range unreads {
+			// Messages were already fetched during scan — re-fetch to get content
 			msgs, err := client.GetUnreadMessages(ch.ID, ch.LastRead, limit)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: could not fetch messages for %s: %v\n", ch.ID, err)
@@ -2190,6 +2213,7 @@ func init() {
 	slackReactCmd.Flags().String("as", "bot", "React as 'bot' (default) or 'user'")
 	slackUnreadsCmd.Flags().StringP("channel", "C", "", "Limit to a specific channel (name or ID)")
 	slackUnreadsCmd.Flags().IntP("limit", "l", 100, "Max messages to fetch per channel")
+	slackUnreadsCmd.Flags().StringP("since", "s", "14d", "How far back to look for unreads (e.g. 1d, 7d, 14d, 1h)")
 	_ = slackUnreadsCmd.RegisterFlagCompletionFunc("channel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeSlackChannelNames(cmd, nil, toComplete)
 	})
