@@ -108,11 +108,38 @@ type SearchResult struct {
 
 // Project represents a Jira project
 type Project struct {
-	ID         string `json:"id"`
-	Key        string `json:"key"`
-	Name       string `json:"name"`
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
 	ProjectType string `json:"projectTypeKey"`
-	Self       string `json:"self"`
+	Self        string `json:"self"`
+	Description string `json:"description"`
+	Style       string `json:"style"`
+	URL         string `json:"url"`
+	Lead        *struct {
+		DisplayName string `json:"displayName"`
+	} `json:"lead"`
+	ProjectCategory *struct {
+		Name string `json:"name"`
+	} `json:"projectCategory"`
+	IssueTypes []struct {
+		Name    string `json:"name"`
+		Subtask bool   `json:"subtask"`
+	} `json:"issueTypes"`
+	Components []struct {
+		Name string `json:"name"`
+	} `json:"components"`
+}
+
+// IssueTypeWithStatus represents an issue type and its available statuses for a project
+type IssueTypeWithStatus struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Subtask  bool   `json:"subtask"`
+	Statuses []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"statuses"`
 }
 
 func NewClient() (*Client, error) {
@@ -320,6 +347,54 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	}
 
 	return projects, nil
+}
+
+// GetProject fetches detailed information about a single project by key
+func (c *Client) GetProject(ctx context.Context, projectKey string) (*Project, error) {
+	resp, err := c.doRequest(ctx, "GET", "/project/"+projectKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("project %s not found", projectKey)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]any
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("API error %d: %v", resp.StatusCode, errResp)
+	}
+
+	var project Project
+	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+		return nil, err
+	}
+
+	return &project, nil
+}
+
+// GetProjectStatuses returns all issue types and their statuses for a project
+func (c *Client) GetProjectStatuses(ctx context.Context, projectKey string) ([]IssueTypeWithStatus, error) {
+	resp, err := c.doRequest(ctx, "GET", "/project/"+projectKey+"/statuses", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]any
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("failed to get project statuses %d: %v", resp.StatusCode, errResp)
+	}
+
+	var statuses []IssueTypeWithStatus
+	if err := json.NewDecoder(resp.Body).Decode(&statuses); err != nil {
+		return nil, err
+	}
+
+	return statuses, nil
 }
 
 // GetProjectKeys returns just the project keys (e.g., DEV, TEL)

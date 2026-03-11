@@ -637,6 +637,104 @@ Examples:
 	},
 }
 
+var jiraProjectCmd = &cobra.Command{
+	Use:   "project <PROJECT-KEY>",
+	Short: "Show detailed information about a project",
+	Long: `Display detailed information about a Jira project including
+its issue types, components, and workflow statuses.
+
+Examples:
+  dex jira project DEV
+  dex jira project TEL`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		projectKey := strings.ToUpper(args[0])
+
+		client, err := jira.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		project, err := client.GetProject(ctx, projectKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		statuses, err := client.GetProjectStatuses(ctx, projectKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching statuses: %v\n", err)
+			// non-fatal, continue without statuses
+		}
+
+		transitionsOnly, _ := cmd.Flags().GetBool("transitions")
+
+		siteURL := client.GetSiteURL()
+
+		// --transitions flag: only print the workflow statuses section
+		if transitionsOnly {
+			if len(statuses) == 0 {
+				fmt.Println("No workflow statuses found.")
+				return
+			}
+			fmt.Printf("Workflow Statuses for %s:\n", project.Key)
+			printWorkflowStatuses(statuses)
+			return
+		}
+
+		// Header
+		fmt.Printf("%s: %s\n", project.Key, project.Name)
+
+		style := project.Style
+		if style == "" {
+			style = "classic"
+		}
+		fmt.Printf("  Type:        %s (%s)\n", project.ProjectType, style)
+
+		if project.Lead != nil {
+			fmt.Printf("  Lead:        %s\n", project.Lead.DisplayName)
+		}
+
+		if project.ProjectCategory != nil {
+			fmt.Printf("  Category:    %s\n", project.ProjectCategory.Name)
+		}
+
+		if project.Description != "" {
+			fmt.Printf("  Description: %s\n", project.Description)
+		}
+
+		if siteURL != "" {
+			fmt.Printf("  URL:         %s/jira/software/projects/%s/boards\n", siteURL, project.Key)
+		}
+
+		// Issue Types
+		if len(project.IssueTypes) > 0 {
+			fmt.Printf("\nIssue Types:\n")
+			for _, it := range project.IssueTypes {
+				fmt.Printf("  • %s\n", it.Name)
+			}
+		}
+
+		// Components
+		if len(project.Components) > 0 {
+			fmt.Printf("\nComponents:\n")
+			for _, c := range project.Components {
+				fmt.Printf("  • %s\n", c.Name)
+			}
+		}
+
+		// Workflow Statuses grouped by issue type
+		if len(statuses) > 0 {
+			fmt.Printf("\nWorkflow Statuses:\n")
+			printWorkflowStatuses(statuses)
+		}
+	},
+}
+
 var jiraProjectsCmd = &cobra.Command{
 	Use:   "projects",
 	Short: "List all accessible Jira projects",
@@ -717,6 +815,7 @@ func init() {
 	jiraCmd.AddCommand(jiraSearchCmd)
 	jiraCmd.AddCommand(jiraMyCmd)
 	jiraCmd.AddCommand(jiraLookupCmd)
+	jiraCmd.AddCommand(jiraProjectCmd)
 	jiraCmd.AddCommand(jiraProjectsCmd)
 	jiraCmd.AddCommand(jiraCreateCmd)
 	jiraCmd.AddCommand(jiraDeleteCmd)
@@ -730,6 +829,9 @@ func init() {
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().StringP("status", "s", "", "Filter by status (e.g., 'In Progress', 'Review')")
+	// Project command flags
+	jiraProjectCmd.Flags().BoolP("transitions", "t", false, "Only show workflow statuses/transitions")
+
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
 
@@ -767,6 +869,40 @@ func init() {
 
 	// Comment command flags
 	jiraCommentCmd.Flags().StringP("body", "b", "", "Comment body in markdown (alternative to positional argument)")
+}
+
+func printWorkflowStatuses(statuses []jira.IssueTypeWithStatus) {
+	// Group issue types that share identical status sets
+	type statusGroup struct {
+		issueTypes []string
+		statuses   []string
+	}
+	var groups []statusGroup
+
+outer:
+	for _, it := range statuses {
+		names := make([]string, len(it.Statuses))
+		for i, s := range it.Statuses {
+			names[i] = s.Name
+		}
+		for gi := range groups {
+			if fmt.Sprint(groups[gi].statuses) == fmt.Sprint(names) {
+				groups[gi].issueTypes = append(groups[gi].issueTypes, it.Name)
+				continue outer
+			}
+		}
+		groups = append(groups, statusGroup{
+			issueTypes: []string{it.Name},
+			statuses:   names,
+		})
+	}
+
+	for _, g := range groups {
+		fmt.Printf("  %s\n", strings.Join(g.issueTypes, " / "))
+		for _, s := range g.statuses {
+			fmt.Printf("    • %s\n", s)
+		}
+	}
 }
 
 func truncate(s string, maxLen int) string {

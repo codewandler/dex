@@ -25,6 +25,8 @@ dex doctor                     # Check integration health
 dex k8s pod ls -A              # List all pods
 dex gl mr ls                   # List open MRs
 dex jira my                    # My assigned issues
+dex jira project DEV           # Project overview (types, components, workflow)
+dex jira project DEV -t        # Show only workflow transitions
 ```
 
 ## For AI Agents

@@ -15,6 +15,30 @@ dex jira projects --archived      # Include archived projects
 Project keys (e.g., DEV, TEL, SRE) are the prefixes used in issue keys like DEV-123.
 Archived projects (names starting with "z[archive]") are hidden by default.
 
+## Project Detail
+```bash
+dex jira project <PROJECT-KEY>              # Show full project info
+dex jira project <PROJECT-KEY> --transitions # Show only workflow statuses
+dex jira project <PROJECT-KEY> -t           # Shorthand for --transitions
+```
+
+Shows:
+- Name, type (software/business/service_desk), style (classic/next-gen)
+- Lead, category, description, URL
+- Issue types (Task, Bug, Story, Epic, Sub-task, ...)
+- Components
+- Workflow statuses grouped by issue type (types sharing the same workflow are merged onto one line)
+
+### Examples
+```bash
+# Full project overview
+dex jira project DEV
+
+# Only show the workflow statuses/transitions
+dex jira project DEV --transitions
+dex jira project TEL -t
+```
+
 ## Create Issue
 ```bash
 dex jira create -p <project> -t <type> -s "<summary>" [options]

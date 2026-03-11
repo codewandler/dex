@@ -76,6 +76,9 @@ dex jira my                       # Issues assigned to me
 dex jira my -s "In Progress"      # Filter by status
 dex jira view <KEY>               # View issue details
 dex jira search "<JQL>"           # Search with JQL
+dex jira projects                 # List all projects
+dex jira project <KEY>            # Show project details (types, components, workflow)
+dex jira project <KEY> -t        # Show only workflow statuses/transitions
 dex jira link <KEY> <KEY> [-t type]  # Link issues together
 dex jira unlink <KEY> <KEY> [-t type] # Remove link between issues
 dex jira update <KEY> [--flags]   # Update issue fields (--parent to set/clear parent)
