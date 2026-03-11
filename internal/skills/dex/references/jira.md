@@ -5,6 +5,17 @@
 dex jira auth                     # Authenticate via OAuth (opens browser)
 ```
 
+## Output Formats
+```bash
+dex jira view DEV-123 -o json              # View issue as JSON
+dex jira view DEV-123 -o yaml             # View issue as YAML
+dex jira search "project = DEV" -o json   # Search results as JSON
+dex jira my -o compact                    # Your issues, one per line
+dex jira projects -o json                 # All projects as JSON
+dex jira project DEV -o json             # Project detail as JSON
+dex jira transition DEV-123 --list -o json  # Available transitions as JSON
+```
+
 ## Projects
 ```bash
 dex jira projects                 # List active projects (excludes archived)

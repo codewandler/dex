@@ -27,13 +27,11 @@ var jiraAuthCmd = &cobra.Command{
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		if err := client.EnsureAuth(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Authentication failed: %v\n", err)
-			os.Exit(1)
+			RenderError(fmt.Errorf("authentication failed: %w", err))
 		}
 
 		fmt.Println("✓ Authentication successful! Token saved.")
@@ -50,17 +48,15 @@ var jiraViewCmd = &cobra.Command{
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		issue, err := client.GetIssue(ctx, args[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		fmt.Println(jira.FormatIssue(issue))
+		Render(issue)
 	},
 }
 
@@ -70,9 +66,9 @@ var jiraSearchCmd = &cobra.Command{
 	Long: `Search for issues using JQL (Jira Query Language).
 
 Examples:
-  bf jira search "project = TEL"
-  bf jira search "assignee = currentUser() AND status != Done"
-  bf jira search "updated >= -7d ORDER BY updated DESC"`,
+  dex jira search "project = TEL"
+  dex jira search "assignee = currentUser() AND status != Done"
+  dex jira search "updated >= -7d ORDER BY updated DESC"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -86,34 +82,15 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		result, err := client.SearchIssues(ctx, jql, limit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		if len(result.Issues) == 0 {
-			fmt.Println("No issues found.")
-			return
-		}
-
-		fmt.Printf("Found %d issues:\n\n", len(result.Issues))
-		for _, issue := range result.Issues {
-			assignee := "Unassigned"
-			if issue.Fields.Assignee != nil {
-				assignee = issue.Fields.Assignee.DisplayName
-			}
-			fmt.Printf("%-12s %-12s %-15s %s\n",
-				issue.Key,
-				issue.Fields.Status.Name,
-				truncate(assignee, 15),
-				truncate(issue.Fields.Summary, 50),
-			)
-		}
+		Render(result)
 	},
 }
 
@@ -129,11 +106,9 @@ var jiraMyCmd = &cobra.Command{
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		// Build JQL query
 		jql := "assignee = currentUser()"
 		if status != "" {
 			jql += fmt.Sprintf(" AND status = '%s'", status)
@@ -144,23 +119,11 @@ var jiraMyCmd = &cobra.Command{
 
 		result, err := client.SearchIssues(ctx, jql, limit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		if len(result.Issues) == 0 {
-			fmt.Println("No issues assigned to you.")
-			return
-		}
-
-		fmt.Printf("Your issues (%d):\n\n", len(result.Issues))
-		for _, issue := range result.Issues {
-			fmt.Printf("%-12s %-12s %s\n",
-				issue.Key,
-				issue.Fields.Status.Name,
-				truncate(issue.Fields.Summary, 60),
-			)
-		}
+		// Wrap in a type that has a "my issues" flavoured text header
+		Render(&jira.MyIssueResult{SearchResult: result})
 	},
 }
 
@@ -175,10 +138,10 @@ var jiraLookupCmd = &cobra.Command{
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
+		// TODO(#24): add structured output
 		for _, key := range args {
 			issue, err := client.GetIssue(ctx, key)
 			if err != nil {
@@ -205,8 +168,7 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		for _, key := range args {
@@ -251,17 +213,15 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		// List available link types
 		if listTypes {
 			types, err := client.ListLinkTypes(ctx)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				RenderError(err)
 			}
+			// TODO(#24): add structured output
 			fmt.Printf("%-15s %-25s %s\n", "NAME", "OUTWARD", "INWARD")
 			fmt.Println("─────────────────────────────────────────────────────────────")
 			for _, t := range types {
@@ -270,10 +230,8 @@ Examples:
 			return
 		}
 
-		// Require at least 2 issues for linking
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Error: at least two issue keys required\n")
-			os.Exit(1)
+			RenderError(fmt.Errorf("at least two issue keys required"))
 		}
 
 		sourceIssue := args[0]
@@ -315,8 +273,7 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		sourceIssue := args[0]
@@ -357,8 +314,7 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		req := jira.UpdateIssueRequest{}
@@ -401,13 +357,11 @@ Examples:
 		}
 
 		if !hasUpdates {
-			fmt.Fprintf(os.Stderr, "Error: no updates specified\n")
-			os.Exit(1)
+			RenderError(fmt.Errorf("no updates specified"))
 		}
 
 		if err := client.UpdateIssue(ctx, issueKey, req); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		fmt.Printf("Updated %s\n", issueKey)
@@ -436,41 +390,27 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		// List available transitions
 		if listTransitions {
 			transitions, err := client.ListTransitions(ctx, issueKey)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				RenderError(err)
 			}
-			if len(transitions) == 0 {
-				fmt.Println("No transitions available")
-				return
-			}
-			fmt.Printf("Available transitions for %s:\n", issueKey)
-			for _, t := range transitions {
-				fmt.Printf("  • %s → %s\n", t.Name, t.To.Name)
-			}
+			Render(&jira.TransitionList{IssueKey: issueKey, Transitions: transitions})
 			return
 		}
 
-		// Require status argument for transition
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Error: status argument required (or use --list)\n")
-			os.Exit(1)
+			RenderError(fmt.Errorf("status argument required (or use --list)"))
 		}
 
 		targetStatus := args[1]
 		if err := client.TransitionIssue(ctx, issueKey, targetStatus); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		// Fetch updated issue to show new status
 		issue, err := client.GetIssue(ctx, issueKey)
 		if err != nil {
 			fmt.Printf("Transitioned %s\n", issueKey)
@@ -505,25 +445,21 @@ See DEV-456 for context"`,
 		issueKey := args[0]
 		body, _ := cmd.Flags().GetString("body")
 
-		// Get body from args or flag
 		if len(args) > 1 {
 			body = args[1]
 		}
 		if body == "" {
-			fmt.Fprintf(os.Stderr, "Error: comment message required\n")
-			os.Exit(1)
+			RenderError(fmt.Errorf("comment message required"))
 		}
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		comment, err := client.AddComment(ctx, issueKey, body)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		fmt.Printf("Added comment to %s (id: %s)\n", issueKey, comment.ID)
@@ -547,13 +483,11 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		if err := client.DeleteComment(ctx, issueKey, commentID); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		fmt.Printf("Deleted comment %s from %s\n", commentID, issueKey)
@@ -588,13 +522,10 @@ Examples:
 		priority, _ := cmd.Flags().GetString("priority")
 		parent, _ := cmd.Flags().GetString("parent")
 
-		// Validate required fields
 		if project == "" || issueType == "" || summary == "" {
-			fmt.Fprintf(os.Stderr, "Error: --project, --type, and --summary are required\n")
-			os.Exit(1)
+			RenderError(fmt.Errorf("--project, --type, and --summary are required"))
 		}
 
-		// Parse labels
 		var labels []string
 		if labelsStr != "" {
 			for _, l := range strings.Split(labelsStr, ",") {
@@ -607,8 +538,7 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		req := jira.CreateIssueRequest{
@@ -624,11 +554,9 @@ Examples:
 
 		issue, err := client.CreateIssue(ctx, req)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating issue: %v\n", err)
-			os.Exit(1)
+			RenderError(fmt.Errorf("creating issue: %w", err))
 		}
 
-		// Print the created issue
 		siteURL := client.GetSiteURL()
 		fmt.Printf("Created %s: %s\n", issue.Key, issue.Fields.Summary)
 		if siteURL != "" {
@@ -652,86 +580,31 @@ Examples:
 		defer cancel()
 
 		projectKey := strings.ToUpper(args[0])
+		transitionsOnly, _ := cmd.Flags().GetBool("transitions")
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		project, err := client.GetProject(ctx, projectKey)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		statuses, err := client.GetProjectStatuses(ctx, projectKey)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching statuses: %v\n", err)
-			// non-fatal, continue without statuses
-		}
-
-		transitionsOnly, _ := cmd.Flags().GetBool("transitions")
+		statuses, _ := client.GetProjectStatuses(ctx, projectKey) // non-fatal
 
 		siteURL := client.GetSiteURL()
+		if siteURL != "" {
+			project.URL = fmt.Sprintf("%s/jira/software/projects/%s/boards", siteURL, project.Key)
+		}
 
-		// --transitions flag: only print the workflow statuses section
 		if transitionsOnly {
-			if len(statuses) == 0 {
-				fmt.Println("No workflow statuses found.")
-				return
-			}
-			fmt.Printf("Workflow Statuses for %s:\n", project.Key)
-			printWorkflowStatuses(statuses)
+			Render(&jira.WorkflowStatuses{ProjectKey: project.Key, Statuses: statuses})
 			return
 		}
 
-		// Header
-		fmt.Printf("%s: %s\n", project.Key, project.Name)
-
-		style := project.Style
-		if style == "" {
-			style = "classic"
-		}
-		fmt.Printf("  Type:        %s (%s)\n", project.ProjectType, style)
-
-		if project.Lead != nil {
-			fmt.Printf("  Lead:        %s\n", project.Lead.DisplayName)
-		}
-
-		if project.ProjectCategory != nil {
-			fmt.Printf("  Category:    %s\n", project.ProjectCategory.Name)
-		}
-
-		if project.Description != "" {
-			fmt.Printf("  Description: %s\n", project.Description)
-		}
-
-		if siteURL != "" {
-			fmt.Printf("  URL:         %s/jira/software/projects/%s/boards\n", siteURL, project.Key)
-		}
-
-		// Issue Types
-		if len(project.IssueTypes) > 0 {
-			fmt.Printf("\nIssue Types:\n")
-			for _, it := range project.IssueTypes {
-				fmt.Printf("  • %s\n", it.Name)
-			}
-		}
-
-		// Components
-		if len(project.Components) > 0 {
-			fmt.Printf("\nComponents:\n")
-			for _, c := range project.Components {
-				fmt.Printf("  • %s\n", c.Name)
-			}
-		}
-
-		// Workflow Statuses grouped by issue type
-		if len(statuses) > 0 {
-			fmt.Printf("\nWorkflow Statuses:\n")
-			printWorkflowStatuses(statuses)
-		}
+		Render(&jira.ProjectWithStatuses{Project: project, Statuses: statuses, SiteURL: siteURL})
 	},
 }
 
@@ -756,22 +629,14 @@ Examples:
 
 		client, err := jira.NewClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
 		projects, err := client.ListProjects(ctx)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			RenderError(err)
 		}
 
-		if len(projects) == 0 {
-			fmt.Println("No projects found.")
-			return
-		}
-
-		// Filter out archived projects unless --archived flag is set
 		var filtered []jira.Project
 		for _, p := range projects {
 			isArchived := strings.HasPrefix(strings.ToLower(p.Name), "z[archive")
@@ -780,32 +645,17 @@ Examples:
 			}
 		}
 
-		if len(filtered) == 0 {
-			fmt.Println("No projects found.")
-			return
-		}
-
-		// Get site URL for clickable links
 		siteURL := client.GetSiteURL()
 
-		if keysOnly {
+		// --keys with plain text: legacy one-key-per-line output
+		if keysOnly && (outputFormat == "text" || outputFormat == "") {
 			for _, p := range filtered {
 				fmt.Println(p.Key)
 			}
 			return
 		}
 
-		fmt.Printf("%-10s %-40s %s\n", "KEY", "NAME", "TYPE")
-		fmt.Println("────────────────────────────────────────────────────────────────")
-		for _, p := range filtered {
-			keyDisplay := fmt.Sprintf("%-10s", p.Key) // Pad first
-			if siteURL != "" {
-				// Wrap padded key in hyperlink with magenta color
-				keyDisplay = fmt.Sprintf("\033]8;;%s/browse/%s\033\\\033[35m%s\033[0m\033]8;;\033\\", siteURL, p.Key, keyDisplay)
-			}
-			fmt.Printf("%s %-40s %s\n", keyDisplay, truncate(p.Name, 40), p.ProjectType)
-		}
-		fmt.Printf("\n%d projects\n", len(filtered))
+		Render(&jira.ProjectList{Projects: filtered, SiteURL: siteURL})
 	},
 }
 
@@ -829,13 +679,11 @@ func init() {
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().StringP("status", "s", "", "Filter by status (e.g., 'In Progress', 'Review')")
-	// Project command flags
 	jiraProjectCmd.Flags().BoolP("transitions", "t", false, "Only show workflow statuses/transitions")
 
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
 
-	// Create command flags
 	jiraCreateCmd.Flags().StringP("project", "p", "", "Project key (e.g., DEV, TEL)")
 	jiraCreateCmd.Flags().StringP("type", "t", "", "Issue type (Task, Bug, Story, Sub-task)")
 	jiraCreateCmd.Flags().StringP("summary", "s", "", "Issue summary/title")
@@ -848,14 +696,11 @@ func init() {
 	jiraCreateCmd.MarkFlagRequired("type")
 	jiraCreateCmd.MarkFlagRequired("summary")
 
-	// Link command flags
 	jiraLinkCmd.Flags().StringP("type", "t", "Relates", "Link type (Relates, Blocks, Duplicate, etc.)")
 	jiraLinkCmd.Flags().Bool("list-types", false, "List available link types")
 
-	// Unlink command flags
 	jiraUnlinkCmd.Flags().StringP("type", "t", "", "Filter by link type (e.g., Blocks, Duplicate)")
 
-	// Update command flags
 	jiraUpdateCmd.Flags().StringP("summary", "s", "", "New summary/title")
 	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description (markdown)")
 	jiraUpdateCmd.Flags().StringP("assignee", "a", "", "New assignee (email or account ID, empty to unassign)")
@@ -864,45 +709,9 @@ func init() {
 	jiraUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (can specify multiple)")
 	jiraUpdateCmd.Flags().String("parent", "", "Parent issue key (e.g., DEV-123, empty to clear)")
 
-	// Transition command flags
 	jiraTransitionCmd.Flags().BoolP("list", "l", false, "List available transitions")
 
-	// Comment command flags
 	jiraCommentCmd.Flags().StringP("body", "b", "", "Comment body in markdown (alternative to positional argument)")
-}
-
-func printWorkflowStatuses(statuses []jira.IssueTypeWithStatus) {
-	// Group issue types that share identical status sets
-	type statusGroup struct {
-		issueTypes []string
-		statuses   []string
-	}
-	var groups []statusGroup
-
-outer:
-	for _, it := range statuses {
-		names := make([]string, len(it.Statuses))
-		for i, s := range it.Statuses {
-			names[i] = s.Name
-		}
-		for gi := range groups {
-			if fmt.Sprint(groups[gi].statuses) == fmt.Sprint(names) {
-				groups[gi].issueTypes = append(groups[gi].issueTypes, it.Name)
-				continue outer
-			}
-		}
-		groups = append(groups, statusGroup{
-			issueTypes: []string{it.Name},
-			statuses:   names,
-		})
-	}
-
-	for _, g := range groups {
-		fmt.Printf("  %s\n", strings.Join(g.issueTypes, " / "))
-		for _, s := range g.statuses {
-			fmt.Printf("    • %s\n", s)
-		}
-	}
 }
 
 func truncate(s string, maxLen int) string {
