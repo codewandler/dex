@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/codewandler/dex/internal/models"
-
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -34,7 +32,7 @@ func indexFilePath() (string, error) {
 	return filepath.Join(dir, "index.json"), nil
 }
 
-func LoadIndex() (*models.GitLabIndex, error) {
+func LoadIndex() (*GitLabIndex, error) {
 	path, err := indexFilePath()
 	if err != nil {
 		return nil, err
@@ -43,12 +41,12 @@ func LoadIndex() (*models.GitLabIndex, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return models.NewGitLabIndex(""), nil
+			return NewGitLabIndex(""), nil
 		}
 		return nil, err
 	}
 
-	var idx models.GitLabIndex
+	var idx GitLabIndex
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil, err
 	}
@@ -57,7 +55,7 @@ func LoadIndex() (*models.GitLabIndex, error) {
 	return &idx, nil
 }
 
-func SaveIndex(idx *models.GitLabIndex) error {
+func SaveIndex(idx *GitLabIndex) error {
 	path, err := indexFilePath()
 	if err != nil {
 		return err
@@ -101,8 +99,8 @@ func (c *Client) getAllProjects() ([]*gitlab.Project, error) {
 	return allProjects, nil
 }
 
-func (c *Client) fetchProjectMetadata(p *gitlab.Project) models.ProjectMetadata {
-	pm := models.ProjectMetadata{
+func (c *Client) fetchProjectMetadata(p *gitlab.Project) ProjectMetadata {
+	pm := ProjectMetadata{
 		ID:             p.ID,
 		Name:           p.Name,
 		PathWithNS:     p.PathWithNamespace,
@@ -137,9 +135,9 @@ func (c *Client) fetchProjectMetadata(p *gitlab.Project) models.ProjectMetadata 
 		if len(contributors) < limit {
 			limit = len(contributors)
 		}
-		pm.TopContributors = make([]models.Contributor, limit)
+		pm.TopContributors = make([]Contributor, limit)
 		for i := 0; i < limit; i++ {
-			pm.TopContributors[i] = models.Contributor{
+			pm.TopContributors[i] = Contributor{
 				Name:      contributors[i].Name,
 				Email:     contributors[i].Email,
 				Commits:   contributors[i].Commits,
@@ -154,16 +152,16 @@ func (c *Client) fetchProjectMetadata(p *gitlab.Project) models.ProjectMetadata 
 
 type ProgressFunc func(completed, total int)
 
-func (c *Client) IndexAllProjects(gitlabURL string, progressFn ProgressFunc) (*models.GitLabIndex, error) {
+func (c *Client) IndexAllProjects(gitlabURL string, progressFn ProgressFunc) (*GitLabIndex, error) {
 	projects, err := c.getAllProjects()
 	if err != nil {
 		return nil, err
 	}
 
-	idx := models.NewGitLabIndex(gitlabURL)
+	idx := NewGitLabIndex(gitlabURL)
 	idx.LastFullIndexAt = time.Now()
 
-	results := make(chan models.ProjectMetadata, len(projects))
+	results := make(chan ProjectMetadata, len(projects))
 	semaphore := make(chan struct{}, maxConcurrentFetches)
 
 	var wg sync.WaitGroup
@@ -206,7 +204,7 @@ func (c *Client) IndexAllProjects(gitlabURL string, progressFn ProgressFunc) (*m
 	return idx, nil
 }
 
-func (c *Client) GetProjectMetadata(idOrPath string) (*models.ProjectMetadata, error) {
+func (c *Client) GetProjectMetadata(idOrPath string) (*ProjectMetadata, error) {
 	var project *gitlab.Project
 	var err error
 

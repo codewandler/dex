@@ -2,6 +2,19 @@
 
 Aliases: `gitlab`
 
+## Output Formats
+
+All list and detail commands support:
+
+```bash
+-o json           # Full JSON output (always complete, unaffected by --compact)
+-o yaml           # Full YAML output
+-o compact        # Compact text (alias for --compact on list commands)
+--compact         # Compact text: one-liner per item (lists) or header+counts (details)
+```
+
+`--compact` and `-o` are orthogonal. `--compact -o json` returns full JSON.
+
 ## Activity
 ```bash
 dex gl activity                   # Show activity from last 14 days
@@ -24,8 +37,38 @@ dex gl proj ls -n 50              # List 50 projects
 dex gl proj ls --sort name        # Sort by name (also: created, activity, path)
 dex gl proj ls --sort created -d  # Sort descending (default for dates, ascending for names)
 dex gl proj ls --no-cache         # Fetch from API instead of index
+dex gl proj ls --compact          # One line per project
+dex gl proj ls -o json            # JSON array of projects
+
 dex gl proj show <id|path>        # Show project details
-dex gl proj show <id> --no-cache  # Always fetch from API, bypass cache
+dex gl proj show <id> --compact   # Header fields + contributor/language counts
+dex gl proj show <id> -o json     # Full JSON
+```
+
+### `-o json` field schema for `proj ls`
+```json
+{
+  "projects": [
+    {
+      "id": 742,
+      "name": "my-service",
+      "path_with_namespace": "group/my-service",
+      "description": "...",
+      "web_url": "https://gitlab.example.com/group/my-service",
+      "default_branch": "main",
+      "visibility": "internal",
+      "topics": [],
+      "star_count": 0,
+      "forks_count": 0,
+      "languages": {"Go": 94.2, "Makefile": 5.8},
+      "top_contributors": [{"name": "Alice", "email": "...", "commits": 42}],
+      "last_activity_at": "2025-03-01T12:00:00Z",
+      "indexed_at": "2025-03-16T10:00:00Z"
+    }
+  ],
+  "total": 1,
+  "indexed_at": "2025-03-16T10:00:00Z"
+}
 ```
 
 ## Commits
@@ -38,13 +81,36 @@ dex gl commit ls group/proj --branch main   # Filter by branch
 dex gl commit ls group/proj -b develop      # Short flag
 dex gl commit ls group/proj -n 50           # Show 50 commits
 dex gl commit ls 742 --since 3d -n 10       # By project ID, combined flags
+dex gl commit ls group/proj --compact       # One line per commit
+dex gl commit ls group/proj -o json         # JSON array
 ```
 
 ### Show Commit
 ```bash
-dex gl commit show <project> <sha>   # Show full commit details (message body, stats)
-dex gl commit show 742 95a1e625      # By project ID
-dex gl commit show group/proj abc123 # By project path
+dex gl commit show <project> <sha>          # Show full commit details (message body, stats)
+dex gl commit show group/proj abc123        # By project path
+dex gl commit show group/proj abc123 --compact   # Header + stats only (no full message)
+dex gl commit show group/proj abc123 -o json     # Full JSON
+```
+
+### `-o json` field schema for `commit show`
+```json
+{
+  "id": "abc1234...",
+  "short_id": "abc1234",
+  "title": "feat: add widget support",
+  "message": "feat: add widget support\n\nFull body...",
+  "author_name": "Alice",
+  "author_email": "alice@example.com",
+  "committer_name": "Alice",
+  "committer_email": "alice@example.com",
+  "created_at": "2025-03-01T12:00:00Z",
+  "committed_at": "2025-03-01T12:00:00Z",
+  "web_url": "https://...",
+  "project_path": "group/project",
+  "stats": {"additions": 10, "deletions": 3, "total": 13},
+  "parent_ids": ["deadbeef..."]
+}
 ```
 
 ## Merge Requests
@@ -60,13 +126,45 @@ dex gl mr ls --scope created_by_me   # MRs you created
 dex gl mr ls --scope assigned_to_me  # MRs assigned to you
 dex gl mr ls --include-wip           # Include WIP/draft MRs
 dex gl mr ls --conflicts-only        # Only show MRs with merge conflicts
+dex gl mr ls --compact               # One line per MR
+dex gl mr ls -o json                 # Full JSON array
 ```
 
 ### Show MR Details
 ```bash
-dex gl mr show <project!iid>         # Show full MR details with discussion IDs
-dex gl mr show my-group/my-project!123         # Example
-dex gl mr show my-group/my-project!123 --show-diff  # Include file diffs in output
+dex gl mr show <project!iid>                         # Show full MR details
+dex gl mr show my-group/my-project!123               # Example
+dex gl mr show my-group/my-project!123 --show-diff   # Include file diffs
+dex gl mr show my-group/my-project!123 --compact     # Header + counts only
+dex gl mr show my-group/my-project!123 -o json       # Full JSON
+```
+
+### `-o json` field schema for `mr show`
+```json
+{
+  "iid": 123,
+  "title": "feat: add widget",
+  "description": "...",
+  "state": "opened",
+  "author": "alice",
+  "created_at": "2025-03-01T12:00:00Z",
+  "updated_at": "2025-03-16T10:00:00Z",
+  "merged_at": null,
+  "web_url": "https://...",
+  "source_branch": "feature/widget",
+  "target_branch": "main",
+  "project_path": "group/project",
+  "draft": false,
+  "merge_status": "can_be_merged",
+  "has_conflicts": false,
+  "labels": [],
+  "assignees": ["bob"],
+  "reviewers": [],
+  "changes": {"additions": 50, "deletions": 10, "files": 3},
+  "commits": [...],
+  "files": [...],
+  "discussions": [...]
+}
 ```
 
 ### View File Diff
@@ -102,6 +200,13 @@ Shows the target line highlighted with surrounding context, and explains:
 - Old and new line numbers
 - How to use this line for inline comments
 
+**Inline comment tips:**
+- The `--line` number is the NEW file line number (right side of diff)
+- You can only comment on lines that appear in the diff hunks
+- Use `dex gl mr diff <ref> -f <path> -l <n>` to inspect specific lines
+- Use `dex gl mr diff <ref> -f <path> -s "pattern"` to find lines by content
+- Errors now include helpful diagnostics showing available line ranges
+
 ### Search Lines in Diff
 ```bash
 dex gl mr diff proj!123 -f path --search "TODO"      # Find lines containing "TODO"
@@ -114,14 +219,14 @@ Returns all matching lines with their line numbers and types, useful for finding
 ### Open in Browser
 ```bash
 dex gl mr open <project!iid>         # Open MR in default browser
-dex gl mr open sbf/services!2483     # Example
+dex gl mr open my-group/my-project!123  # Example
 ```
 
 ### Comments
 ```bash
 dex gl mr comment <project!iid> "message"  # Add a comment
-dex gl mr comment sbf/services!2483 "LGTM"  # Example
-echo "Long comment" | dex gl mr comment sbf/services!2483 -  # From stdin
+dex gl mr comment my-group/my-project!123 "LGTM"
+echo "Long comment" | dex gl mr comment my-group/my-project!123 -  # From stdin
 
 # Reply to discussion thread (use discussion ID from mr show output)
 dex gl mr comment <project!iid> "reply" --reply-to <discussion-id>
@@ -143,14 +248,6 @@ The `--dry-run` flag validates and previews where an inline comment will land:
 
 Use `--dry-run` before posting to avoid errors from invalid line numbers.
 
-**Inline comment tips:**
-- The `--line` number is the NEW file line number (right side of diff)
-- You can only comment on lines that appear in the diff hunks
-- Use `dex gl mr diff <ref> -f <path> -l <n>` to inspect specific lines
-- Use `dex gl mr diff <ref> -f <path> -s "pattern"` to find lines by content
-- Errors now include helpful diagnostics showing available line ranges
-```
-
 ### Reactions
 ```bash
 dex gl mr react <project!iid> <emoji>           # React to MR
@@ -162,9 +259,9 @@ dex gl mr react proj!123 rocket --note <id>     # React to specific note/comment
 ### MR Lifecycle
 ```bash
 dex gl mr close <project!iid>                   # Close a merge request
-dex gl mr close proj!123 --reason "No longer needed"  # Close with comment
+dex gl mr close proj!123 --reason "No longer needed"
 dex gl mr reopen <project!iid>                  # Reopen a closed merge request
-dex gl mr reopen proj!123 --reason "Re-opening for further work"  # Reopen with comment
+dex gl mr reopen proj!123 --reason "Re-opening for further work"
 dex gl mr approve <project!iid>                 # Approve a merge request
 dex gl mr merge <project!iid>                   # Merge a merge request
 dex gl mr merge proj!123 --squash               # Squash commits
@@ -193,6 +290,8 @@ dex gl pipeline ls group/proj -n 50                 # Show 50 pipelines
 dex gl pipeline ls group/proj --status failed       # Only failed pipelines
 dex gl pipeline ls group/proj --ref main            # Only pipelines on main branch
 dex gl pipeline ls group/proj --source schedule     # Only scheduled pipelines
+dex gl pipeline ls group/proj --compact             # One line per pipeline
+dex gl pipeline ls group/proj -o json               # Full JSON
 ```
 
 Aliases: `pipe`, `pl` (e.g., `dex gl pipe ls group/proj`)
@@ -201,12 +300,45 @@ Aliases: `pipe`, `pl` (e.g., `dex gl pipe ls group/proj`)
 ```bash
 dex gl pipeline show <project> <pipeline-id>        # Show pipeline details with jobs
 dex gl pipeline show group/proj 12345 --no-jobs     # Details without jobs
+dex gl pipeline show group/proj 12345 --compact     # Header + job count summary
+dex gl pipeline show group/proj 12345 -o json       # Full JSON including jobs
 ```
 
 ### List Pipeline Jobs
 ```bash
-dex gl pipeline jobs <project> <pipeline-id>        # List all jobs grouped by stage
-dex gl pipeline jobs group/proj 12345 --scope failed  # Only failed jobs
+dex gl pipeline jobs <project> <pipeline-id>               # All jobs grouped by stage
+dex gl pipeline jobs group/proj 12345 --scope failed       # Only failed jobs
+dex gl pipeline jobs group/proj 12345 --compact            # One line per job
+dex gl pipeline jobs group/proj 12345 -o json              # Full JSON
+```
+
+### `-o json` field schema for `pipeline show`
+```json
+{
+  "id": 12345,
+  "iid": 42,
+  "status": "failed",
+  "source": "push",
+  "ref": "main",
+  "sha": "abc1234...",
+  "user": "alice",
+  "web_url": "https://...",
+  "duration": 142,
+  "created_at": "2025-03-16T10:00:00Z",
+  "started_at": "2025-03-16T10:00:05Z",
+  "finished_at": "2025-03-16T10:02:27Z",
+  "jobs": [
+    {
+      "id": 99001,
+      "name": "test",
+      "stage": "test",
+      "status": "failed",
+      "failure_reason": "script_failure",
+      "duration": 45.2,
+      "web_url": "https://..."
+    }
+  ]
+}
 ```
 
 ### Retry Pipeline
@@ -222,16 +354,16 @@ dex gl pipeline cancel <project> <pipeline-id>      # Cancel running jobs
 ### Create Pipeline
 ```bash
 dex gl pipeline create <project> --ref <branch>     # Trigger pipeline on branch/tag
-dex gl pipeline create group/proj --ref main         # Run on main
-dex gl pipeline create group/proj --ref main --var DEPLOY_ENV=staging  # With variables
-dex gl pipeline create group/proj --ref v1.0 --var K1=v1 --var K2=v2  # Multiple variables
+dex gl pipeline create group/proj --ref main
+dex gl pipeline create group/proj --ref main --var DEPLOY_ENV=staging
+dex gl pipeline create group/proj --ref v1.0 --var K1=v1 --var K2=v2
 ```
 
 ### View Job Logs
 ```bash
 dex gl pipeline logs <project> <pipeline-id> <job-name>  # Show job console output
-dex gl pipeline logs group/proj 12345 "build with buildkit"  # Job with spaces
-dex gl pipeline logs group/proj 12345 test               # Simple job name
+dex gl pipeline logs group/proj 12345 "build with buildkit"
+dex gl pipeline logs group/proj 12345 test
 ```
 
 Use `dex gl pipeline jobs <project> <pipeline-id>` to see available job names first.

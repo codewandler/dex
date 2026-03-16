@@ -2,18 +2,16 @@ package slack
 
 import (
 	"testing"
-
-	"github.com/codewandler/dex/internal/models"
 )
 
 func TestResolveChannelMentions(t *testing.T) {
 	// Create a test index with sample channels
-	idx := models.NewSlackIndex("T123", "Test Team")
-	idx.UpsertChannel(models.SlackChannel{
+	idx := NewSlackIndex("T123", "Test Team")
+	idx.UpsertChannel(SlackChannel{
 		ID:   "C12345",
 		Name: "dev-team",
 	})
-	idx.UpsertChannel(models.SlackChannel{
+	idx.UpsertChannel(SlackChannel{
 		ID:   "C67890",
 		Name: "general",
 	})
@@ -80,12 +78,12 @@ func TestResolveChannelMentions(t *testing.T) {
 
 func TestResolveMentions(t *testing.T) {
 	// Create a test index with sample users
-	idx := models.NewSlackIndex("T123", "Test Team")
-	idx.UpsertUser(models.SlackUser{
+	idx := NewSlackIndex("T123", "Test Team")
+	idx.UpsertUser(SlackUser{
 		ID:       "U12345",
 		Username: "john.doe",
 	})
-	idx.UpsertUser(models.SlackUser{
+	idx.UpsertUser(SlackUser{
 		ID:       "U67890",
 		Username: "alice",
 	})
@@ -142,19 +140,19 @@ func TestResolveMentions(t *testing.T) {
 
 func TestResolveGroupMentions(t *testing.T) {
 	// Create a test index with sample user groups and users
-	idx := models.NewSlackIndex("T123", "Test Team")
-	idx.UpsertUserGroup(models.SlackUserGroup{
+	idx := NewSlackIndex("T123", "Test Team")
+	idx.UpsertUserGroup(SlackUserGroup{
 		ID:     "S12345",
 		Handle: "sre-team",
 		Name:   "SRE Team",
 	})
-	idx.UpsertUserGroup(models.SlackUserGroup{
+	idx.UpsertUserGroup(SlackUserGroup{
 		ID:     "S67890",
 		Handle: "backend",
 		Name:   "Backend Engineers",
 	})
 	// Add a user to verify users take precedence (resolved first by ResolveMentions)
-	idx.UpsertUser(models.SlackUser{
+	idx.UpsertUser(SlackUser{
 		ID:       "U11111",
 		Username: "john.doe",
 	})

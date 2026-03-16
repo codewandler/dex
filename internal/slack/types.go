@@ -1,4 +1,4 @@
-package models
+package slack
 
 import "time"
 
@@ -32,8 +32,8 @@ type SlackChannel struct {
 // SlackUserGroup represents a Slack user group in the index
 type SlackUserGroup struct {
 	ID          string    `json:"id"`
-	Handle      string    `json:"handle"`       // e.g., "sre-team"
-	Name        string    `json:"name"`          // e.g., "SRE Team"
+	Handle      string    `json:"handle"`      // e.g., "sre-team"
+	Name        string    `json:"name"`        // e.g., "SRE Team"
 	Description string    `json:"description,omitempty"`
 	UserCount   int       `json:"user_count"`
 	IndexedAt   time.Time `json:"indexed_at"`
@@ -41,18 +41,18 @@ type SlackUserGroup struct {
 
 // SlackIndex holds the cached Slack data (channels, users, and user groups)
 type SlackIndex struct {
-	Version         int               `json:"version"`
-	TeamID          string            `json:"team_id"`
-	TeamName        string            `json:"team_name"`
-	LastFullIndexAt time.Time         `json:"last_full_index_at"`
-	Channels        []SlackChannel    `json:"channels"`
-	Users           []SlackUser       `json:"users"`
-	UserGroups      []SlackUserGroup  `json:"user_groups,omitempty"`
+	Version         int              `json:"version"`
+	TeamID          string           `json:"team_id"`
+	TeamName        string           `json:"team_name"`
+	LastFullIndexAt time.Time        `json:"last_full_index_at"`
+	Channels        []SlackChannel   `json:"channels"`
+	Users           []SlackUser      `json:"users"`
+	UserGroups      []SlackUserGroup `json:"user_groups,omitempty"`
 	// Lookup maps (not persisted)
 	ChannelsByID       map[string]int `json:"-"`
 	ChannelsByName     map[string]int `json:"-"`
 	UsersByID          map[string]int `json:"-"`
-	UsersByUsername     map[string]int `json:"-"`
+	UsersByUsername    map[string]int `json:"-"`
 	UserGroupsByID     map[string]int `json:"-"`
 	UserGroupsByHandle map[string]int `json:"-"`
 }
@@ -69,7 +69,7 @@ func NewSlackIndex(teamID, teamName string) *SlackIndex {
 		ChannelsByID:       make(map[string]int),
 		ChannelsByName:     make(map[string]int),
 		UsersByID:          make(map[string]int),
-		UsersByUsername:     make(map[string]int),
+		UsersByUsername:    make(map[string]int),
 		UserGroupsByID:     make(map[string]int),
 		UserGroupsByHandle: make(map[string]int),
 	}

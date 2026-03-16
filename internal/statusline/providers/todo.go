@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/codewandler/dex/internal/config"
-	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/todo"
 )
 
@@ -32,11 +31,11 @@ func (p *TodoProvider) Fetch(_ context.Context) (map[string]any, error) {
 	pending, inProgress, onHold := 0, 0, 0
 	for _, t := range store.Todos {
 		switch t.State {
-		case models.TodoStatePending:
+		case todo.TodoStatePending:
 			pending++
-		case models.TodoStateInProgress:
+		case todo.TodoStateInProgress:
 			inProgress++
-		case models.TodoStateOnHold:
+		case todo.TodoStateOnHold:
 			onHold++
 		}
 	}

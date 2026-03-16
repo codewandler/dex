@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/codewandler/dex/internal/models"
-
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -21,8 +19,8 @@ type ListMergeRequestsOptions struct {
 	ConflictsOnly bool   // only show MRs with conflicts
 }
 
-func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]models.MergeRequest, error) {
-	var allMRs []models.MergeRequest
+func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]MergeRequest, error) {
+	var allMRs []MergeRequest
 
 	opts := &gitlab.ListProjectMergeRequestsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -40,7 +38,7 @@ func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]models.Merg
 		}
 
 		for _, m := range mrs {
-			mr := models.MergeRequest{
+			mr := MergeRequest{
 				IID:    m.IID,
 				Title:  m.Title,
 				State:  m.State,
@@ -68,8 +66,8 @@ func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]models.Merg
 }
 
 // ListMergeRequests fetches merge requests based on options
-func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.MergeRequestDetail, error) {
-	var allMRs []models.MergeRequestDetail
+func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]MergeRequestDetail, error) {
+	var allMRs []MergeRequestDetail
 
 	// Default values
 	if opts.Limit == 0 {
@@ -116,7 +114,7 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 				continue
 			}
 
-			mr := models.MergeRequestDetail{
+			mr := MergeRequestDetail{
 				IID:           m.IID,
 				Title:         m.Title,
 				State:         m.State,
@@ -160,7 +158,7 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]models.Merg
 }
 
 // GetMergeRequest fetches a single merge request with full details
-func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.MergeRequestDetail, error) {
+func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*MergeRequestDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -171,7 +169,7 @@ func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.Merg
 		return nil, err
 	}
 
-	mr := &models.MergeRequestDetail{
+	mr := &MergeRequestDetail{
 		IID:          m.IID,
 		Title:        m.Title,
 		Description:  m.Description,
@@ -234,7 +232,7 @@ func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*models.Merg
 }
 
 // GetMergeRequestCommits fetches commits associated with a merge request
-func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCommit, error) {
+func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]MRCommit, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -245,9 +243,9 @@ func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCo
 		return nil, err
 	}
 
-	var result []models.MRCommit
+	var result []MRCommit
 	for _, commit := range commits {
-		mc := models.MRCommit{
+		mc := MRCommit{
 			ShortID: commit.ShortID,
 			Title:   commit.Title,
 		}
@@ -264,7 +262,7 @@ func (c *Client) GetMergeRequestCommits(projectID any, mrIID int) ([]models.MRCo
 }
 
 // GetMergeRequestChanges fetches the list of files changed in a merge request
-func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bool) ([]models.MRFile, error) {
+func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bool) ([]MRFile, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -277,7 +275,7 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 		},
 	}
 
-	var files []models.MRFile
+	var files []MRFile
 	for {
 		diffs, resp, err := c.gl.MergeRequests.ListMergeRequestDiffs(pid, mrIID, opts)
 		if err != nil {
@@ -285,7 +283,7 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 		}
 
 		for _, diff := range diffs {
-			f := models.MRFile{
+			f := MRFile{
 				OldPath:   diff.OldPath,
 				NewPath:   diff.NewPath,
 				IsNew:     diff.NewFile,
@@ -323,7 +321,7 @@ func (c *Client) CreateMergeRequestNote(projectID any, mrIID int, body string) e
 }
 
 // GetMergeRequestNotes fetches all notes/comments on a merge request
-func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote, error) {
+func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]MRNote, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -338,7 +336,7 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 		OrderBy: gitlab.Ptr("created_at"),
 	}
 
-	var notes []models.MRNote
+	var notes []MRNote
 	for {
 		apiNotes, resp, err := c.gl.Notes.ListMergeRequestNotes(pid, mrIID, opts)
 		if err != nil {
@@ -346,7 +344,7 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 		}
 
 		for _, n := range apiNotes {
-			note := models.MRNote{
+			note := MRNote{
 				ID:     n.ID,
 				Body:   n.Body,
 				System: n.System,
@@ -368,7 +366,7 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]models.MRNote
 }
 
 // GetMergeRequestDiscussions fetches all discussions/threads on a merge request
-func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.MRDiscussion, error) {
+func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]MRDiscussion, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -379,7 +377,7 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.
 		Page:    1,
 	}
 
-	var discussions []models.MRDiscussion
+	var discussions []MRDiscussion
 	for {
 		apiDiscussions, resp, err := c.gl.Discussions.ListMergeRequestDiscussions(pid, mrIID, opts)
 		if err != nil {
@@ -387,12 +385,12 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.
 		}
 
 		for _, d := range apiDiscussions {
-			disc := models.MRDiscussion{
+			disc := MRDiscussion{
 				ID:             d.ID,
 				IndividualNote: d.IndividualNote,
 			}
 			for _, n := range d.Notes {
-				note := models.MRNote{
+				note := MRNote{
 					ID:           n.ID,
 					DiscussionID: d.ID,
 					Body:         n.Body,
@@ -405,7 +403,7 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]models.
 					note.CreatedAt = *n.CreatedAt
 				}
 				if n.Position != nil {
-					note.Position = &models.NotePosition{
+					note.Position = &NotePosition{
 						NewPath: n.Position.NewPath,
 						OldPath: n.Position.OldPath,
 						NewLine: n.Position.NewLine,
@@ -504,7 +502,7 @@ func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts 
 }
 
 // GetMergeRequestDiffVersions fetches the diff version info needed for inline comments
-func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.MRDiffVersion, error) {
+func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*MRDiffVersion, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -521,7 +519,7 @@ func (c *Client) GetMergeRequestDiffVersions(projectID any, mrIID int) (*models.
 
 	// Use the latest (first) version
 	v := versions[0]
-	return &models.MRDiffVersion{
+	return &MRDiffVersion{
 		HeadCommitSHA:  v.HeadCommitSHA,
 		BaseCommitSHA:  v.BaseCommitSHA,
 		StartCommitSHA: v.StartCommitSHA,
@@ -668,7 +666,7 @@ type CreateMergeRequestOptions struct {
 }
 
 // CreateMergeRequest creates a new merge request and returns its details
-func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOptions) (*models.MergeRequestDetail, error) {
+func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOptions) (*MergeRequestDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -696,7 +694,7 @@ func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOption
 		return nil, err
 	}
 
-	result := &models.MergeRequestDetail{
+	result := &MergeRequestDetail{
 		IID:          mr.IID,
 		Title:        mr.Title,
 		State:        mr.State,

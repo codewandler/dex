@@ -3,13 +3,11 @@ package gitlab
 import (
 	"time"
 
-	"github.com/codewandler/dex/internal/models"
-
 	"github.com/xanzy/go-gitlab"
 )
 
-func (c *Client) GetTags(projectID int, since time.Time) ([]models.Tag, error) {
-	var allTags []models.Tag
+func (c *Client) GetTags(projectID int, since time.Time) ([]Tag, error) {
+	var allTags []Tag
 
 	opts := &gitlab.ListTagsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -35,7 +33,7 @@ func (c *Client) GetTags(projectID int, since time.Time) ([]models.Tag, error) {
 				continue
 			}
 
-			tag := models.Tag{
+			tag := Tag{
 				Name:      t.Name,
 				CreatedAt: createdAt,
 			}

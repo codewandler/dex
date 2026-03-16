@@ -8,8 +8,6 @@ import (
 	"time"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
-
-	"github.com/codewandler/dex/internal/models"
 )
 
 const idAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -22,7 +20,7 @@ func storeFilePath() (string, error) {
 	return filepath.Join(home, ".dex", "todos.json"), nil
 }
 
-func Load() (*models.TodoStore, error) {
+func Load() (*TodoStore, error) {
 	path, err := storeFilePath()
 	if err != nil {
 		return nil, err
@@ -31,12 +29,12 @@ func Load() (*models.TodoStore, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return models.NewTodoStore(), nil
+			return NewTodoStore(), nil
 		}
 		return nil, err
 	}
 
-	var store models.TodoStore
+	var store TodoStore
 	if err := json.Unmarshal(data, &store); err != nil {
 		return nil, err
 	}
@@ -45,7 +43,7 @@ func Load() (*models.TodoStore, error) {
 	return &store, nil
 }
 
-func Save(store *models.TodoStore) error {
+func Save(store *TodoStore) error {
 	path, err := storeFilePath()
 	if err != nil {
 		return err
@@ -63,22 +61,22 @@ func Save(store *models.TodoStore) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func CreateTodo(title, description string) models.Todo {
+func CreateTodo(title, description string) Todo {
 	id, _ := gonanoid.Generate(idAlphabet, 4)
 	now := time.Now()
-	return models.Todo{
+	return Todo{
 		ID:          id,
 		Title:       title,
 		Description: description,
-		State:       models.TodoStatePending,
+		State:       TodoStatePending,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
 }
 
-func CreateReference(refType, value string) models.Reference {
+func CreateReference(refType, value string) Reference {
 	id, _ := gonanoid.Generate(idAlphabet, 4)
-	return models.Reference{
+	return Reference{
 		ID:    id,
 		Type:  refType,
 		Value: value,

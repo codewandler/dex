@@ -10,7 +10,6 @@ import (
 
 	"github.com/codewandler/dex/internal/config"
 	"github.com/codewandler/dex/internal/jira"
-	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/render"
 	"github.com/codewandler/dex/internal/slack"
 
@@ -1569,7 +1568,7 @@ Examples:
 }
 
 // resolveUserMentions converts <@USER_ID> to @username for readability
-func resolveUserMentions(text string, idx *models.SlackIndex) string {
+func resolveUserMentions(text string, idx *slack.SlackIndex) string {
 	if idx == nil {
 		return text
 	}

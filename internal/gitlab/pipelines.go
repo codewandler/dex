@@ -5,8 +5,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/codewandler/dex/internal/models"
-
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -21,7 +19,7 @@ type ListPipelinesOptions struct {
 }
 
 // ListPipelines fetches pipelines for a project
-func (c *Client) ListPipelines(opts ListPipelinesOptions) ([]models.PipelineSummary, error) {
+func (c *Client) ListPipelines(opts ListPipelinesOptions) ([]PipelineSummary, error) {
 	pid, err := c.resolveProjectID(opts.ProjectID)
 	if err != nil {
 		return nil, err
@@ -52,7 +50,7 @@ func (c *Client) ListPipelines(opts ListPipelinesOptions) ([]models.PipelineSumm
 		listOpts.Source = gitlab.Ptr(opts.Source)
 	}
 
-	var result []models.PipelineSummary
+	var result []PipelineSummary
 
 	for {
 		pipelines, resp, err := c.gl.Pipelines.ListProjectPipelines(pid, listOpts)
@@ -61,7 +59,7 @@ func (c *Client) ListPipelines(opts ListPipelinesOptions) ([]models.PipelineSumm
 		}
 
 		for _, p := range pipelines {
-			ps := models.PipelineSummary{
+			ps := PipelineSummary{
 				ID:        p.ID,
 				IID:       p.IID,
 				ProjectID: p.ProjectID,
@@ -94,7 +92,7 @@ func (c *Client) ListPipelines(opts ListPipelinesOptions) ([]models.PipelineSumm
 }
 
 // GetPipeline fetches a single pipeline with full details
-func (c *Client) GetPipeline(projectID any, pipelineID int) (*models.PipelineDetail, error) {
+func (c *Client) GetPipeline(projectID any, pipelineID int) (*PipelineDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -105,7 +103,7 @@ func (c *Client) GetPipeline(projectID any, pipelineID int) (*models.PipelineDet
 		return nil, err
 	}
 
-	detail := &models.PipelineDetail{
+	detail := &PipelineDetail{
 		ID:             p.ID,
 		IID:            p.IID,
 		ProjectID:      p.ProjectID,
@@ -138,7 +136,7 @@ func (c *Client) GetPipeline(projectID any, pipelineID int) (*models.PipelineDet
 }
 
 // ListPipelineJobs fetches jobs for a specific pipeline
-func (c *Client) ListPipelineJobs(projectID any, pipelineID int, scope string) ([]models.PipelineJob, error) {
+func (c *Client) ListPipelineJobs(projectID any, pipelineID int, scope string) ([]PipelineJob, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -156,7 +154,7 @@ func (c *Client) ListPipelineJobs(projectID any, pipelineID int, scope string) (
 		opts.Scope = &scopes
 	}
 
-	var result []models.PipelineJob
+	var result []PipelineJob
 
 	for {
 		jobs, resp, err := c.gl.Jobs.ListPipelineJobs(pid, pipelineID, opts)
@@ -165,7 +163,7 @@ func (c *Client) ListPipelineJobs(projectID any, pipelineID int, scope string) (
 		}
 
 		for _, j := range jobs {
-			job := models.PipelineJob{
+			job := PipelineJob{
 				ID:             j.ID,
 				Name:           j.Name,
 				Stage:          j.Stage,
@@ -199,7 +197,7 @@ func (c *Client) ListPipelineJobs(projectID any, pipelineID int, scope string) (
 }
 
 // RetryPipeline retries failed jobs in a pipeline
-func (c *Client) RetryPipeline(projectID any, pipelineID int) (*models.PipelineDetail, error) {
+func (c *Client) RetryPipeline(projectID any, pipelineID int) (*PipelineDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -210,7 +208,7 @@ func (c *Client) RetryPipeline(projectID any, pipelineID int) (*models.PipelineD
 		return nil, err
 	}
 
-	detail := &models.PipelineDetail{
+	detail := &PipelineDetail{
 		ID:     p.ID,
 		Status: p.Status,
 		Ref:    p.Ref,
@@ -224,7 +222,7 @@ func (c *Client) RetryPipeline(projectID any, pipelineID int) (*models.PipelineD
 }
 
 // CancelPipeline cancels a running pipeline
-func (c *Client) CancelPipeline(projectID any, pipelineID int) (*models.PipelineDetail, error) {
+func (c *Client) CancelPipeline(projectID any, pipelineID int) (*PipelineDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -235,7 +233,7 @@ func (c *Client) CancelPipeline(projectID any, pipelineID int) (*models.Pipeline
 		return nil, err
 	}
 
-	detail := &models.PipelineDetail{
+	detail := &PipelineDetail{
 		ID:     p.ID,
 		Status: p.Status,
 		Ref:    p.Ref,
@@ -255,7 +253,7 @@ type CreatePipelineOptions struct {
 }
 
 // CreatePipeline triggers a new pipeline on a ref
-func (c *Client) CreatePipeline(projectID any, opts CreatePipelineOptions) (*models.PipelineDetail, error) {
+func (c *Client) CreatePipeline(projectID any, opts CreatePipelineOptions) (*PipelineDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -282,7 +280,7 @@ func (c *Client) CreatePipeline(projectID any, opts CreatePipelineOptions) (*mod
 		return nil, err
 	}
 
-	detail := &models.PipelineDetail{
+	detail := &PipelineDetail{
 		ID:     p.ID,
 		IID:    p.IID,
 		Status: p.Status,

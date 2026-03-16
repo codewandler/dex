@@ -12,8 +12,8 @@ import (
 
 	"github.com/codewandler/dex/internal/config"
 	"github.com/codewandler/dex/internal/gitlab"
-	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/output"
+	"github.com/codewandler/dex/internal/render"
 
 	"github.com/spf13/cobra"
 	gogitlab "github.com/xanzy/go-gitlab"
@@ -90,7 +90,7 @@ Examples:
 			output.PrintProject(activity)
 		}
 
-		summary := models.CalculateSummary(activities)
+		summary := gitlab.CalculateSummary(activities)
 		output.PrintSummary(summary)
 	},
 }
@@ -208,6 +208,7 @@ Examples:
 		limit, _ := cmd.Flags().GetInt("limit")
 		includeWIP, _ := cmd.Flags().GetBool("include-wip")
 		conflictsOnly, _ := cmd.Flags().GetBool("conflicts-only")
+		compact, _ := cmd.Flags().GetBool("compact")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -233,7 +234,11 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintMergeRequestList(mrs)
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.MRListResult{MRs: mrs, Total: len(mrs)}, mode)
 	},
 }
 
@@ -251,6 +256,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		showDiff, _ := cmd.Flags().GetBool("show-diff")
+		compact, _ := cmd.Flags().GetBool("compact")
 
 		projectID, mrIID, err := parseMRReference(args[0])
 		if err != nil {
@@ -295,7 +301,11 @@ Examples:
 			mr.Discussions = discussions
 		}
 
-		output.PrintMergeRequestDetails(mr)
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.MRDetailResult{MergeRequestDetail: *mr}, mode)
 	},
 }
 
@@ -814,7 +824,7 @@ Examples:
 		}
 
 		// Find the specified file
-		var targetFile *models.MRFile
+		var targetFile *gitlab.MRFile
 		for i := range files {
 			if files[i].NewPath == filePath || files[i].OldPath == filePath {
 				targetFile = &files[i]
@@ -975,7 +985,12 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintPipelineList(pipelines)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.PipelineListResult{Pipelines: pipelines, Total: len(pipelines)}, mode)
 	},
 }
 
@@ -992,6 +1007,7 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		projectID := args[0]
 		noJobs, _ := cmd.Flags().GetBool("no-jobs")
+		compact, _ := cmd.Flags().GetBool("compact")
 
 		pipelineID, err := strconv.Atoi(args[1])
 		if err != nil {
@@ -1017,15 +1033,19 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Fetch jobs unless --no-jobs
-		if !noJobs {
+		// Fetch jobs unless --no-jobs or --compact
+		if !noJobs && !compact {
 			jobs, err := client.ListPipelineJobs(projectID, pipelineID, "")
 			if err == nil {
 				pipeline.Jobs = jobs
 			}
 		}
 
-		output.PrintPipelineDetails(pipeline)
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.PipelineDetailResult{PipelineDetail: *pipeline}, mode)
 	},
 }
 
@@ -1045,6 +1065,7 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		projectID := args[0]
 		scope, _ := cmd.Flags().GetString("scope")
+		compact, _ := cmd.Flags().GetBool("compact")
 
 		pipelineID, err := strconv.Atoi(args[1])
 		if err != nil {
@@ -1070,8 +1091,11 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintPipelineJobs(jobs)
-		fmt.Println()
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.PipelineJobsResult{PipelineID: pipelineID, Jobs: jobs, Total: len(jobs)}, mode)
 	},
 }
 
@@ -1342,7 +1366,12 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintCommitList(commits)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.CommitListResult{Commits: commits, Total: len(commits)}, mode)
 	},
 }
 
@@ -1381,7 +1410,12 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintCommitDetails(commit)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.CommitDetailResult{CommitDetail: *commit}, mode)
 	},
 }
 
@@ -1437,7 +1471,12 @@ Examples:
 			idx, err := gitlab.LoadIndex()
 			if err == nil && len(idx.Projects) > 0 {
 				projects := idx.ListProjects(orderBy, sortDir, limit)
-				output.PrintProjectListFromIndex(projects, idx.LastFullIndexAt)
+				compact, _ := cmd.Flags().GetBool("compact")
+				mode := render.ModeNormal
+				if compact {
+					mode = render.ModeCompact
+				}
+				RenderWithMode(gitlab.NewProjectListFromIndex(projects, idx.LastFullIndexAt), mode)
 				return
 			}
 		}
@@ -1465,7 +1504,12 @@ Examples:
 			os.Exit(1)
 		}
 
-		output.PrintProjectList(projects)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(gitlab.NewProjectListFromAPI(projects), mode)
 	},
 }
 
@@ -1494,7 +1538,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		var pm *models.ProjectMetadata
+		var pm *gitlab.ProjectMetadata
 
 		// Try cache first unless --no-cache
 		if !noCache {
@@ -1528,7 +1572,12 @@ Examples:
 			}
 		}
 
-		output.PrintProjectDetails(pm)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&gitlab.ProjectDetailResult{ProjectMetadata: *pm}, mode)
 	},
 }
 
@@ -1913,23 +1962,30 @@ func init() {
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	gitlabShowCmd.Flags().Bool("no-cache", false, "Always fetch from API, don't use cache")
+	gitlabShowCmd.Flags().Bool("compact", false, "Compact output (key fields + counts)")
 
 	gitlabProjLsCmd.Flags().IntP("limit", "n", 20, "Number of projects to list (0 = all)")
 	gitlabProjLsCmd.Flags().StringP("sort", "s", "activity", "Sort by: created, activity, name, path")
 	gitlabProjLsCmd.Flags().BoolP("desc", "d", false, "Sort descending (default for dates, ascending for names)")
 	gitlabProjLsCmd.Flags().Bool("no-cache", false, "Fetch from API instead of using local index")
+	gitlabProjLsCmd.Flags().Bool("compact", false, "Compact output (one line per project)")
 
 	gitlabCommitLsCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 7d, 4h)")
 	gitlabCommitLsCmd.Flags().StringP("branch", "b", "", "Filter by branch or tag")
 	gitlabCommitLsCmd.Flags().IntP("limit", "n", 20, "Number of commits to list")
+	gitlabCommitLsCmd.Flags().Bool("compact", false, "Compact output (one line per commit)")
+
+	gitlabCommitShowCmd.Flags().Bool("compact", false, "Compact output (header + stats only)")
 
 	gitlabMRLsCmd.Flags().StringP("state", "s", "opened", "MR state: opened, merged, closed, all")
 	gitlabMRLsCmd.Flags().String("scope", "all", "Scope: all, created_by_me, assigned_to_me")
 	gitlabMRLsCmd.Flags().IntP("limit", "n", 20, "Number of MRs to list")
 	gitlabMRLsCmd.Flags().Bool("include-wip", false, "Include WIP/draft MRs (excluded by default)")
 	gitlabMRLsCmd.Flags().Bool("conflicts-only", false, "Only show MRs with merge conflicts")
+	gitlabMRLsCmd.Flags().Bool("compact", false, "Compact output (one line per MR)")
 
 	gitlabMRShowCmd.Flags().Bool("show-diff", false, "Show file diffs")
+	gitlabMRShowCmd.Flags().Bool("compact", false, "Compact output (header + counts only)")
 
 	gitlabMRDiffCmd.Flags().StringP("file", "f", "", "File path to show diff for")
 	gitlabMRDiffCmd.Flags().BoolP("parsed", "p", false, "Show parsed diff with line numbers")
@@ -1964,10 +2020,13 @@ func init() {
 	gitlabPipelineLsCmd.Flags().String("status", "", "Filter by status: running, pending, success, failed, canceled, skipped, manual, created")
 	gitlabPipelineLsCmd.Flags().String("ref", "", "Filter by branch or tag name")
 	gitlabPipelineLsCmd.Flags().String("source", "", "Filter by source: push, web, trigger, schedule, api, merge_request_event")
+	gitlabPipelineLsCmd.Flags().Bool("compact", false, "Compact output (one line per pipeline)")
 
 	gitlabPipelineShowCmd.Flags().Bool("no-jobs", false, "Don't fetch and display jobs")
+	gitlabPipelineShowCmd.Flags().Bool("compact", false, "Compact output (header + job count only)")
 
 	gitlabPipelineJobsCmd.Flags().String("scope", "", "Filter by status: created, pending, running, failed, success, canceled, skipped, manual")
+	gitlabPipelineJobsCmd.Flags().Bool("compact", false, "Compact output (one line per job)")
 
 	gitlabPipelineCreateCmd.Flags().StringP("ref", "r", "", "Branch or tag to run pipeline on (required)")
 	gitlabPipelineCreateCmd.Flags().StringArray("var", nil, "Pipeline variable in KEY=VALUE format (can be repeated)")
@@ -2035,9 +2094,9 @@ func formatSinceTime(since time.Time, duration time.Duration) string {
 }
 
 // fetchProjectActivitiesConcurrently fetches activity for multiple projects in parallel
-func fetchProjectActivitiesConcurrently(client *gitlab.Client, projects []*gogitlab.Project, since time.Time) []models.ProjectActivity {
+func fetchProjectActivitiesConcurrently(client *gitlab.Client, projects []*gogitlab.Project, since time.Time) []gitlab.ProjectActivity {
 	type result struct {
-		activity models.ProjectActivity
+		activity gitlab.ProjectActivity
 		hasData  bool
 	}
 
@@ -2054,7 +2113,7 @@ func fetchProjectActivitiesConcurrently(client *gitlab.Client, projects []*gogit
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			activity := models.ProjectActivity{
+			activity := gitlab.ProjectActivity{
 				ProjectID:   p.ID,
 				ProjectName: p.Name,
 				ProjectPath: p.PathWithNamespace,
@@ -2085,7 +2144,7 @@ func fetchProjectActivitiesConcurrently(client *gitlab.Client, projects []*gogit
 		close(results)
 	}()
 
-	var activities []models.ProjectActivity
+	var activities []gitlab.ProjectActivity
 	completed := 0
 	total := len(projects)
 

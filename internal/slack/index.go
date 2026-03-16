@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-
-	"github.com/codewandler/dex/internal/models"
 )
 
 func indexDir() (string, error) {
@@ -29,7 +27,7 @@ func indexFilePath() (string, error) {
 }
 
 // LoadIndex loads the Slack index from disk
-func LoadIndex() (*models.SlackIndex, error) {
+func LoadIndex() (*SlackIndex, error) {
 	path, err := indexFilePath()
 	if err != nil {
 		return nil, err
@@ -38,12 +36,12 @@ func LoadIndex() (*models.SlackIndex, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return models.NewSlackIndex("", ""), nil
+			return NewSlackIndex("", ""), nil
 		}
 		return nil, err
 	}
 
-	var idx models.SlackIndex
+	var idx SlackIndex
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil, err
 	}
@@ -53,7 +51,7 @@ func LoadIndex() (*models.SlackIndex, error) {
 }
 
 // SaveIndex saves the Slack index to disk
-func SaveIndex(idx *models.SlackIndex) error {
+func SaveIndex(idx *SlackIndex) error {
 	path, err := indexFilePath()
 	if err != nil {
 		return err
@@ -71,13 +69,13 @@ func SaveIndex(idx *models.SlackIndex) error {
 type ProgressFunc func(completed, total int)
 
 // IndexAll fetches all channels, users, user groups and builds the index
-func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, memberProgressFn ProgressFunc) (*models.SlackIndex, error) {
+func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, memberProgressFn ProgressFunc) (*SlackIndex, error) {
 	auth, err := c.TestAuth()
 	if err != nil {
 		return nil, err
 	}
 
-	idx := models.NewSlackIndex(auth.TeamID, auth.Team)
+	idx := NewSlackIndex(auth.TeamID, auth.Team)
 	idx.LastFullIndexAt = time.Now()
 
 	// Index channels
@@ -88,7 +86,7 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, me
 
 	total := len(channels)
 	for i, ch := range channels {
-		slackCh := models.SlackChannel{
+		slackCh := SlackChannel{
 			ID:         ch.ID,
 			Name:       ch.Name,
 			IsPrivate:  ch.IsPrivate,
@@ -127,7 +125,7 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, me
 			continue
 		}
 
-		slackUser := models.SlackUser{
+		slackUser := SlackUser{
 			ID:          u.ID,
 			Username:    u.Name,
 			DisplayName: u.Profile.DisplayName,
@@ -158,7 +156,7 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, me
 	} else {
 		total = len(groups)
 		for i, g := range groups {
-			ug := models.SlackUserGroup{
+			ug := SlackUserGroup{
 				ID:          g.ID,
 				Handle:      g.Handle,
 				Name:        g.Name,

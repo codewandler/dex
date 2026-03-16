@@ -3,8 +3,6 @@ package gitlab
 import (
 	"time"
 
-	"github.com/codewandler/dex/internal/models"
-
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -17,7 +15,7 @@ type ListProjectCommitsOptions struct {
 }
 
 // ListProjectCommits lists commits for a specific project with filtering
-func (c *Client) ListProjectCommits(opts ListProjectCommitsOptions) ([]models.Commit, error) {
+func (c *Client) ListProjectCommits(opts ListProjectCommitsOptions) ([]Commit, error) {
 	pid, err := c.resolveProjectID(opts.ProjectID)
 	if err != nil {
 		return nil, err
@@ -27,7 +25,7 @@ func (c *Client) ListProjectCommits(opts ListProjectCommitsOptions) ([]models.Co
 		opts.Limit = 20
 	}
 
-	var allCommits []models.Commit
+	var allCommits []Commit
 
 	listOpts := &gitlab.ListCommitsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -49,7 +47,7 @@ func (c *Client) ListProjectCommits(opts ListProjectCommitsOptions) ([]models.Co
 		}
 
 		for _, c := range commits {
-			commit := models.Commit{
+			commit := Commit{
 				ID:          c.ID,
 				ShortID:     c.ShortID,
 				Title:       c.Title,
@@ -76,8 +74,8 @@ func (c *Client) ListProjectCommits(opts ListProjectCommitsOptions) ([]models.Co
 	return allCommits, nil
 }
 
-func (c *Client) GetCommits(projectID int, since time.Time) ([]models.Commit, error) {
-	var allCommits []models.Commit
+func (c *Client) GetCommits(projectID int, since time.Time) ([]Commit, error) {
+	var allCommits []Commit
 
 	opts := &gitlab.ListCommitsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -94,7 +92,7 @@ func (c *Client) GetCommits(projectID int, since time.Time) ([]models.Commit, er
 		}
 
 		for _, c := range commits {
-			commit := models.Commit{
+			commit := Commit{
 				ID:          c.ID,
 				ShortID:     c.ShortID,
 				Title:       c.Title,
@@ -118,7 +116,7 @@ func (c *Client) GetCommits(projectID int, since time.Time) ([]models.Commit, er
 }
 
 // GetCommit fetches detailed information about a single commit
-func (c *Client) GetCommit(projectID interface{}, sha string) (*models.CommitDetail, error) {
+func (c *Client) GetCommit(projectID interface{}, sha string) (*CommitDetail, error) {
 	pid, err := c.resolveProjectID(projectID)
 	if err != nil {
 		return nil, err
@@ -129,7 +127,7 @@ func (c *Client) GetCommit(projectID interface{}, sha string) (*models.CommitDet
 		return nil, err
 	}
 
-	detail := &models.CommitDetail{
+	detail := &CommitDetail{
 		ID:             commit.ID,
 		ShortID:        commit.ShortID,
 		Title:          commit.Title,
@@ -149,7 +147,7 @@ func (c *Client) GetCommit(projectID interface{}, sha string) (*models.CommitDet
 		detail.CommittedAt = *commit.CommittedDate
 	}
 	if commit.Stats != nil {
-		detail.Stats = models.CommitStats{
+		detail.Stats = CommitStats{
 			Additions: commit.Stats.Additions,
 			Deletions: commit.Stats.Deletions,
 			Total:     commit.Stats.Total,

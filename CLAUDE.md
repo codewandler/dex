@@ -49,9 +49,10 @@ dex/
 │   │   ├── render.go              # Renderable output structs (UnreadResult, MarkReadResult)
 │   │   ├── builtin_emoji.go       # Built-in Unicode emoji names (generated, Emoji 16.0)
 │   │   ├── oauth.go               # OAuth flow
-│   │   └── index.go               # Channel/user index
-│   ├── models/                    # Data structures
-│   ├── output/                    # Terminal formatting
+│   │   ├── index.go               # Channel/user index
+│   │   └── types.go               # SlackUser, SlackChannel, SlackUserGroup, SlackIndex
+│   ├── render/                    # Renderable interface + mode constants
+│   ├── output/                    # Terminal formatting (activity view helpers)
 │   └── skills/dex/                # Claude skill definition
 └── templates/                     # Templates
 ```
@@ -176,6 +177,19 @@ Tokens stored in `~/.dex/config.json` under `slack.bot_token` and `slack.user_to
 
 ## Development
 
+### Package Structure Rule: Types Live With Their Integration
+
+**Integration types must be defined in their own integration package, not in a shared `internal/models/` package.**
+
+- GitLab types (`Commit`, `MergeRequestDetail`, `PipelineSummary`, etc.) → `internal/gitlab/`
+- Slack types (`SlackUser`, `SlackChannel`, `SlackIndex`, etc.) → `internal/slack/`
+- Todo types (`Todo`, `TodoStore`, `TodoState`, etc.) → `internal/todo/`
+- Jira types → `internal/jira/`, Confluence types → `internal/confluence/`, etc.
+
+The `internal/models/` package **does not exist** and must not be re-created. There is currently no type that is genuinely shared across multiple unrelated integrations. If such a need arises, discuss first before creating a shared package.
+
+Result structs used for `Render()` / `RenderWithMode()` also belong in the integration package (e.g. `internal/gitlab/render.go`, `internal/slack/render.go`), not in `internal/cli/`.
+
 ### Output Format & Compact Flag Convention
 
 All commands that return structured data **must** use `Render()` or `RenderWithMode()` from `internal/cli/output.go`. Direct `fmt.Printf` output is only acceptable for:
@@ -244,12 +258,15 @@ Do not add `--compact` flags to commands that exclusively produce confirmation m
 | slack unreads | ✅ | via `-o compact` | |
 | slack mark-read | ✅ | n/a | confirmation output |
 | slack thread | ✅ | ✅ | |
-| slack mentions | ⚠️ | ✅ (local, not via RenderWithMode) | uses fmt.Printf inline |
-| slack search | ⚠️ | ✅ (local, not via RenderWithMode) | uses fmt.Printf inline |
-| jira issue/search | ✅ | ❌ missing flag | RenderText supports ModeCompact |
-| jira project | ✅ | ❌ missing flag | RenderText supports ModeCompact |
+| slack mentions | ✅ | ✅ | |
+| slack search | ✅ | ✅ | |
+| jira issue/search | ✅ | ✅ | |
+| jira project | ✅ | ✅ | |
+| gitlab mr ls/show | ✅ | ✅ | |
+| gitlab pipeline ls/show/jobs | ✅ | ✅ | |
+| gitlab commit ls/show | ✅ | ✅ | |
+| gitlab proj ls/show | ✅ | ✅ | |
 | gitlab snippets | ✅ | ❌ missing flag | RenderText supports ModeCompact |
-| gitlab (other) | ⚠️ | ❌ | largely fmt.Printf inline |
 | confluence | ❌ | ❌ | entirely fmt.Printf inline |
 | k8s | ❌ | ❌ | entirely fmt.Printf inline |
 | prometheus | ❌ | ❌ | entirely fmt.Printf inline |

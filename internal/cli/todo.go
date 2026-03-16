@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codewandler/dex/internal/models"
 	"github.com/codewandler/dex/internal/todo"
 
 	"github.com/fatih/color"
@@ -63,11 +62,11 @@ var todoUpdateCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("state") {
 			v, _ := cmd.Flags().GetString("state")
-			if !models.IsValidTodoState(v) {
+			if !todo.IsValidTodoState(v) {
 				fmt.Fprintf(os.Stderr, "Error: invalid state %q (pending, in_progress, on_hold, done)\n", v)
 				os.Exit(1)
 			}
-			t.State = models.TodoState(v)
+			t.State = todo.TodoState(v)
 			changed = true
 		}
 		if cmd.Flags().Changed("title") {
@@ -129,12 +128,12 @@ var todoLsCmd = &cobra.Command{
 		}
 
 		stateFilter, _ := cmd.Flags().GetString("state")
-		if stateFilter != "" && !models.IsValidTodoState(stateFilter) {
+		if stateFilter != "" && !todo.IsValidTodoState(stateFilter) {
 			fmt.Fprintf(os.Stderr, "Error: invalid state %q (pending, in_progress, on_hold, done)\n", stateFilter)
 			os.Exit(1)
 		}
 
-		var filtered []models.Todo
+		var filtered []todo.Todo
 		for _, t := range store.Todos {
 			if stateFilter == "" || string(t.State) == stateFilter {
 				filtered = append(filtered, t)
@@ -218,12 +217,12 @@ var todoRefDelCmd = &cobra.Command{
 	},
 }
 
-func printTodoDetail(t *models.Todo) {
-	stateColors := map[models.TodoState]*color.Color{
-		models.TodoStatePending:    color.New(color.FgYellow),
-		models.TodoStateInProgress: color.New(color.FgBlue),
-		models.TodoStateOnHold:     color.New(color.FgRed),
-		models.TodoStateDone:       color.New(color.FgGreen),
+func printTodoDetail(t *todo.Todo) {
+	stateColors := map[todo.TodoState]*color.Color{
+		todo.TodoStatePending:    color.New(color.FgYellow),
+		todo.TodoStateInProgress: color.New(color.FgBlue),
+		todo.TodoStateOnHold:     color.New(color.FgRed),
+		todo.TodoStateDone:       color.New(color.FgGreen),
 	}
 
 	labelColor := color.New(color.FgCyan)
@@ -268,12 +267,12 @@ func printTodoDetail(t *models.Todo) {
 	fmt.Println()
 }
 
-func printTodoList(todos []models.Todo) {
-	stateColors := map[models.TodoState]*color.Color{
-		models.TodoStatePending:    color.New(color.FgYellow),
-		models.TodoStateInProgress: color.New(color.FgBlue),
-		models.TodoStateOnHold:     color.New(color.FgRed),
-		models.TodoStateDone:       color.New(color.FgGreen),
+func printTodoList(todos []todo.Todo) {
+	stateColors := map[todo.TodoState]*color.Color{
+		todo.TodoStatePending:    color.New(color.FgYellow),
+		todo.TodoStateInProgress: color.New(color.FgBlue),
+		todo.TodoStateOnHold:     color.New(color.FgRed),
+		todo.TodoStateDone:       color.New(color.FgGreen),
 	}
 
 	dimColor := color.New(color.FgHiBlack)
