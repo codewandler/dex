@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/codewandler/dex/internal/jira"
+	"github.com/codewandler/dex/internal/render"
 
 	"github.com/spf13/cobra"
 )
@@ -56,7 +57,12 @@ var jiraViewCmd = &cobra.Command{
 			RenderError(err)
 		}
 
-		Render(issue)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(issue, mode)
 	},
 }
 
@@ -90,7 +96,12 @@ Examples:
 			RenderError(err)
 		}
 
-		Render(result)
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(result, mode)
 	},
 }
 
@@ -122,8 +133,13 @@ var jiraMyCmd = &cobra.Command{
 			RenderError(err)
 		}
 
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
 		// Wrap in a type that has a "my issues" flavoured text header
-		Render(&jira.MyIssueResult{SearchResult: result})
+		RenderWithMode(&jira.MyIssueResult{SearchResult: result}, mode)
 	},
 }
 
@@ -604,7 +620,12 @@ Examples:
 			return
 		}
 
-		Render(&jira.ProjectWithStatuses{Project: project, Statuses: statuses, SiteURL: siteURL})
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&jira.ProjectWithStatuses{Project: project, Statuses: statuses, SiteURL: siteURL}, mode)
 	},
 }
 
@@ -655,7 +676,12 @@ Examples:
 			return
 		}
 
-		Render(&jira.ProjectList{Projects: filtered, SiteURL: siteURL})
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&jira.ProjectList{Projects: filtered, SiteURL: siteURL}, mode)
 	},
 }
 
@@ -677,12 +703,16 @@ func init() {
 	jiraCmd.AddCommand(jiraCommentDeleteCmd)
 
 	jiraSearchCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
+	jiraSearchCmd.Flags().Bool("compact", false, "Compact one-line-per-issue output")
 	jiraMyCmd.Flags().IntP("limit", "l", 20, "Maximum number of results")
 	jiraMyCmd.Flags().StringP("status", "s", "", "Filter by status (e.g., 'In Progress', 'Review')")
+	jiraMyCmd.Flags().Bool("compact", false, "Compact one-line-per-issue output")
+	jiraViewCmd.Flags().Bool("compact", false, "Compact single-line output")
 	jiraProjectCmd.Flags().BoolP("transitions", "t", false, "Only show workflow statuses/transitions")
-
+	jiraProjectCmd.Flags().Bool("compact", false, "Compact output")
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
+	jiraProjectsCmd.Flags().Bool("compact", false, "Compact one-line-per-project output")
 
 	jiraCreateCmd.Flags().StringP("project", "p", "", "Project key (e.g., DEV, TEL)")
 	jiraCreateCmd.Flags().StringP("type", "t", "", "Issue type (Task, Bug, Story, Sub-task)")

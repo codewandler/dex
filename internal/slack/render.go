@@ -172,6 +172,186 @@ func (r *ThreadResult) RenderText(mode render.Mode) string {
 	return b.String()
 }
 
+// MentionItem is a single resolved mention entry for rendering.
+type MentionItem struct {
+	ChannelID   string             `json:"channel_id"`
+	ChannelName string             `json:"channel_name"`
+	UserID      string             `json:"user_id"`
+	Username    string             `json:"username"`
+	Timestamp   string             `json:"timestamp"`
+	ThreadTS    string             `json:"thread_ts,omitempty"`
+	Text        string             `json:"text"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Permalink   string             `json:"permalink,omitempty"`
+	Status      string             `json:"status"`
+}
+
+// MentionsResult is the output of `dex slack mentions`.
+type MentionsResult struct {
+	Target    string        `json:"target"`
+	Mentions  []MentionItem `json:"mentions"`
+	Total     int           `json:"total"`
+	Shown     int           `json:"shown"`
+	Unhandled bool          `json:"unhandled_only"`
+}
+
+// RenderText implements render.Renderable.
+func (r *MentionsResult) RenderText(mode render.Mode) string {
+	var b strings.Builder
+
+	if len(r.Mentions) == 0 {
+		if r.Unhandled {
+			fmt.Fprintf(&b, "No pending mentions found for %s\n", r.Target)
+		} else {
+			fmt.Fprintf(&b, "No mentions found for %s\n", r.Target)
+		}
+		return b.String()
+	}
+
+	if mode == render.ModeCompact {
+		fmt.Fprintf(&b, "%-19s %-20s %-15s %-8s %s\n", "TIME", "CHANNEL", "FROM", "STATUS", "MESSAGE")
+		fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 100))
+		for _, m := range r.Mentions {
+			text := mentionTruncate(MessageDisplayText(m.Text, m.Attachments), 50)
+			fmt.Fprintf(&b, "%-19s %-20s %-15s %-8s %s\n",
+				m.Timestamp,
+				mentionTruncate("#"+m.ChannelName, 20),
+				mentionTruncate("@"+m.Username, 15),
+				m.Status,
+				text,
+			)
+		}
+	} else {
+		for i, m := range r.Mentions {
+			fmt.Fprintf(&b, "── %d ──────────────────────────────────────────────────────────────────────────────\n", i+1)
+			fmt.Fprintf(&b, "#%s  •  %s  •  @%s  •  [%s]\n", m.ChannelName, m.Timestamp, m.Username, m.Status)
+			if m.Permalink != "" {
+				fmt.Fprintf(&b, "%s\n", m.Permalink)
+			}
+			b.WriteString("\n")
+			b.WriteString(m.Text)
+			b.WriteString("\n")
+			if attText := renderAttachments(m.Attachments); attText != "" {
+				b.WriteString(attText)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	if r.Unhandled {
+		fmt.Fprintf(&b, "Found %d pending mentions\n", len(r.Mentions))
+	} else if r.Total > r.Shown {
+		fmt.Fprintf(&b, "Showing %d of %d total mentions\n", r.Shown, r.Total)
+	} else {
+		fmt.Fprintf(&b, "Found %d mentions\n", len(r.Mentions))
+	}
+	return b.String()
+}
+
+func mentionTruncate(s string, max int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-1] + "…"
+}
+
+// TicketMention tracks where a Jira ticket was mentioned.
+type TicketMention struct {
+	Key        string   `json:"key"`
+	Mentions   int      `json:"mentions"`
+	Permalinks []string `json:"permalinks"`
+}
+
+// SearchItem is a single resolved search result for rendering.
+type SearchItem struct {
+	ChannelID   string             `json:"channel_id"`
+	ChannelName string             `json:"channel_name"`
+	UserID      string             `json:"user_id"`
+	Username    string             `json:"username"`
+	Timestamp   string             `json:"timestamp"`
+	Text        string             `json:"text"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Permalink   string             `json:"permalink,omitempty"`
+}
+
+// SearchResultOutput is the output of `dex slack search`.
+type SearchResultOutput struct {
+	Query   string          `json:"query"`
+	Results []SearchItem    `json:"results"`
+	Tickets []TicketMention `json:"tickets,omitempty"`
+	Total   int             `json:"total"`
+	Shown   int             `json:"shown"`
+}
+
+// RenderText implements render.Renderable.
+func (r *SearchResultOutput) RenderText(mode render.Mode) string {
+	var b strings.Builder
+
+	if len(r.Tickets) > 0 {
+		fmt.Fprintf(&b, "Found %d tickets in %d messages:\n\n", len(r.Tickets), len(r.Results))
+		for _, t := range r.Tickets {
+			fmt.Fprintf(&b, "  %-12s (%d mention", t.Key, t.Mentions)
+			if t.Mentions != 1 {
+				b.WriteString("s")
+			}
+			b.WriteString(")\n")
+			if mode == render.ModeNormal {
+				for _, link := range t.Permalinks {
+					fmt.Fprintf(&b, "    %s\n", link)
+				}
+			}
+		}
+		if r.Total > r.Shown {
+			fmt.Fprintf(&b, "\nSearched %d of %d total matches\n", r.Shown, r.Total)
+		}
+		return b.String()
+	}
+
+	if len(r.Results) == 0 {
+		return "No results found.\n"
+	}
+
+	if mode == render.ModeCompact {
+		fmt.Fprintf(&b, "%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
+		fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 100))
+		for _, res := range r.Results {
+			text := mentionTruncate(MessageDisplayText(res.Text, res.Attachments), 60)
+			fmt.Fprintf(&b, "%-19s %-20s %-15s %s\n",
+				res.Timestamp,
+				mentionTruncate("#"+res.ChannelName, 20),
+				mentionTruncate("@"+res.Username, 15),
+				text,
+			)
+		}
+	} else {
+		for i, res := range r.Results {
+			fmt.Fprintf(&b, "── %d ──────────────────────────────────────────────────────────────────────────────\n", i+1)
+			fmt.Fprintf(&b, "#%s  •  %s  •  @%s\n", res.ChannelName, res.Timestamp, res.Username)
+			if res.Permalink != "" {
+				fmt.Fprintf(&b, "%s\n", res.Permalink)
+			}
+			b.WriteString("\n")
+			b.WriteString(MessageDisplayText(res.Text, res.Attachments))
+			b.WriteString("\n")
+			if attText := renderAttachments(res.Attachments); attText != "" {
+				b.WriteString(attText)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	if r.Total > r.Shown {
+		fmt.Fprintf(&b, "Showing %d of %d total results\n", r.Shown, r.Total)
+	} else {
+		fmt.Fprintf(&b, "Found %d results\n", len(r.Results))
+	}
+	return b.String()
+}
+
 // MarkReadResult is the output of `dex slack mark-read`.
 type MarkReadResult struct {
 	ChannelID   string `json:"channel_id"`

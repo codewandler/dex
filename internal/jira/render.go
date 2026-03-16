@@ -54,14 +54,10 @@ func (s *SearchResult) MarshalJSON() ([]byte, error) {
 }
 
 // RenderText implements render.Renderable on Project.
-// ModeNormal reproduces the existing jiraProjectCmd text output exactly.
-// ModeCompact prints a single line: key: name (type).
+// ModeNormal: full detail with issue types and components as bullet lists.
+// ModeCompact: header fields only, issue types and components as counts.
 func (p *Project) RenderText(mode render.Mode) string {
 	var b strings.Builder
-	if mode == render.ModeCompact {
-		fmt.Fprintf(&b, "%s: %s (%s)\n", p.Key, p.Name, p.ProjectType)
-		return b.String()
-	}
 	fmt.Fprintf(&b, "%s: %s\n", p.Key, p.Name)
 	style := p.Style
 	if style == "" {
@@ -80,6 +76,17 @@ func (p *Project) RenderText(mode render.Mode) string {
 	if p.URL != "" {
 		fmt.Fprintf(&b, "  URL:         %s\n", p.URL)
 	}
+
+	if mode == render.ModeCompact {
+		if len(p.IssueTypes) > 0 {
+			fmt.Fprintf(&b, "  Issue Types: %d\n", len(p.IssueTypes))
+		}
+		if len(p.Components) > 0 {
+			fmt.Fprintf(&b, "  Components:  %d\n", len(p.Components))
+		}
+		return b.String()
+	}
+
 	if len(p.IssueTypes) > 0 {
 		b.WriteString("\nIssue Types:\n")
 		for _, it := range p.IssueTypes {
@@ -177,6 +184,16 @@ func (ps *ProjectWithStatuses) RenderText(mode render.Mode) string {
 	var b strings.Builder
 	b.WriteString(ps.Project.RenderText(mode))
 	if mode == render.ModeCompact {
+		if len(ps.Statuses) > 0 {
+			// count unique statuses across all issue types
+			seen := map[string]struct{}{}
+			for _, it := range ps.Statuses {
+				for _, s := range it.Statuses {
+					seen[s.Name] = struct{}{}
+				}
+			}
+			fmt.Fprintf(&b, "  Workflows:   %d statuses across %d issue type(s)\n", len(seen), len(ps.Statuses))
+		}
 		return b.String()
 	}
 	if len(ps.Statuses) > 0 {

@@ -198,11 +198,19 @@ For `json` and `yaml`, `RenderWithMode` always serialises the **full** struct, r
 
 #### `--compact` flag (per-command, opt-in)
 
-`--compact` is a **per-command boolean flag**, orthogonal to `-o`. It controls *verbosity of the data*, not the format:
+`--compact` is a **per-command boolean flag**, orthogonal to `-o`. It controls *verbosity of the data*, not the format.
 
-- `--compact` alone → `RenderWithMode(&result, render.ModeCompact)` (text, condensed)
-- `--compact -o json` → `RenderWithMode(&result, render.ModeCompact)` — mode is passed through but json/yaml serialise the full struct (mode only affects text path)
-- Without `--compact` → `Render(&result)` which uses `ModeNormal`
+**Mental model:** `--compact` means "less detail" — not "single line". The right question to ask is: *what would a user want to hide or summarise when they're in a hurry?*
+
+- For **list items** (search results, issue lists): compact = one line per item, text truncated
+- For **detail views** (project, issue): compact = keep all header fields, but collapse long sub-lists into counts ("8 issue types", "6 comments") rather than printing every entry
+- For **JSON/YAML**: `--compact` has **no effect** — the full struct is always serialised. `RenderText` uses the mode, `MarshalJSON` does not.
+
+```
+--compact alone         → RenderWithMode(&result, render.ModeCompact)  (text, condensed)
+--compact -o json       → full JSON, mode is ignored by the marshaller
+(no flag)               → Render(&result)  which uses ModeNormal
+```
 
 Use `RenderWithMode(&result, mode)` when the command has a `--compact` flag:
 ```go
@@ -219,7 +227,7 @@ RenderWithMode(&result, mode)
 Every result type must:
 1. Be a Go struct with JSON tags on all public fields
 2. Implement `render.Renderable` (i.e. `RenderText(mode render.Mode) string`)
-3. Handle both `render.ModeNormal` and `render.ModeCompact` in `RenderText`
+3. Handle both `render.ModeNormal` and `render.ModeCompact` in `RenderText` — compact means *less detail*, not *one line*
 4. Live in the integration package (e.g. `internal/slack/render.go`), not in `internal/cli/`
 
 #### What needs `-o compact` vs `--compact`
@@ -271,12 +279,36 @@ Do not add `--compact` flags to commands that exclusively produce confirmation m
 ### Documentation Sync
 
 When adding new features or commands, **always update all documentation**:
-1. `internal/skills/dex/SKILL.md` - Full command reference for AI agents
-2. `internal/skills/dex/references/*.md` - Detailed reference docs per integration
-3. `CLAUDE.md` - Project structure and dev info
+1. `internal/skills/dex/SKILL.md` - Lean overview and quick-reference for AI agents
+2. `internal/skills/dex/references/*.md` - Full command documentation per integration
+3. `CLAUDE.md` - Project structure and dev conventions
 4. `README.md` - Keep examples current
 
-**IMPORTANT:** Only edit skill files in `internal/skills/dex/`. Never edit `~/.claude/skills/dex/` directly - those files are installed from the internal package via `task install`.
+**IMPORTANT:** Only edit skill files in `internal/skills/dex/`. Never edit `~/.claude/skills/dex/` directly — those files are installed from the internal package via `task install`.
+
+#### Skill file structure
+
+`SKILL.md` is the **entry point** loaded by AI agents. It must stay **lean**:
+- Global flags and setup commands
+- The integrations table with links to reference files
+- A quick-reference section: one or two representative commands per integration, just enough to recognise the command shape
+- No exhaustive flag listings, no full examples — those belong in the reference files
+
+`references/<integration>.md` is the **full reference** for one integration:
+- Every command with its full flag set
+- Output format notes (`-o json` field schema, `--compact` behaviour)
+- Non-obvious behaviour, error handling, pagination
+- Concrete examples with realistic-looking (but generic) arguments
+
+#### What to update when
+
+| Change | SKILL.md | references/*.md |
+|--------|----------|-----------------|
+| New command | Add one-liner to quick-ref | Add full docs with flags + examples |
+| New flag on existing command | Update one-liner if it's a key flag | Always update |
+| Output format change (`-o json` schema, `--compact`) | No change needed | Always update |
+| New integration | Add row to integrations table + quick-ref section | Create new reference file |
+| Bug fix / internal change | No change needed | No change needed |
 
 ### Commit Conventions
 

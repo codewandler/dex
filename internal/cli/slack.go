@@ -1521,13 +1521,14 @@ Examples:
 			return
 		}
 
-		fmt.Println()
-
-		if compact {
-			printMentionHeaderWithStatus()
+		// Build result struct
+		result := slack.MentionsResult{
+			Target:    targetDesc,
+			Total:     total,
+			Shown:     len(mentions),
+			Unhandled: unhandled,
 		}
-
-		for i, m := range mentions {
+		for _, m := range mentions {
 			channelName := m.ChannelName
 			if channelName == "" {
 				if ch := idx.FindChannel(m.ChannelID); ch != nil {
@@ -1536,7 +1537,6 @@ Examples:
 					channelName = m.ChannelID
 				}
 			}
-
 			username := m.Username
 			if username == "" {
 				if u := idx.FindUser(m.UserID); u != nil {
@@ -1545,48 +1545,27 @@ Examples:
 					username = m.UserID
 				}
 			}
-
-			ts := parseSlackTimestamp(m.Timestamp)
-
-			if compact {
-				text := truncateText(slack.MessageDisplayText(m.Text, m.Attachments), 50)
-				printMentionCompactWithStatus(ts, channelName, username, string(m.Status), text)
-			} else {
-				text := resolveUserMentions(slack.MessageDisplayText(m.Text, m.Attachments), idx)
-				printMentionExpandedWithStatus(i+1, ts, channelName, username, string(m.Status), text, m.Permalink, m.Attachments)
-			}
+			text := resolveUserMentions(slack.MessageDisplayText(m.Text, m.Attachments), idx)
+			result.Mentions = append(result.Mentions, slack.MentionItem{
+				ChannelID:   m.ChannelID,
+				ChannelName: channelName,
+				UserID:      m.UserID,
+				Username:    username,
+				Timestamp:   parseSlackTimestamp(m.Timestamp),
+				ThreadTS:    m.ThreadTS,
+				Text:        text,
+				Attachments: m.Attachments,
+				Permalink:   m.Permalink,
+				Status:      string(m.Status),
+			})
 		}
-		if unhandled {
-			fmt.Printf("\nFound %d pending mentions\n", len(mentions))
-		} else if total > len(mentions) {
-			fmt.Printf("\nShowing %d of %d total mentions\n", len(mentions), total)
-		} else {
-			fmt.Printf("\nFound %d mentions\n", len(mentions))
+
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
 		}
+		RenderWithMode(&result, mode)
 	},
-}
-
-func printMentionHeaderWithStatus() {
-	fmt.Printf("%-19s %-20s %-15s %-8s %s\n", "TIME", "CHANNEL", "FROM", "STATUS", "MESSAGE")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────────────")
-}
-
-func printMentionCompactWithStatus(ts, channel, from, status, text string) {
-	fmt.Printf("%-19s %-20s %-15s %-8s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), status, text)
-}
-
-func printMentionExpandedWithStatus(num int, ts, channel, from, status, text, permalink string, attachments []slack.MessageAttachment) {
-	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
-	fmt.Printf("#%s  •  %s  •  @%s  •  [%s]\n", channel, ts, from, status)
-	if permalink != "" {
-		fmt.Printf("%s\n", permalink)
-	}
-	fmt.Println()
-	fmt.Println(text)
-	if attText := slack.RenderAttachments(attachments); attText != "" {
-		fmt.Print(attText)
-	}
-	fmt.Println()
 }
 
 // resolveUserMentions converts <@USER_ID> to @username for readability
@@ -1801,74 +1780,64 @@ Examples:
 			}
 		}
 
-		fmt.Println()
+		// Build result struct
+		result := slack.SearchResultOutput{
+			Query: query,
+			Total: total,
+			Shown: len(results),
+		}
+
+		idx2 := idx // use already loaded index
+		for _, r := range results {
+			channelName := r.ChannelName
+			if channelName == "" {
+				if ch := idx2.FindChannel(r.ChannelID); ch != nil {
+					channelName = ch.Name
+				} else {
+					channelName = r.ChannelID
+				}
+			}
+			username := r.Username
+			if username == "" {
+				if u := idx2.FindUser(r.UserID); u != nil {
+					username = u.Username
+				} else {
+					username = r.UserID
+				}
+			}
+			text := resolveUserMentions(slack.MessageDisplayText(r.Text, r.Attachments), idx2)
+			result.Results = append(result.Results, slack.SearchItem{
+				ChannelID:   r.ChannelID,
+				ChannelName: channelName,
+				UserID:      r.UserID,
+				Username:    username,
+				Timestamp:   parseSlackTimestamp(r.Timestamp),
+				Text:        text,
+				Attachments: r.Attachments,
+				Permalink:   r.Permalink,
+			})
+		}
 
 		if extractTickets && len(allTickets) > 0 {
-			// Output ticket-focused view
-			fmt.Printf("Found %d tickets in %d messages:\n\n", len(allTickets), len(results))
-
-			// Sort tickets for consistent output
 			var ticketList []string
 			for t := range allTickets {
 				ticketList = append(ticketList, t)
 			}
 			sort.Strings(ticketList)
-
-			for _, ticket := range ticketList {
-				links := allTickets[ticket]
-				fmt.Printf("  %-12s (%d mentions)\n", ticket, len(links))
-				if !compact {
-					for _, link := range links {
-						fmt.Printf("    %s\n", link)
-					}
-				}
-			}
-
-			if total > len(results) {
-				fmt.Printf("\nSearched %d of %d total matches\n", len(results), total)
-			}
-		} else {
-			// Standard search output
-			if compact {
-				printSearchHeader()
-			}
-
-			for i, r := range results {
-				channelName := r.ChannelName
-				if channelName == "" {
-					if ch := idx.FindChannel(r.ChannelID); ch != nil {
-						channelName = ch.Name
-					} else {
-						channelName = r.ChannelID
-					}
-				}
-
-				username := r.Username
-				if username == "" {
-					if u := idx.FindUser(r.UserID); u != nil {
-						username = u.Username
-					} else {
-						username = r.UserID
-					}
-				}
-
-				ts := parseSlackTimestamp(r.Timestamp)
-
-				if compact {
-					text := truncateText(slack.MessageDisplayText(r.Text, r.Attachments), 60)
-					printSearchCompact(ts, channelName, username, text)
-				} else {
-					text := resolveUserMentions(slack.MessageDisplayText(r.Text, r.Attachments), idx)
-					printSearchExpanded(i+1, ts, channelName, username, text, r.Permalink, r.Attachments)
-				}
-			}
-
-			if total > len(results) {
-				fmt.Printf("\nShowing %d of %d total results\n", len(results), total)
-			} else {
-				fmt.Printf("\nFound %d results\n", len(results))
+			for _, t := range ticketList {
+				result.Tickets = append(result.Tickets, slack.TicketMention{
+					Key:        t,
+					Mentions:   len(allTickets[t]),
+					Permalinks: allTickets[t],
+				})
 			}
 		}
+
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&result, mode)
 	},
 }
 
@@ -2178,28 +2147,7 @@ func completeSlackChannelNames(cmd *cobra.Command, args []string, toComplete str
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
-func printSearchHeader() {
-	fmt.Printf("%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────")
-}
 
-func printSearchCompact(ts, channel, from, text string) {
-	fmt.Printf("%-19s %-20s %-15s %s\n", ts, truncateText(channel, 20), truncateText(from, 15), text)
-}
-
-func printSearchExpanded(num int, ts, channel, from, text, permalink string, attachments []slack.MessageAttachment) {
-	fmt.Printf("── %d ──────────────────────────────────────────────────────────────────────────\n", num)
-	fmt.Printf("#%s  •  %s  •  @%s\n", channel, ts, from)
-	if permalink != "" {
-		fmt.Printf("%s\n", permalink)
-	}
-	fmt.Println()
-	fmt.Println(text)
-	if attText := slack.RenderAttachments(attachments); attText != "" {
-		fmt.Print(attText)
-	}
-	fmt.Println()
-}
 
 // normalizeTimestamp converts Slack URL timestamp format (p1769777574026209) to API format (1769777574.026209)
 func normalizeTimestamp(ts string) string {
