@@ -176,6 +176,76 @@ Tokens stored in `~/.dex/config.json` under `slack.bot_token` and `slack.user_to
 
 ## Development
 
+### Output Format & Compact Flag Convention
+
+All commands that return structured data **must** use `Render()` or `RenderWithMode()` from `internal/cli/output.go`. Direct `fmt.Printf` output is only acceptable for:
+- One-shot confirmations (e.g. "Message sent", "Reaction added")
+- Progress/status lines during long operations (indexing, fetching)
+- Auth/setup flows that are inherently interactive
+
+#### Global `-o` flag
+
+Registered on the root command (`PersistentFlags`), available to every subcommand:
+
+| Value | Behaviour |
+|-------|-----------|
+| `text` (default) | Human-readable, calls `RenderText(ModeNormal)` |
+| `compact` | Calls `RenderText(ModeCompact)` — reserved for **list** views as a global alias |
+| `json` | JSON-encodes the full result struct to stdout |
+| `yaml` | YAML-encodes the full result struct to stdout |
+
+For `json` and `yaml`, `RenderWithMode` always serialises the **full** struct, regardless of any verbosity flags. Never truncate or omit fields in the JSON/YAML path.
+
+#### `--compact` flag (per-command, opt-in)
+
+`--compact` is a **per-command boolean flag**, orthogonal to `-o`. It controls *verbosity of the data*, not the format:
+
+- `--compact` alone → `RenderWithMode(&result, render.ModeCompact)` (text, condensed)
+- `--compact -o json` → `RenderWithMode(&result, render.ModeCompact)` — mode is passed through but json/yaml serialise the full struct (mode only affects text path)
+- Without `--compact` → `Render(&result)` which uses `ModeNormal`
+
+Use `RenderWithMode(&result, mode)` when the command has a `--compact` flag:
+```go
+compact, _ := cmd.Flags().GetBool("compact")
+mode := render.ModeNormal
+if compact {
+    mode = render.ModeCompact
+}
+RenderWithMode(&result, mode)
+```
+
+#### Result struct requirements
+
+Every result type must:
+1. Be a Go struct with JSON tags on all public fields
+2. Implement `render.Renderable` (i.e. `RenderText(mode render.Mode) string`)
+3. Handle both `render.ModeNormal` and `render.ModeCompact` in `RenderText`
+4. Live in the integration package (e.g. `internal/slack/render.go`), not in `internal/cli/`
+
+#### What needs `-o compact` vs `--compact`
+
+- `-o compact` (global, via `outputFormat`) is suitable for **list/table commands** where the command has no other verbosity concept (e.g. `dex slack unreads -o compact`)
+- `--compact` (per-command flag) is for commands that also need the full text/json views, where compact is one of several meaningful modes (e.g. `dex slack thread --compact`)
+
+Do not add `--compact` flags to commands that exclusively produce confirmation messages (send, delete, react, etc.).
+
+#### Current compliance status
+
+| Integration | Render() | --compact | Notes |
+|-------------|----------|-----------|-------|
+| slack unreads | ✅ | via `-o compact` | |
+| slack mark-read | ✅ | n/a | confirmation output |
+| slack thread | ✅ | ✅ | |
+| slack mentions | ⚠️ | ✅ (local, not via RenderWithMode) | uses fmt.Printf inline |
+| slack search | ⚠️ | ✅ (local, not via RenderWithMode) | uses fmt.Printf inline |
+| jira issue/search | ✅ | ❌ missing flag | RenderText supports ModeCompact |
+| jira project | ✅ | ❌ missing flag | RenderText supports ModeCompact |
+| gitlab snippets | ✅ | ❌ missing flag | RenderText supports ModeCompact |
+| gitlab (other) | ⚠️ | ❌ | largely fmt.Printf inline |
+| confluence | ❌ | ❌ | entirely fmt.Printf inline |
+| k8s | ❌ | ❌ | entirely fmt.Printf inline |
+| prometheus | ❌ | ❌ | entirely fmt.Printf inline |
+
 ### Slack Usage
 
 **Always use `#dex-releases` channel** for testing Slack send/reply functionality. Never send test messages to other channels to avoid disrupting co-workers.
