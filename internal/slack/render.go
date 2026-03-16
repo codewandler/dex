@@ -62,6 +62,116 @@ func (r *UnreadResult) RenderText(mode render.Mode) string {
 	return b.String()
 }
 
+// ThreadMessageAttachment holds a single attachment's rendered text for a thread message.
+type ThreadMessageAttachment struct {
+	Text string `json:"text,omitempty"`
+}
+
+// ThreadMessage is a single message in a thread.
+type ThreadMessage struct {
+	Index       int                       `json:"index"`
+	Label       string                    `json:"label"` // "parent" or "reply"
+	Timestamp   string                    `json:"timestamp"`
+	Username    string                    `json:"username"`
+	UserID      string                    `json:"user_id"`
+	BotID       string                    `json:"bot_id,omitempty"`
+	IsMe        bool                      `json:"is_me"`
+	Text        string                    `json:"text"`
+	Attachments []ThreadMessageAttachment `json:"attachments,omitempty"`
+}
+
+// ThreadResult is the output of `dex slack thread`.
+type ThreadResult struct {
+	ChannelID   string          `json:"channel_id"`
+	ChannelName string          `json:"channel_name,omitempty"`
+	ThreadTS    string          `json:"thread_ts"`
+	Messages    []ThreadMessage `json:"messages"`
+	Status      string          `json:"status"` // "pending", "acked", "replied"
+	// Debug fields — only populated when --debug is set
+	MyUserIDs []string `json:"my_user_ids,omitempty"`
+	MyBotIDs  []string `json:"my_bot_ids,omitempty"`
+}
+
+const threadCompactWidth = 80
+
+// RenderText implements render.Renderable.
+func (r *ThreadResult) RenderText(mode render.Mode) string {
+	var b strings.Builder
+
+	if len(r.Messages) == 0 {
+		return "No messages found in thread.\n"
+	}
+
+	channelLabel := r.ChannelID
+	if r.ChannelName != "" {
+		channelLabel = "#" + r.ChannelName
+	}
+
+	if mode == render.ModeCompact {
+		fmt.Fprintf(&b, "Thread %s / %s (%d messages, status: %s)\n",
+			channelLabel, r.ThreadTS, len(r.Messages), r.Status)
+		for _, msg := range r.Messages {
+			label := "reply"
+			if msg.Index == 0 {
+				label = "parent"
+			}
+			meTag := ""
+			if msg.IsMe {
+				meTag = " [me]"
+			}
+			text := strings.ReplaceAll(msg.Text, "\n", " ")
+			if len(text) > threadCompactWidth {
+				text = text[:threadCompactWidth-1] + "…"
+			}
+			fmt.Fprintf(&b, "  [%d] %s @%s%s %s: %s\n",
+				msg.Index, label, msg.Username, meTag, msg.Timestamp, text)
+		}
+		return b.String()
+	}
+
+	// Normal: full multi-line output
+	fmt.Fprintf(&b, "Channel: %s\n", channelLabel)
+	fmt.Fprintf(&b, "Thread:  %s\n", r.ThreadTS)
+	if len(r.MyUserIDs) > 0 || len(r.MyBotIDs) > 0 {
+		fmt.Fprintf(&b, "My User IDs: %v\n", r.MyUserIDs)
+		fmt.Fprintf(&b, "My Bot IDs:  %v\n", r.MyBotIDs)
+	}
+	fmt.Fprintf(&b, "\nThread has %d messages:\n", len(r.Messages))
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 80))
+
+	for _, msg := range r.Messages {
+		label := "Reply"
+		if msg.Index == 0 {
+			label = "Parent"
+		}
+		meMarker := ""
+		if msg.IsMe {
+			meMarker = " [ME]"
+		}
+		botPart := ""
+		if msg.BotID != "" {
+			botPart = " Bot:" + msg.BotID
+		}
+		fmt.Fprintf(&b, "\n[%d] %s - %s - @%s (User:%s%s)%s\n",
+			msg.Index, label, msg.Timestamp, msg.Username, msg.UserID, botPart, meMarker)
+		for _, line := range strings.Split(strings.TrimRight(msg.Text, "\n"), "\n") {
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
+		for _, att := range msg.Attachments {
+			if att.Text != "" {
+				for _, line := range strings.Split(strings.TrimRight(att.Text, "\n"), "\n") {
+					fmt.Fprintf(&b, "    │ %s\n", line)
+				}
+			}
+		}
+	}
+
+	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("─", 80))
+	fmt.Fprintf(&b, "Status: %s\n", r.Status)
+
+	return b.String()
+}
+
 // MarkReadResult is the output of `dex slack mark-read`.
 type MarkReadResult struct {
 	ChannelID   string `json:"channel_id"`

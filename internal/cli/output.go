@@ -11,6 +11,12 @@ import (
 
 // Render writes a Renderable result to stdout in the format requested via -o/--output.
 func Render(r render.Renderable) {
+	RenderWithMode(r, render.ModeNormal)
+}
+
+// RenderWithMode writes a Renderable result to stdout, using the given render mode for
+// text output. For json/yaml the full struct is always serialised; mode only affects text.
+func RenderWithMode(r render.Renderable, mode render.Mode) {
 	switch outputFormat {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
@@ -27,7 +33,7 @@ func Render(r render.Renderable) {
 	case "compact":
 		fmt.Print(r.RenderText(render.ModeCompact))
 	case "text", "":
-		fmt.Print(r.RenderText(render.ModeNormal))
+		fmt.Print(r.RenderText(mode))
 	default:
 		RenderError(fmt.Errorf("unsupported output format: %s", outputFormat))
 	}

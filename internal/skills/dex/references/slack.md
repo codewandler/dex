@@ -250,10 +250,17 @@ dex slack search "query" --compact    # Compact table view
 
 ## View Thread
 ```bash
-# Fetch and display a thread with mention classification debug info
+# Fetch and display a Slack thread
 dex slack thread <url>                              # From Slack URL
 dex slack thread <channel>:<ts>                     # Channel:timestamp format
 dex slack thread <channel> <ts>                     # Separate arguments
+
+# Output format flags (combinable)
+dex slack thread <ch:ts> -o json                    # Structured JSON output
+dex slack thread <ch:ts> -o yaml                    # YAML output
+dex slack thread <ch:ts> --compact                  # One condensed line per message
+dex slack thread <ch:ts> --compact -o json          # Compact view as JSON (full text still included)
+dex slack thread <ch:ts> --debug                    # Show identity IDs + mention classification
 
 # Examples
 dex slack thread https://acme.slack.com/archives/C0123456789/p1769777574026209
@@ -263,3 +270,15 @@ dex slack thread C0123456789 p1769777574026209      # URL-style timestamp also w
 ```
 
 Timestamps can be in Slack URL format (`p1769777574026209`) or API format (`1769777574.026209`).
+
+**Flags:**
+- `--compact` — condensed one-line-per-message view, text truncated to ~80 chars. Combinable with any `-o` format.
+- `--debug` — show bot/user identity IDs and mention classification explanation (text mode only).
+- `-o json` / `-o yaml` — full structured output; always includes complete untruncated message text.
+
+**JSON output fields:**
+- `channel_id`, `channel_name` — channel info
+- `thread_ts` — thread root timestamp
+- `status` — mention classification: `Pending`, `Acked`, or `Replied`
+- `messages[]` — array of messages with `index`, `label` (`parent`/`reply`), `timestamp`, `username`, `user_id`, `bot_id`, `is_me`, `text`, `attachments[]`
+- `my_user_ids`, `my_bot_ids` — only present when `--debug` is set

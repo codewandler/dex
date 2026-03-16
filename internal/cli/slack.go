@@ -11,6 +11,7 @@ import (
 	"github.com/codewandler/dex/internal/config"
 	"github.com/codewandler/dex/internal/jira"
 	"github.com/codewandler/dex/internal/models"
+	"github.com/codewandler/dex/internal/render"
 	"github.com/codewandler/dex/internal/slack"
 
 	"github.com/spf13/cobra"
@@ -1873,24 +1874,31 @@ Examples:
 
 var slackThreadCmd = &cobra.Command{
 	Use:   "thread <url | channel:ts | channel ts>",
-	Short: "Show a thread and debug mention classification",
-	Long: `Fetch and display a Slack thread with classification debug info.
+	Short: "Show a Slack thread",
+	Long: `Fetch and display a Slack thread.
 
 Accepts a Slack URL, channel:timestamp, or channel and timestamp as separate arguments.
 Timestamps can be in Slack URL format (p1769777574026209) or API format (1769777574.026209).
+
+Use --compact for a condensed one-line-per-message view.
+Use --debug to show identity and mention-classification details.
 
 Examples:
   dex slack thread https://acme.slack.com/archives/C0123456789/p1769777574026209
   dex slack thread C0123456789:1769777574.026209
   dex slack thread C0123456789 1769777574.026209
-  dex slack thread C0123456789 p1769777574026209`,
+  dex slack thread C0123456789 p1769777574026209
+  dex slack thread C0123456789:1769777574.026209 --compact
+  dex slack thread C0123456789:1769777574.026209 -o json`,
 	Args: cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
+		compact, _ := cmd.Flags().GetBool("compact")
+		debug, _ := cmd.Flags().GetBool("debug")
+
 		// Parse input - URL, channel:timestamp, or channel timestamp (two args)
 		var channelID, threadTS string
 
 		if len(args) == 2 {
-			// Two arguments: channel and timestamp
 			channelID = args[0]
 			threadTS = normalizeTimestamp(args[1])
 		} else {
@@ -1902,7 +1910,6 @@ Examples:
 					if part == "archives" && i+2 < len(parts) {
 						channelID = parts[i+1]
 						tsRaw := parts[i+2]
-						// Remove query params if present
 						if idx := strings.Index(tsRaw, "?"); idx != -1 {
 							tsRaw = tsRaw[:idx]
 						}
@@ -1911,7 +1918,6 @@ Examples:
 					}
 				}
 			} else if strings.Contains(input, ":") {
-				// Parse channel:timestamp format
 				parts := strings.SplitN(input, ":", 2)
 				channelID = parts[0]
 				threadTS = normalizeTimestamp(parts[1])
@@ -1935,10 +1941,10 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Load index for username resolution
+		// Load index for username + channel name resolution
 		idx, _ := slack.LoadIndex()
 
-		// Collect user IDs for classification
+		// Collect own user/bot IDs for "is me" classification
 		var myUserIDs []string
 		var myBotIDs []string
 		botUserID, _ := client.GetBotUserID()
@@ -1957,11 +1963,11 @@ Examples:
 			}
 		}
 
-		fmt.Printf("Channel: %s\n", channelID)
-		fmt.Printf("Thread:  %s\n", threadTS)
-		fmt.Printf("My User IDs: %v\n", myUserIDs)
-		fmt.Printf("My Bot IDs:  %v\n", myBotIDs)
-		fmt.Println()
+		// Resolve channel name from index
+		channelName := ""
+		if ch := idx.FindChannel(channelID); ch != nil {
+			channelName = ch.Name
+		}
 
 		// Fetch thread
 		replies, err := client.GetThreadReplies(channelID, threadTS)
@@ -1970,14 +1976,20 @@ Examples:
 			os.Exit(1)
 		}
 
-		if len(replies) == 0 {
-			fmt.Println("No messages found in thread.")
-			return
-		}
+		// Run classifier
+		status := client.ClassifyMentionStatus(channelID, threadTS, myUserIDs, myBotIDs)
 
-		// Display each message
-		fmt.Printf("Thread has %d messages:\n", len(replies))
-		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+		// Build result struct
+		result := slack.ThreadResult{
+			ChannelID:   channelID,
+			ChannelName: channelName,
+			ThreadTS:    threadTS,
+			Status:      string(status),
+		}
+		if debug {
+			result.MyUserIDs = myUserIDs
+			result.MyBotIDs = myBotIDs
+		}
 
 		for i, msg := range replies {
 			username := msg.User
@@ -1985,68 +1997,69 @@ Examples:
 				username = u.Username
 			}
 
-			ts := parseSlackTimestamp(msg.Timestamp)
-			label := "Reply"
-			if i == 0 {
-				label = "Parent"
-			}
-
-			// Check if this message is from "me"
 			isMe := false
-			for _, myID := range myUserIDs {
-				if msg.User == myID {
+			for _, id := range myUserIDs {
+				if msg.User == id {
 					isMe = true
 					break
 				}
 			}
-			for _, myBotID := range myBotIDs {
-				if msg.BotID == myBotID {
+			for _, bid := range myBotIDs {
+				if msg.BotID == bid {
 					isMe = true
 					break
 				}
 			}
 
-			meMarker := ""
-			if isMe {
-				meMarker = " [ME]"
-			}
-
-			fmt.Printf("\n[%d] %s - %s - @%s (User:%s Bot:%s)%s\n", i, label, ts, username, msg.User, msg.BotID, meMarker)
 			text := resolveUserMentions(slack.ExtractMessageText(msg), idx)
 			if text == "" {
-				// last resort: raw text field
 				text = msg.Text
 			}
-			fmt.Printf("    %s\n", truncateText(text, 200))
-			// Show attachments (the rich content)
+
+			tm := slack.ThreadMessage{
+				Index:     i,
+				Label:     "reply",
+				Timestamp: parseSlackTimestamp(msg.Timestamp),
+				Username:  username,
+				UserID:    msg.User,
+				BotID:     msg.BotID,
+				IsMe:      isMe,
+				Text:      text,
+			}
+			if i == 0 {
+				tm.Label = "parent"
+			}
+
 			for _, att := range msg.Attachments {
-				if att.Text != "" {
-					for _, line := range strings.Split(strings.TrimRight(att.Text, "\n"), "\n") {
-						fmt.Printf("    │ %s\n", line)
-					}
-				} else if att.Fallback != "" {
-					for _, line := range strings.Split(strings.TrimRight(att.Fallback, "\n"), "\n") {
-						fmt.Printf("    │ %s\n", line)
-					}
+				attText := att.Text
+				if attText == "" {
+					attText = att.Fallback
+				}
+				if attText != "" {
+					tm.Attachments = append(tm.Attachments, slack.ThreadMessageAttachment{Text: attText})
 				}
 			}
+
+			result.Messages = append(result.Messages, tm)
 		}
 
-		fmt.Println()
-		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&result, mode)
 
-		// Run classifier
-		status := client.ClassifyMentionStatus(channelID, threadTS, myUserIDs, myBotIDs)
-		fmt.Printf("\nClassification result: %s\n", status)
-
-		// Explain the result
-		switch status {
-		case slack.MentionStatusReplied:
-			fmt.Println("  → Found a reply from one of your user/bot IDs")
-		case slack.MentionStatusAcked:
-			fmt.Println("  → Found a reaction from you, but no reply")
-		case slack.MentionStatusPending:
-			fmt.Println("  → No reply or reaction from you found")
+		// Print classification explanation in debug mode (text only)
+		if debug && (outputFormat == "text" || outputFormat == "") {
+			fmt.Println()
+			switch status {
+			case slack.MentionStatusReplied:
+				fmt.Println("Classification: replied — found a reply from one of your user/bot IDs")
+			case slack.MentionStatusAcked:
+				fmt.Println("Classification: acked — found a reaction from you, but no reply")
+			case slack.MentionStatusPending:
+				fmt.Println("Classification: pending — no reply or reaction from you found")
+			}
 		}
 	},
 }
@@ -2261,4 +2274,7 @@ func init() {
 	slackSearchCmd.Flags().StringP("since", "s", "", "Time period to look back (e.g., 1h, 30m, 7d)")
 	slackSearchCmd.Flags().BoolP("tickets", "t", false, "Extract and display Jira ticket references")
 	slackSearchCmd.Flags().BoolP("compact", "c", false, "Compact output (less detail)")
+
+	slackThreadCmd.Flags().Bool("compact", false, "One-line-per-message condensed view")
+	slackThreadCmd.Flags().Bool("debug", false, "Show identity info and mention classification details")
 }

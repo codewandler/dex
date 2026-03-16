@@ -126,7 +126,7 @@ dex slack unreads [--since 14d]       # Browse unread messages
 dex slack mark-read <ch> <ts|latest>  # Move read cursor
 dex slack mentions [--unhandled]      # My mentions (pending/acked/replied)
 dex slack search "query"              # Full-text search
-dex slack thread <url|ch:ts>          # View thread
+dex slack thread <url|ch:ts>          # View thread (--compact, --debug, -o json/yaml)
 dex slack users/channels              # Resolve names and IDs
 dex slack index                       # Rebuild local channel/user index
 ```
