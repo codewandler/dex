@@ -277,6 +277,8 @@ Do not add `--compact` flags to commands that exclusively produce confirmation m
 
 **Always @mention people by name** when the user asks to inform or notify someone. Look up their Slack handle (e.g., `@john.doe`) and include it in the message so they get a notification. Never post about someone without tagging them when the intent is to let them know.
 
+**Always use `dex slack send <channel>` to send messages** — never parse `~/.dex/slack/index.json` directly with Python or shell tools. If a channel name isn't resolving, debug the `dex` command itself (e.g. try the channel ID, check if the index is stale with `dex slack index`). Do not run `dex slack index` speculatively — it is a slow full re-index and should only be run when the index is known to be missing or stale.
+
 ### No Confidential Data in Source
 
 **NEVER use real internal project names, paths, or IDs in source code, help text, or examples.** This is a public repository. Always use generic placeholders like `my-group/my-project!123` or `group/project!456` instead of real company project paths.
