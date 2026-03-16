@@ -266,7 +266,7 @@ Do not add `--compact` flags to commands that exclusively produce confirmation m
 | gitlab pipeline ls/show/jobs | ✅ | ✅ | |
 | gitlab commit ls/show | ✅ | ✅ | |
 | gitlab proj ls/show | ✅ | ✅ | |
-| gitlab snippets | ✅ | ❌ missing flag | RenderText supports ModeCompact |
+| gitlab snippets | ✅ | ✅ | `--compact` on `ls`; `show` uses `-o` flag only |
 | confluence | ❌ | ❌ | entirely fmt.Printf inline |
 | k8s | ❌ | ❌ | entirely fmt.Printf inline |
 | prometheus | ❌ | ❌ | entirely fmt.Printf inline |

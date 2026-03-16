@@ -1718,9 +1718,11 @@ var gitlabSnippetLsCmd = &cobra.Command{
 
 Examples:
   dex gl snippet ls           # List 20 most recent snippets
-  dex gl snippet ls -n 50     # List 50 snippets`,
+  dex gl snippet ls -n 50     # List 50 snippets
+  dex gl snippet ls --compact # One line per snippet`,
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
+		compact, _ := cmd.Flags().GetBool("compact")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -1740,7 +1742,11 @@ Examples:
 			RenderError(fmt.Errorf("failed to list snippets: %w", err))
 		}
 
-		Render(result)
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(result, mode)
 	},
 }
 
@@ -1750,8 +1756,9 @@ var gitlabSnippetShowCmd = &cobra.Command{
 	Long: `Show details and content of a snippet by its numeric ID.
 
 Examples:
-  dex gl snippet show 42            # Show snippet #42 with content
-  dex gl snippet show 42 --no-content  # Show metadata only`,
+  dex gl snippet show 42               # Show snippet #42 with content
+  dex gl snippet show 42 --no-content  # Show metadata only
+  dex gl snippet show 42 -o json       # Full JSON output`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		noContent, _ := cmd.Flags().GetBool("no-content")
@@ -2045,6 +2052,7 @@ func init() {
 	gitlabSnippetCmd.AddCommand(gitlabSnippetDeleteCmd)
 
 	gitlabSnippetLsCmd.Flags().IntP("limit", "n", 20, "Number of snippets to list")
+	gitlabSnippetLsCmd.Flags().Bool("compact", false, "One line per snippet")
 
 	gitlabSnippetShowCmd.Flags().Bool("no-content", false, "Don't fetch and display file content")
 

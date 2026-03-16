@@ -380,8 +380,33 @@ Personal GitLab snippets (like Gists). Aliases: `snip`.
 
 ### List Snippets
 ```bash
-dex gl snippet ls             # List 20 most recent snippets
-dex gl snippet ls -n 50       # List 50 snippets
+dex gl snippet ls               # List 20 most recent snippets
+dex gl snippet ls -n 50         # List 50 snippets
+dex gl snippet ls --compact     # One line per snippet
+dex gl snippet ls -o json       # Full JSON array
+dex gl snippet ls -o yaml
+```
+
+**Flags:** `-n/--limit` (default 20), `--compact`, `-o json|yaml`
+
+**JSON schema** (`-o json`):
+```json
+{
+  "snippets": [
+    {
+      "id": 42,
+      "title": "My script",
+      "description": "",
+      "visibility": "private",
+      "author": "john.doe",
+      "web_url": "https://gitlab.example.com/-/snippets/42",
+      "files": [{"path": "hello.sh", "raw_url": "..."}],
+      "created_at": "2024-01-15T10:00:00Z",
+      "updated_at": "2024-01-15T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
 ```
 
 ### Show Snippet
@@ -389,6 +414,25 @@ dex gl snippet ls -n 50       # List 50 snippets
 dex gl snippet show <id>             # Show details and content
 dex gl snippet show 42               # Example
 dex gl snippet show 42 --no-content  # Metadata only (skip content fetch)
+dex gl snippet show 42 -o json       # Full JSON with content field
+dex gl snippet show 42 -o yaml
+```
+
+**Flags:** `--no-content`, `-o json|yaml`
+
+**JSON schema** (`-o json`):
+```json
+{
+  "id": 42,
+  "title": "My script",
+  "visibility": "private",
+  "author": "john.doe",
+  "web_url": "https://gitlab.example.com/-/snippets/42",
+  "files": [{"path": "hello.sh", "raw_url": "..."}],
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z",
+  "content": "#!/bin/bash\necho hello\n"
+}
 ```
 
 ### Create Snippet
