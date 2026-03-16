@@ -206,13 +206,18 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, me
 	return idx, nil
 }
 
-// ResolveChannel resolves a channel name or ID to a channel ID
+// ResolveChannel resolves a channel name or ID to a channel ID.
+// Returns empty string if the index is empty or the channel is not found.
 func ResolveChannel(idOrName string) string {
 	idx, err := LoadIndex()
-	if err != nil {
-		return idOrName
+	if err != nil || len(idx.Channels) == 0 {
+		return ""
 	}
-	return idx.ResolveChannelID(idOrName)
+	ch := idx.FindChannel(idOrName)
+	if ch == nil {
+		return ""
+	}
+	return ch.ID
 }
 
 // ResolveUser resolves a username or ID to a user ID

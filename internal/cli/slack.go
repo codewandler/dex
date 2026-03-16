@@ -796,6 +796,7 @@ Examples:
 		channelFilter, _ := cmd.Flags().GetString("channel")
 		limit, _ := cmd.Flags().GetInt("limit")
 		sinceStr, _ := cmd.Flags().GetString("since")
+		debug, _ := cmd.Flags().GetBool("debug")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -824,7 +825,7 @@ Examples:
 		sinceUnix = time.Now().Add(-duration).Unix()
 
 		// Fetch channels with unreads — probes each channel concurrently with progress
-		unreads, err := client.ListUnreadChannels(sinceUnix, func(done, total int, name string) {
+		unreads, err := client.ListUnreadChannels(sinceUnix, limit, debug, channelFilter, func(done, total int, name string) {
 			found := ""
 			if name != "" {
 				found = fmt.Sprintf(" [unread: #%s]", name)
@@ -836,34 +837,16 @@ Examples:
 		}
 		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 60)) // clear progress line
 
-		// Filter to specific channel if requested
-		if channelFilter != "" {
-			channelID := slack.ResolveChannel(channelFilter)
-			var filtered []slack.UnreadChannel
-			for _, u := range unreads {
-				if u.ID == channelID || u.Name == channelFilter {
-					filtered = append(filtered, u)
-					break
-				}
-			}
-			unreads = filtered
-		}
-
 		if len(unreads) == 0 {
 			fmt.Println("No unread messages.")
 			return nil
 		}
 
-		// ListUnreadChannels already fetched the messages — build result directly
-		// by resolving usernames from the index. No extra API calls needed.
+		// ListUnreadChannels already fetched and pre-sorted the messages — use them
+		// directly without any further API calls.
 		result := &slack.UnreadResult{}
 		for _, ch := range unreads {
-			// Messages were already fetched during scan — re-fetch to get content
-			msgs, err := client.GetUnreadMessages(ch.ID, ch.LastRead, limit)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not fetch messages for %s: %v\n", ch.ID, err)
-				continue
-			}
+			msgs := ch.Messages
 
 			// Resolve usernames
 			var unreadMsgs []slack.UnreadMessage
@@ -2197,6 +2180,7 @@ func init() {
 	slackUnreadsCmd.Flags().StringP("channel", "C", "", "Limit to a specific channel (name or ID)")
 	slackUnreadsCmd.Flags().IntP("limit", "l", 100, "Max messages to fetch per channel")
 	slackUnreadsCmd.Flags().StringP("since", "s", "14d", "How far back to look for unreads (e.g. 1d, 7d, 14d, 1h)")
+	slackUnreadsCmd.Flags().Bool("debug", false, "Print per-channel probe details to stderr (last_read, oldest, msg count, latency)")
 	_ = slackUnreadsCmd.RegisterFlagCompletionFunc("channel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeSlackChannelNames(cmd, nil, toComplete)
 	})
