@@ -9,11 +9,12 @@ import (
 	"regexp"
 	"strings"
 
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/codewandler/dex/internal/atlassian"
 	"github.com/codewandler/dex/internal/config"
 )
 
-const confluenceScopes = "read:confluence-content.all read:confluence-space.summary search:confluence offline_access"
+const confluenceScopes = "read:page:confluence read:space:confluence search:confluence offline_access"
 
 // Space represents a Confluence space
 type Space struct {
@@ -256,11 +257,35 @@ func (c *Client) GetSiteURL() string {
 	return ""
 }
 
-// StripHTML removes HTML tags from a string for plain text display
-func StripHTML(s string) string {
-	re := regexp.MustCompile(`<[^>]*>`)
-	text := re.ReplaceAllString(s, "")
-	// Collapse multiple whitespace/newlines
-	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
-	return strings.TrimSpace(text)
+// preprocessConfluenceStorage converts Confluence Storage Format XML into
+// plain HTML by replacing ac:structured-macro code blocks with fenced code
+// blocks, so the HTML-to-Markdown converter can render them properly.
+func preprocessConfluenceStorage(s string) string {
+	// Match <ac:structured-macro ac:name="code" ...>...</ac:structured-macro>
+	macroRe := regexp.MustCompile(`(?s)<ac:structured-macro[^>]+ac:name="code"[^>]*>(.*?)</ac:structured-macro>`)
+	langRe := regexp.MustCompile(`<ac:parameter[^>]+ac:name="language"[^>]*>(.*?)</ac:parameter>`)
+	bodyRe := regexp.MustCompile(`(?s)<ac:plain-text-body><!\[CDATA\[(.*?)]]></ac:plain-text-body>`)
+
+	return macroRe.ReplaceAllStringFunc(s, func(macro string) string {
+		lang := ""
+		if m := langRe.FindStringSubmatch(macro); m != nil {
+			lang = strings.TrimSpace(m[1])
+		}
+		code := ""
+		if m := bodyRe.FindStringSubmatch(macro); m != nil {
+			code = m[1]
+		}
+		return "<pre><code class=\"language-" + lang + "\">" + code + "</code></pre>"
+	})
+}
+
+// HTMLToMarkdown converts Confluence Storage Format HTML to readable Markdown.
+// Falls back to the raw string if conversion fails.
+func HTMLToMarkdown(s string) string {
+	s = preprocessConfluenceStorage(s)
+	md, err := htmltomarkdown.ConvertString(s)
+	if err != nil {
+		return s
+	}
+	return md
 }

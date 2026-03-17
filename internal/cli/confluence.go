@@ -171,7 +171,7 @@ var confluencePageCmd = &cobra.Command{
 
 		body := page.Body.Storage.Value
 		if body != "" {
-			fmt.Println(confluence.StripHTML(body))
+			fmt.Println(confluence.HTMLToMarkdown(body))
 		} else {
 			fmt.Println("(empty page)")
 		}
