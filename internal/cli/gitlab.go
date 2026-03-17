@@ -752,6 +752,109 @@ Examples:
 	},
 }
 
+var gitlabMREditCmd = &cobra.Command{
+	Use:   "edit <project!iid>",
+	Short: "Edit a merge request",
+	Long: `Edit (update) an existing merge request.
+
+Use the canonical reference format: project!iid
+
+All flags are optional — only the fields you specify are changed.
+
+Examples:
+  dex gl mr edit my-group/my-project!123 --title "New title"
+  dex gl mr edit proj!123 --description "Updated description"
+  dex gl mr edit proj!123 --target develop
+  dex gl mr edit proj!123 --add-label bug --add-label urgent
+  dex gl mr edit proj!123 --remove-label wip
+  dex gl mr edit proj!123 --draft              # Mark as draft
+  dex gl mr edit proj!123 --no-draft           # Unmark draft
+  dex gl mr edit proj!123 --squash             # Enable squash on merge
+  dex gl mr edit proj!123 --no-squash          # Disable squash on merge
+  dex gl mr edit proj!123 --remove-source-branch  # Enable remove source branch
+  dex gl mr edit proj!123 --title "New" --add-label reviewed  # Multiple changes`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectID, mrIID, err := parseMRReference(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid MR reference: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Use format: project!iid (e.g., group/project!123)\n")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := gitlab.NewClient(cfg.GitLab.URL, cfg.GitLab.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create GitLab client: %v\n", err)
+			os.Exit(1)
+		}
+
+		opts := gitlab.EditMergeRequestOptions{}
+
+		if cmd.Flags().Changed("title") {
+			v, _ := cmd.Flags().GetString("title")
+			opts.Title = &v
+		}
+		if cmd.Flags().Changed("description") {
+			v, _ := cmd.Flags().GetString("description")
+			opts.Description = &v
+		}
+		if cmd.Flags().Changed("target") {
+			v, _ := cmd.Flags().GetString("target")
+			opts.TargetBranch = &v
+		}
+		if cmd.Flags().Changed("add-label") {
+			opts.AddLabels, _ = cmd.Flags().GetStringArray("add-label")
+		}
+		if cmd.Flags().Changed("remove-label") {
+			opts.RemoveLabels, _ = cmd.Flags().GetStringArray("remove-label")
+		}
+		if cmd.Flags().Changed("draft") {
+			v := true
+			opts.Draft = &v
+		}
+		if cmd.Flags().Changed("no-draft") {
+			v := false
+			opts.Draft = &v
+		}
+		if cmd.Flags().Changed("squash") {
+			v := true
+			opts.Squash = &v
+		}
+		if cmd.Flags().Changed("no-squash") {
+			v := false
+			opts.Squash = &v
+		}
+		if cmd.Flags().Changed("remove-source-branch") {
+			v := true
+			opts.RemoveSourceBranch = &v
+		}
+
+		// Ensure at least one edit was requested
+		if opts.Title == nil && opts.Description == nil && opts.TargetBranch == nil &&
+			len(opts.AddLabels) == 0 && len(opts.RemoveLabels) == 0 &&
+			opts.Draft == nil && opts.Squash == nil && opts.RemoveSourceBranch == nil {
+			fmt.Fprintf(os.Stderr, "No changes specified. Use at least one flag to edit the MR.\n")
+			os.Exit(1)
+		}
+
+		mr, err := client.EditMergeRequest(projectID, mrIID, opts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to edit merge request: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Updated %s!%d: %s\n", projectID, mr.IID, mr.Title)
+		fmt.Printf("  %s\n", mr.WebURL)
+	},
+}
+
+
 var gitlabMRDiffCmd = &cobra.Command{
 	Use:   "diff <project!iid>",
 	Short: "Show diff for a specific file in an MR",
@@ -1976,6 +2079,7 @@ func init() {
 	gitlabMRCmd.AddCommand(gitlabMRApproveCmd)
 	gitlabMRCmd.AddCommand(gitlabMRMergeCmd)
 	gitlabMRCmd.AddCommand(gitlabMRCreateCmd)
+	gitlabMRCmd.AddCommand(gitlabMREditCmd)
 
 	gitlabActivityCmd.Flags().StringP("since", "s", "14d", "Time period to look back (e.g., 4h, 30m, 7d)")
 	gitlabIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
@@ -2018,6 +2122,17 @@ func init() {
 
 	gitlabMRCloseCmd.Flags().String("reason", "", "Post a comment before closing")
 	gitlabMRReopenCmd.Flags().String("reason", "", "Post a comment before reopening")
+
+	gitlabMREditCmd.Flags().StringP("title", "t", "", "New title")
+	gitlabMREditCmd.Flags().StringP("description", "d", "", "New description")
+	gitlabMREditCmd.Flags().String("target", "", "New target branch")
+	gitlabMREditCmd.Flags().StringArray("add-label", nil, "Label to add (can be repeated)")
+	gitlabMREditCmd.Flags().StringArray("remove-label", nil, "Label to remove (can be repeated)")
+	gitlabMREditCmd.Flags().Bool("draft", false, "Mark as draft")
+	gitlabMREditCmd.Flags().Bool("no-draft", false, "Unmark draft")
+	gitlabMREditCmd.Flags().Bool("squash", false, "Enable squash on merge")
+	gitlabMREditCmd.Flags().Bool("no-squash", false, "Disable squash on merge")
+	gitlabMREditCmd.Flags().Bool("remove-source-branch", false, "Enable remove source branch on merge")
 
 	gitlabMRReactCmd.Flags().Int("note", 0, "Note ID to react to (instead of MR)")
 

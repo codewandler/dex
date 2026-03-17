@@ -285,6 +285,23 @@ dex gl mr create "Feature" --remove-source-branch  # Delete branch after merge
 dex gl mr create "Feature" -p group/proj -s branch # Explicit project and source
 ```
 
+### Edit MR
+```bash
+dex gl mr edit <project!iid> --title "New title"            # Rename
+dex gl mr edit proj!123 --description "Updated description" # Change description
+dex gl mr edit proj!123 --target develop                    # Change target branch
+dex gl mr edit proj!123 --add-label bug --add-label urgent  # Add labels
+dex gl mr edit proj!123 --remove-label wip                  # Remove a label
+dex gl mr edit proj!123 --draft                             # Mark as draft
+dex gl mr edit proj!123 --no-draft                          # Unmark draft
+dex gl mr edit proj!123 --squash                            # Enable squash on merge
+dex gl mr edit proj!123 --no-squash                         # Disable squash on merge
+dex gl mr edit proj!123 --remove-source-branch              # Enable remove source branch
+dex gl mr edit proj!123 --title "New" --add-label reviewed  # Multiple changes at once
+```
+
+All flags are optional — only the fields you specify are updated. At least one flag is required.
+
 ## Pipelines
 
 ### List Pipelines

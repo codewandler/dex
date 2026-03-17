@@ -2,9 +2,10 @@ package gitlab
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/xanzy/go-gitlab"
+	gogitlab "github.com/xanzy/go-gitlab"
 )
 
 // ListMergeRequestsOptions configures the MR list query
@@ -22,13 +23,13 @@ type ListMergeRequestsOptions struct {
 func (c *Client) GetMergeRequests(projectID int, since time.Time) ([]MergeRequest, error) {
 	var allMRs []MergeRequest
 
-	opts := &gitlab.ListProjectMergeRequestsOptions{
-		ListOptions: gitlab.ListOptions{
+	opts := &gogitlab.ListProjectMergeRequestsOptions{
+		ListOptions: gogitlab.ListOptions{
 			PerPage: 100,
 			Page:    1,
 		},
-		UpdatedAfter: gitlab.Ptr(since),
-		Scope:        gitlab.Ptr("all"),
+		UpdatedAfter: gogitlab.Ptr(since),
+		Scope:        gogitlab.Ptr("all"),
 	}
 
 	for {
@@ -86,20 +87,20 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]MergeReques
 		opts.Sort = "desc"
 	}
 
-	listOpts := &gitlab.ListMergeRequestsOptions{
-		ListOptions: gitlab.ListOptions{
+	listOpts := &gogitlab.ListMergeRequestsOptions{
+		ListOptions: gogitlab.ListOptions{
 			PerPage: min(opts.Limit, 100),
 			Page:    1,
 		},
-		State:   gitlab.Ptr(opts.State),
-		Scope:   gitlab.Ptr(opts.Scope),
-		OrderBy: gitlab.Ptr(opts.OrderBy),
-		Sort:    gitlab.Ptr(opts.Sort),
+		State:   gogitlab.Ptr(opts.State),
+		Scope:   gogitlab.Ptr(opts.Scope),
+		OrderBy: gogitlab.Ptr(opts.OrderBy),
+		Sort:    gogitlab.Ptr(opts.Sort),
 	}
 
 	// Exclude WIP/drafts by default
 	if !opts.IncludeWIP {
-		listOpts.WIP = gitlab.Ptr("no")
+		listOpts.WIP = gogitlab.Ptr("no")
 	}
 
 	for {
@@ -268,8 +269,8 @@ func (c *Client) GetMergeRequestChanges(projectID any, mrIID int, includeDiff bo
 		return nil, err
 	}
 
-	opts := &gitlab.ListMergeRequestDiffsOptions{
-		ListOptions: gitlab.ListOptions{
+	opts := &gogitlab.ListMergeRequestDiffsOptions{
+		ListOptions: gogitlab.ListOptions{
 			PerPage: 100,
 			Page:    1,
 		},
@@ -312,8 +313,8 @@ func (c *Client) CreateMergeRequestNote(projectID any, mrIID int, body string) e
 		return err
 	}
 
-	opts := &gitlab.CreateMergeRequestNoteOptions{
-		Body: gitlab.Ptr(body),
+	opts := &gogitlab.CreateMergeRequestNoteOptions{
+		Body: gogitlab.Ptr(body),
 	}
 
 	_, _, err = c.gl.Notes.CreateMergeRequestNote(pid, mrIID, opts)
@@ -327,13 +328,13 @@ func (c *Client) GetMergeRequestNotes(projectID any, mrIID int) ([]MRNote, error
 		return nil, err
 	}
 
-	opts := &gitlab.ListMergeRequestNotesOptions{
-		ListOptions: gitlab.ListOptions{
+	opts := &gogitlab.ListMergeRequestNotesOptions{
+		ListOptions: gogitlab.ListOptions{
 			PerPage: 100,
 			Page:    1,
 		},
-		Sort:    gitlab.Ptr("asc"),
-		OrderBy: gitlab.Ptr("created_at"),
+		Sort:    gogitlab.Ptr("asc"),
+		OrderBy: gogitlab.Ptr("created_at"),
 	}
 
 	var notes []MRNote
@@ -372,7 +373,7 @@ func (c *Client) GetMergeRequestDiscussions(projectID any, mrIID int) ([]MRDiscu
 		return nil, err
 	}
 
-	opts := &gitlab.ListMergeRequestDiscussionsOptions{
+	opts := &gogitlab.ListMergeRequestDiscussionsOptions{
 		PerPage: 100,
 		Page:    1,
 	}
@@ -431,8 +432,8 @@ func (c *Client) AddMergeRequestDiscussionReply(projectID any, mrIID int, discus
 		return err
 	}
 
-	opts := &gitlab.AddMergeRequestDiscussionNoteOptions{
-		Body: gitlab.Ptr(body),
+	opts := &gogitlab.AddMergeRequestDiscussionNoteOptions{
+		Body: gogitlab.Ptr(body),
 	}
 
 	_, _, err = c.gl.Discussions.AddMergeRequestDiscussionNote(pid, mrIID, discussionID, opts)
@@ -475,25 +476,25 @@ func (c *Client) CreateMergeRequestInlineComment(projectID any, mrIID int, opts 
 		return fmt.Errorf("failed to get diff versions: %w", err)
 	}
 
-	position := &gitlab.PositionOptions{
-		BaseSHA:      gitlab.Ptr(diffVersion.BaseCommitSHA),
-		StartSHA:     gitlab.Ptr(diffVersion.StartCommitSHA),
-		HeadSHA:      gitlab.Ptr(diffVersion.HeadCommitSHA),
-		PositionType: gitlab.Ptr("text"),
-		NewPath:      gitlab.Ptr(opts.NewPath),
-		OldPath:      gitlab.Ptr(opts.OldPath),
+	position := &gogitlab.PositionOptions{
+		BaseSHA:      gogitlab.Ptr(diffVersion.BaseCommitSHA),
+		StartSHA:     gogitlab.Ptr(diffVersion.StartCommitSHA),
+		HeadSHA:      gogitlab.Ptr(diffVersion.HeadCommitSHA),
+		PositionType: gogitlab.Ptr("text"),
+		NewPath:      gogitlab.Ptr(opts.NewPath),
+		OldPath:      gogitlab.Ptr(opts.OldPath),
 	}
 
 	// Set line numbers based on what was provided
 	if opts.NewLine > 0 {
-		position.NewLine = gitlab.Ptr(opts.NewLine)
+		position.NewLine = gogitlab.Ptr(opts.NewLine)
 	}
 	if opts.OldLine > 0 {
-		position.OldLine = gitlab.Ptr(opts.OldLine)
+		position.OldLine = gogitlab.Ptr(opts.OldLine)
 	}
 
-	createOpts := &gitlab.CreateMergeRequestDiscussionOptions{
-		Body:     gitlab.Ptr(opts.Body),
+	createOpts := &gogitlab.CreateMergeRequestDiscussionOptions{
+		Body:     gogitlab.Ptr(opts.Body),
 		Position: position,
 	}
 
@@ -552,7 +553,7 @@ func (c *Client) CreateMergeRequestReaction(projectID any, mrIID int, emoji stri
 		return err
 	}
 
-	opts := &gitlab.CreateAwardEmojiOptions{
+	opts := &gogitlab.CreateAwardEmojiOptions{
 		Name: emoji,
 	}
 
@@ -567,7 +568,7 @@ func (c *Client) CreateMergeRequestNoteReaction(projectID any, mrIID int, noteID
 		return err
 	}
 
-	opts := &gitlab.CreateAwardEmojiOptions{
+	opts := &gogitlab.CreateAwardEmojiOptions{
 		Name: emoji,
 	}
 
@@ -582,8 +583,8 @@ func (c *Client) CloseMergeRequest(projectID any, mrIID int) error {
 		return err
 	}
 
-	opts := &gitlab.UpdateMergeRequestOptions{
-		StateEvent: gitlab.Ptr("close"),
+	opts := &gogitlab.UpdateMergeRequestOptions{
+		StateEvent: gogitlab.Ptr("close"),
 	}
 
 	_, _, err = c.gl.MergeRequests.UpdateMergeRequest(pid, mrIID, opts)
@@ -597,8 +598,8 @@ func (c *Client) ReopenMergeRequest(projectID any, mrIID int) error {
 		return err
 	}
 
-	opts := &gitlab.UpdateMergeRequestOptions{
-		StateEvent: gitlab.Ptr("reopen"),
+	opts := &gogitlab.UpdateMergeRequestOptions{
+		StateEvent: gogitlab.Ptr("reopen"),
 	}
 
 	_, _, err = c.gl.MergeRequests.UpdateMergeRequest(pid, mrIID, opts)
@@ -632,26 +633,149 @@ func (c *Client) MergeMergeRequest(projectID any, mrIID int, opts MergeMergeRequ
 		return err
 	}
 
-	acceptOpts := &gitlab.AcceptMergeRequestOptions{}
+	acceptOpts := &gogitlab.AcceptMergeRequestOptions{}
 
 	if opts.Squash {
-		acceptOpts.Squash = gitlab.Ptr(true)
+		acceptOpts.Squash = gogitlab.Ptr(true)
 	}
 	if opts.RemoveSourceBranch {
-		acceptOpts.ShouldRemoveSourceBranch = gitlab.Ptr(true)
+		acceptOpts.ShouldRemoveSourceBranch = gogitlab.Ptr(true)
 	}
 	if opts.MergeWhenPipelineSucceeds {
-		acceptOpts.MergeWhenPipelineSucceeds = gitlab.Ptr(true)
+		acceptOpts.MergeWhenPipelineSucceeds = gogitlab.Ptr(true)
 	}
 	if opts.MergeCommitMessage != "" {
-		acceptOpts.MergeCommitMessage = gitlab.Ptr(opts.MergeCommitMessage)
+		acceptOpts.MergeCommitMessage = gogitlab.Ptr(opts.MergeCommitMessage)
 	}
 	if opts.SquashCommitMessage != "" {
-		acceptOpts.SquashCommitMessage = gitlab.Ptr(opts.SquashCommitMessage)
+		acceptOpts.SquashCommitMessage = gogitlab.Ptr(opts.SquashCommitMessage)
 	}
 
 	_, _, err = c.gl.MergeRequests.AcceptMergeRequest(pid, mrIID, acceptOpts)
 	return err
+}
+
+// EditMergeRequestOptions contains options for editing (updating) a merge request
+type EditMergeRequestOptions struct {
+	Title              *string  // New title (nil = no change)
+	Description        *string  // New description (nil = no change)
+	TargetBranch       *string  // New target branch (nil = no change)
+	AddLabels          []string // Labels to add
+	RemoveLabels       []string // Labels to remove
+	Draft              *bool    // Set draft status (nil = no change)
+	Squash             *bool    // Set squash setting (nil = no change)
+	RemoveSourceBranch *bool    // Set remove source branch setting (nil = no change)
+}
+
+// EditMergeRequest updates a merge request and returns the updated details
+func (c *Client) EditMergeRequest(projectID any, mrIID int, opts EditMergeRequestOptions) (*MergeRequestDetail, error) {
+	pid, err := c.resolveProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	updateOpts := &gogitlab.UpdateMergeRequestOptions{}
+
+	if opts.Title != nil {
+		updateOpts.Title = opts.Title
+	}
+	if opts.Description != nil {
+		updateOpts.Description = opts.Description
+	}
+	if opts.TargetBranch != nil {
+		updateOpts.TargetBranch = opts.TargetBranch
+	}
+	if opts.Squash != nil {
+		updateOpts.Squash = opts.Squash
+	}
+	if opts.RemoveSourceBranch != nil {
+		updateOpts.RemoveSourceBranch = opts.RemoveSourceBranch
+	}
+	if len(opts.AddLabels) > 0 {
+		labels := gogitlab.LabelOptions(opts.AddLabels)
+		updateOpts.AddLabels = &labels
+	}
+	if len(opts.RemoveLabels) > 0 {
+		labels := gogitlab.LabelOptions(opts.RemoveLabels)
+		updateOpts.RemoveLabels = &labels
+	}
+	// Handle draft toggle: prefix/strip "Draft: " from title
+	if opts.Draft != nil {
+		// Fetch current title if we don't have a new one
+		currentTitle := ""
+		if opts.Title != nil {
+			currentTitle = *opts.Title
+		} else {
+			mr, _, err := c.gl.MergeRequests.GetMergeRequest(pid, mrIID, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch current MR: %w", err)
+			}
+			currentTitle = mr.Title
+		}
+
+		const draftPrefix = "Draft: "
+		isDraft := strings.HasPrefix(currentTitle, draftPrefix) ||
+			strings.HasPrefix(currentTitle, "WIP: ") ||
+			strings.HasPrefix(currentTitle, "draft: ")
+
+		if *opts.Draft && !isDraft {
+			currentTitle = draftPrefix + currentTitle
+			updateOpts.Title = &currentTitle
+		} else if !*opts.Draft && isDraft {
+			for _, prefix := range []string{"Draft: ", "draft: ", "WIP: "} {
+				currentTitle = strings.TrimPrefix(currentTitle, prefix)
+			}
+			updateOpts.Title = &currentTitle
+		}
+	}
+
+	m, _, err := c.gl.MergeRequests.UpdateMergeRequest(pid, mrIID, updateOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &MergeRequestDetail{
+		IID:          m.IID,
+		Title:        m.Title,
+		Description:  m.Description,
+		State:        m.State,
+		WebURL:       m.WebURL,
+		SourceBranch: m.SourceBranch,
+		TargetBranch: m.TargetBranch,
+		Draft:        m.Draft,
+		MergeStatus:  m.MergeStatus,
+		HasConflicts: m.HasConflicts,
+	}
+	if m.Author != nil {
+		result.Author = m.Author.Username
+	}
+	if m.CreatedAt != nil {
+		result.CreatedAt = *m.CreatedAt
+	}
+	if m.UpdatedAt != nil {
+		result.UpdatedAt = *m.UpdatedAt
+	}
+	if m.MergedAt != nil {
+		result.MergedAt = m.MergedAt
+	}
+	if m.References != nil {
+		result.ProjectPath = m.References.Full
+	}
+	for _, l := range m.Labels {
+		result.Labels = append(result.Labels, l)
+	}
+	if m.Assignees != nil {
+		for _, a := range m.Assignees {
+			result.Assignees = append(result.Assignees, a.Username)
+		}
+	}
+	if m.Reviewers != nil {
+		for _, r := range m.Reviewers {
+			result.Reviewers = append(result.Reviewers, r.Username)
+		}
+	}
+
+	return result, nil
 }
 
 // CreateMergeRequestOptions contains options for creating a merge request
@@ -672,21 +796,21 @@ func (c *Client) CreateMergeRequest(projectID any, opts CreateMergeRequestOption
 		return nil, err
 	}
 
-	createOpts := &gitlab.CreateMergeRequestOptions{
-		Title:              gitlab.Ptr(opts.Title),
-		SourceBranch:       gitlab.Ptr(opts.SourceBranch),
-		TargetBranch:       gitlab.Ptr(opts.TargetBranch),
-		RemoveSourceBranch: gitlab.Ptr(opts.RemoveSourceBranch),
-		Squash:             gitlab.Ptr(opts.Squash),
+	createOpts := &gogitlab.CreateMergeRequestOptions{
+		Title:              gogitlab.Ptr(opts.Title),
+		SourceBranch:       gogitlab.Ptr(opts.SourceBranch),
+		TargetBranch:       gogitlab.Ptr(opts.TargetBranch),
+		RemoveSourceBranch: gogitlab.Ptr(opts.RemoveSourceBranch),
+		Squash:             gogitlab.Ptr(opts.Squash),
 	}
 
 	if opts.Description != "" {
-		createOpts.Description = gitlab.Ptr(opts.Description)
+		createOpts.Description = gogitlab.Ptr(opts.Description)
 	}
 
 	// Handle draft status by prefixing title
 	if opts.Draft {
-		createOpts.Title = gitlab.Ptr("Draft: " + opts.Title)
+		createOpts.Title = gogitlab.Ptr("Draft: " + opts.Title)
 	}
 
 	mr, _, err := c.gl.MergeRequests.CreateMergeRequest(pid, createOpts)
