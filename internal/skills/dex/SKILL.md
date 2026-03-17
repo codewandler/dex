@@ -71,6 +71,7 @@ dex k8s forward stop <name>       # Stop a port-forward
 ### GitLab (`dex gl`)
 ```bash
 dex gl activity [--since 7d]      # Recent activity
+dex gl proj ls [filter]           # List/search projects (e.g. "services", "sbf/")
 dex gl commit ls <project>        # List project commits
 dex gl mr ls                      # List open MRs
 dex gl mr show <project!iid>      # Show MR details
@@ -83,6 +84,12 @@ dex gl snippet ls                 # List your personal snippets
 dex gl snippet show <id>          # Show snippet details + content
 dex gl snippet create "<title>" -f "file.txt:content"  # Create snippet
 dex gl snippet delete <id>        # Delete a snippet
+dex gl file show <proj> <path> [--ref]   # Read a file's content
+dex gl file meta <proj> <path> [--ref]   # File metadata (no content)
+dex gl file blame <proj> <path> [--ref]  # Git blame
+dex gl tree <proj> [--path dir/] [--recursive]  # Browse repo tree
+dex gl diff <proj> <from> <to> [--path]  # Compare refs (summary by default, diff with --path)
+dex gl search blobs <query> --project <proj>  # Search file contents
 ```
 
 ### Jira (`dex jira`)

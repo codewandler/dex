@@ -33,6 +33,8 @@ Index stored at `~/.dex/gitlab/index.json`.
 ## Projects
 ```bash
 dex gl proj ls                    # List projects (from index)
+dex gl proj ls services           # Filter by name/path containing "services"
+dex gl proj ls sbf/               # All projects under the sbf group
 dex gl proj ls -n 50              # List 50 projects
 dex gl proj ls --sort name        # Sort by name (also: created, activity, path)
 dex gl proj ls --sort created -d  # Sort descending (default for dates, ascending for names)
@@ -44,6 +46,8 @@ dex gl proj show <id|path>        # Show project details
 dex gl proj show <id> --compact   # Header fields + contributor/language counts
 dex gl proj show <id> -o json     # Full JSON
 ```
+
+The optional filter argument on `proj ls` is a case-insensitive substring match against both the project name and full path. Use it to find projects without knowing the exact path.
 
 ### `-o json` field schema for `proj ls`
 ```json
@@ -477,4 +481,144 @@ dex gl snippet create "Team runbook" -f "runbook.md:# Steps..." -v internal
 ```bash
 dex gl snippet delete <id>    # Delete snippet by ID
 dex gl snippet delete 42      # Example
+```
+
+## Repository Files
+
+Read files, browse trees, and diff refs remotely — no clone needed.
+Project name/path is resolved from the local index, so `my-group/my-project` works directly.
+All commands accept `--ref <branch|tag|sha>` (defaults to HEAD/default branch).
+
+### Read a File
+```bash
+dex gl file show <project> <path>               # Raw file content (like cat, over API)
+dex gl file show my-group/my-project go.mod
+dex gl file show my-group/my-project go.mod --ref main
+dex gl file show my-group/my-project src/main.go --ref feature/my-branch
+dex gl file show my-group/my-project Makefile --ref abc1234
+dex gl file show my-group/my-project go.mod --compact   # Adds a metadata header line
+dex gl file show my-group/my-project go.mod -o json     # Full JSON with metadata
+```
+
+### File Metadata (no content download)
+```bash
+dex gl file meta <project> <path>               # Size, last commit, SHA256 — no content
+dex gl file meta my-group/my-project go.mod
+dex gl file meta my-group/my-project go.mod --ref develop
+dex gl file meta my-group/my-project go.mod --compact   # One-line summary
+dex gl file meta my-group/my-project go.mod -o json
+```
+
+**JSON schema** (`-o json`):
+```json
+{
+  "file_path": "go.mod",
+  "file_name": "go.mod",
+  "ref": "main",
+  "size": 1234,
+  "encoding": "base64",
+  "blob_id": "abc123...",
+  "commit_id": "def456...",
+  "last_commit_id": "def456...",
+  "sha256": "..."
+}
+```
+
+### Git Blame
+```bash
+dex gl file blame <project> <path>              # Git blame: line → commit + author
+dex gl file blame my-group/my-project src/server.go
+dex gl file blame my-group/my-project src/server.go --ref main
+dex gl file blame my-group/my-project src/server.go --compact   # Hide authored date
+dex gl file blame my-group/my-project src/server.go -o json
+```
+
+### Browse Repository Tree
+```bash
+dex gl tree <project>                           # List root directory
+dex gl tree <project> [path]                    # List a subdirectory (positional or --path)
+dex gl tree my-group/my-project
+dex gl tree my-group/my-project --path internal/
+dex gl tree my-group/my-project --ref feature/my-branch
+dex gl tree my-group/my-project --recursive                     # All files under root
+dex gl tree my-group/my-project --recursive --path src/
+dex gl tree my-group/my-project --recursive -o compact          # Bare paths, one per line
+```
+
+`-o compact` outputs one path per line — ideal for piping to grep or fzf.
+
+### Compare Refs (Diff)
+```bash
+dex gl diff <project> <from> <to>               # Summary: commits + file change list
+dex gl diff my-group/my-project main feature/my-branch
+dex gl diff my-group/my-project v1.2.0 v1.3.0
+dex gl diff my-group/my-project abc1234 def5678
+
+# Show diff content by scoping to a file or directory (required for diff output)
+dex gl diff my-group/my-project main feature/my-branch --path go.mod
+dex gl diff my-group/my-project main feature/my-branch --path internal/server/
+dex gl diff my-group/my-project v1.2.0 v1.3.0 --path src/
+
+# Flags
+dex gl diff my-group/my-project main feature/my-branch --path go.mod --compact  # No diff content
+dex gl diff my-group/my-project main feature/my-branch --straight                # A..B (two-dot)
+dex gl diff my-group/my-project main feature/my-branch -o json
+```
+
+**Without `--path`**: always shows summary only (commits capped at 20, full file list) with a hint to add `--path`. This prevents accidentally dumping hundreds of KB of diff.
+
+**With `--path`**: shows the same summary scoped to matching files, plus the full coloured diff content below it.
+
+**JSON schema** (`-o json`):
+```json
+{
+  "from": "main",
+  "to": "feature/my-branch",
+  "straight": false,
+  "path": "go.mod",
+  "head_commit": "abc123...",
+  "timeout": false,
+  "same_ref": false,
+  "commits": [
+    {"id": "abc123...", "short_id": "abc123", "title": "feat: ...", "author_name": "Alice", "created_at": "..."}
+  ],
+  "diffs": [
+    {
+      "old_path": "go.mod", "new_path": "go.mod",
+      "is_new": false, "is_deleted": false, "is_renamed": false,
+      "additions": 3, "deletions": 1,
+      "diff": "@@ -1,4 +1,6 @@\n module ...\n"
+    }
+  ]
+}
+```
+
+### Search File Contents (Blobs)
+```bash
+dex gl search blobs <query> --project <project>   # Full-text search across file contents
+dex gl search blobs "TODO: remove" --project my-group/my-project
+dex gl search blobs "DATABASE_URL" --project my-group/my-project
+dex gl search blobs "SomeClassName" --project my-group/my-project --compact  # One line per hit
+dex gl search blobs "pattern" --project my-group/my-project -o json
+```
+
+Results include file path, ref, line number, and a matching snippet.
+`--compact` outputs `path@ref:line  snippet` — one line per match.
+
+**JSON schema** (`-o json`):
+```json
+{
+  "query": "TODO: remove",
+  "matches": [
+    {
+      "basename": "server",
+      "filename": "server.go",
+      "path": "internal/server.go",
+      "ref": "main",
+      "start_line": 42,
+      "data": "// TODO: remove this workaround\n"
+    }
+  ],
+  "total": 1
+}
 ```

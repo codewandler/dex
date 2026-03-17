@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -338,8 +339,9 @@ func (idx *GitLabIndex) UpsertProject(p ProjectMetadata) {
 	}
 }
 
-// ListProjects returns projects sorted by the given field with optional limit
-func (idx *GitLabIndex) ListProjects(orderBy, sortDir string, limit int) []ProjectMetadata {
+// ListProjects returns projects sorted by the given field with optional limit.
+// filter is an optional substring matched case-insensitively against path and name.
+func (idx *GitLabIndex) ListProjects(orderBy, sortDir string, limit int, filter string) []ProjectMetadata {
 	if len(idx.Projects) == 0 {
 		return nil
 	}
@@ -347,6 +349,19 @@ func (idx *GitLabIndex) ListProjects(orderBy, sortDir string, limit int) []Proje
 	// Make a copy to sort
 	projects := make([]ProjectMetadata, len(idx.Projects))
 	copy(projects, idx.Projects)
+
+	// Apply filter before sorting/limiting
+	if filter != "" {
+		f := strings.ToLower(filter)
+		filtered := projects[:0]
+		for _, p := range projects {
+			if strings.Contains(strings.ToLower(p.PathWithNS), f) ||
+				strings.Contains(strings.ToLower(p.Name), f) {
+				filtered = append(filtered, p)
+			}
+		}
+		projects = filtered
+	}
 
 	// Sort based on field
 	switch orderBy {

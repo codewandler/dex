@@ -1420,11 +1420,14 @@ Examples:
 }
 
 var gitlabProjLsCmd = &cobra.Command{
-	Use:   "ls",
+	Use:   "ls [filter]",
 	Short: "List GitLab projects",
 	Long: `List GitLab projects with configurable sorting and limits.
 
 Uses the local index for instant results. Run 'dex gl index' first to populate.
+
+An optional filter argument narrows results by matching against project name
+and path (case-insensitive substring match).
 
 Sort options:
   created    - Sort by creation date
@@ -1434,15 +1437,23 @@ Sort options:
 
 Examples:
   dex gl proj ls                      # List 20 projects by last activity
+  dex gl proj ls services             # Projects with "services" in name/path
+  dex gl proj ls sbf/                 # All projects under the sbf group
   dex gl proj ls -n 50                # List 50 projects
   dex gl proj ls --sort name          # Sort by name ascending
   dex gl proj ls --sort created -d    # Sort by creation date descending
   dex gl proj ls --no-cache           # Fetch from API instead of index`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 		sortField, _ := cmd.Flags().GetString("sort")
 		desc, _ := cmd.Flags().GetBool("desc")
 		noCache, _ := cmd.Flags().GetBool("no-cache")
+
+		filter := ""
+		if len(args) == 1 {
+			filter = args[0]
+		}
 
 		// Map sort field names to API values
 		orderBy := "last_activity_at"
@@ -1470,7 +1481,7 @@ Examples:
 		if !noCache {
 			idx, err := gitlab.LoadIndex()
 			if err == nil && len(idx.Projects) > 0 {
-				projects := idx.ListProjects(orderBy, sortDir, limit)
+				projects := idx.ListProjects(orderBy, sortDir, limit, filter)
 				compact, _ := cmd.Flags().GetBool("compact")
 				mode := render.ModeNormal
 				if compact {
@@ -2060,6 +2071,39 @@ func init() {
 	gitlabSnippetCreateCmd.Flags().StringP("description", "d", "", "Snippet description")
 	gitlabSnippetCreateCmd.Flags().StringP("visibility", "v", "private", "Visibility: public, internal, private")
 	gitlabSnippetCreateCmd.MarkFlagRequired("file")
+
+	// file subcommands
+	gitlabCmd.AddCommand(gitlabFileCmd)
+	gitlabFileCmd.AddCommand(gitlabFileShowCmd)
+	gitlabFileCmd.AddCommand(gitlabFileMetaCmd)
+	gitlabFileCmd.AddCommand(gitlabFileBlameCmd)
+
+	gitlabFileShowCmd.Flags().String("ref", "", "Branch, tag, or commit SHA (default: HEAD)")
+	gitlabFileShowCmd.Flags().Bool("compact", false, "Prefix content with a metadata header line")
+
+	gitlabFileMetaCmd.Flags().String("ref", "", "Branch, tag, or commit SHA (default: HEAD)")
+	gitlabFileMetaCmd.Flags().Bool("compact", false, "Compact one-line output")
+
+	gitlabFileBlameCmd.Flags().String("ref", "", "Branch, tag, or commit SHA (default: HEAD)")
+	gitlabFileBlameCmd.Flags().Bool("compact", false, "Hide authored date")
+
+	// tree command
+	gitlabCmd.AddCommand(gitlabTreeCmd)
+	gitlabTreeCmd.Flags().String("ref", "", "Branch, tag, or commit SHA (default: HEAD)")
+	gitlabTreeCmd.Flags().String("path", "", "Subdirectory path to list")
+	gitlabTreeCmd.Flags().BoolP("recursive", "r", false, "Recursively list all files")
+
+	// diff command
+	gitlabCmd.AddCommand(gitlabDiffCmd)
+	gitlabDiffCmd.Flags().Bool("straight", false, "Use two-dot diff (A..B) instead of three-dot (A...B)")
+	gitlabDiffCmd.Flags().String("path", "", "Scope diff to a specific file or directory")
+	gitlabDiffCmd.Flags().Bool("compact", false, "Show file summary only, no diff content")
+
+	// search subcommands
+	gitlabCmd.AddCommand(gitlabSearchCmd)
+	gitlabSearchCmd.AddCommand(gitlabSearchBlobsCmd)
+	gitlabSearchBlobsCmd.Flags().StringP("project", "p", "", "Project path (required)")
+	gitlabSearchBlobsCmd.Flags().Bool("compact", false, "One line per result")
 }
 
 // parseDuration parses a duration string like "30m", "4h", "7d" and returns time.Duration
