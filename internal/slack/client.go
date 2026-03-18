@@ -14,27 +14,24 @@ import (
 
 // Client wraps the Slack API client
 type Client struct {
-	api       *slack.Client
-	userAPI   *slack.Client // For search (requires user token)
-	appToken  string        // For future Socket Mode support
+	api       *slack.Client // bot token — writes, bot-identity reads, and bot-only scopes
+	userAPI   *slack.Client // user token — preferred for all reads; required for search, bookmarks, presence
+	appToken  string        // reserved for future Socket Mode support
 	userToken string
 }
 
-// NewClient creates a new Slack client with the given bot token
-func NewClient(botToken string) (*Client, error) {
-	if botToken == "" {
-		return nil, fmt.Errorf("bot token is required")
+// NewClient creates a new Slack client with the given token.
+// Pass a bot token for write operations; pass a user token for user-identity reads.
+func NewClient(token string) (*Client, error) {
+	if token == "" {
+		return nil, fmt.Errorf("token is required")
 	}
-
-	api := slack.New(botToken)
-
-	return &Client{
-		api: api,
-	}, nil
+	return &Client{api: slack.New(token)}, nil
 }
 
-// NewClientWithUserToken creates a client with both bot and user tokens
-// The user token enables search API access
+// NewClientWithUserToken creates a client with both bot and user tokens.
+// Read operations will prefer the user token (wider channel visibility);
+// write operations use the bot token unless --as user is specified at the CLI layer.
 func NewClientWithUserToken(botToken, userToken string) (*Client, error) {
 	client, err := NewClient(botToken)
 	if err != nil {
@@ -60,6 +57,16 @@ func NewClientWithAppToken(botToken, appToken string) (*Client, error) {
 // HasUserToken returns true if a user token is configured for search
 func (c *Client) HasUserToken() bool {
 	return c.userAPI != nil
+}
+
+// preferredReadAPI returns the user API if available, falling back to the bot API.
+// Used for read operations so that the user's full channel/member visibility is used
+// rather than the (potentially more limited) bot perspective.
+func (c *Client) preferredReadAPI() *slack.Client {
+	if c.userAPI != nil {
+		return c.userAPI
+	}
+	return c.api
 }
 
 // PostMessage sends a message to a channel
@@ -229,9 +236,11 @@ func (c *Client) SetUserPresence(presence string) error {
 	return nil
 }
 
-// GetChannelInfo gets information about a channel
+// GetChannelInfo gets information about a channel.
+// Prefers the user token (sees private channels the bot hasn't joined); falls back to bot.
 func (c *Client) GetChannelInfo(channelID string) (*slack.Channel, error) {
-	channel, err := c.api.GetConversationInfo(&slack.GetConversationInfoInput{
+	api := c.preferredReadAPI()
+	channel, err := api.GetConversationInfo(&slack.GetConversationInfoInput{
 		ChannelID: channelID,
 	})
 	if err != nil {
@@ -240,10 +249,12 @@ func (c *Client) GetChannelInfo(channelID string) (*slack.Channel, error) {
 	return channel, nil
 }
 
-// ListChannels lists channels the bot is a member of
+// ListChannels lists all channels visible to the user (or bot as fallback).
+// Using the user token returns private channels the bot hasn't joined.
 func (c *Client) ListChannels() ([]slack.Channel, error) {
 	var allChannels []slack.Channel
 	cursor := ""
+	api := c.preferredReadAPI()
 
 	for {
 		params := &slack.GetConversationsParameters{
@@ -253,7 +264,7 @@ func (c *Client) ListChannels() ([]slack.Channel, error) {
 			Types:           []string{"public_channel", "private_channel"},
 		}
 
-		channels, nextCursor, err := c.api.GetConversations(params)
+		channels, nextCursor, err := api.GetConversations(params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list channels: %w", err)
 		}
@@ -269,10 +280,12 @@ func (c *Client) ListChannels() ([]slack.Channel, error) {
 	return allChannels, nil
 }
 
-// GetChannelMembers returns all member user IDs for a channel, handling pagination and rate limits
+// GetChannelMembers returns all member user IDs for a channel, handling pagination and rate limits.
+// Prefers the user token; falls back to bot.
 func (c *Client) GetChannelMembers(channelID string) ([]string, error) {
 	var allMembers []string
 	cursor := ""
+	api := c.preferredReadAPI()
 
 	for {
 		params := &slack.GetUsersInConversationParameters{
@@ -281,9 +294,8 @@ func (c *Client) GetChannelMembers(channelID string) ([]string, error) {
 			Limit:     200,
 		}
 
-		members, nextCursor, err := c.api.GetUsersInConversation(params)
+		members, nextCursor, err := api.GetUsersInConversation(params)
 		if err != nil {
-			// Handle rate limiting
 			if rateLimitErr, ok := err.(*slack.RateLimitedError); ok {
 				time.Sleep(rateLimitErr.RetryAfter)
 				continue
@@ -311,9 +323,10 @@ func (c *Client) ListUserGroups() ([]slack.UserGroup, error) {
 	return groups, nil
 }
 
-// ListUsers lists all users in the workspace
+// ListUsers lists all users in the workspace.
+// Prefers the user token; falls back to bot.
 func (c *Client) ListUsers() ([]slack.User, error) {
-	users, err := c.api.GetUsers()
+	users, err := c.preferredReadAPI().GetUsers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
@@ -447,19 +460,19 @@ func extractThreadTS(permalink string) string {
 func (c *Client) GetMentionsInChannels(userID string, channels []string, limit int, since int64) ([]Mention, error) {
 	mentionPattern := fmt.Sprintf("<@%s>", userID)
 	var mentions []Mention
+	api := c.preferredReadAPI()
 
 	for _, channelID := range channels {
 		params := &slack.GetConversationHistoryParameters{
 			ChannelID: channelID,
-			Limit:     100, // Fetch last 100 messages per channel
+			Limit:     100,
 		}
 
-		// Filter by time if specified
 		if since > 0 {
 			params.Oldest = fmt.Sprintf("%d.000000", since)
 		}
 
-		history, err := c.api.GetConversationHistory(params)
+		history, err := api.GetConversationHistory(params)
 		if err != nil {
 			// Skip channels we can't access
 			continue
@@ -467,7 +480,7 @@ func (c *Client) GetMentionsInChannels(userID string, channels []string, limit i
 
 		for _, msg := range history.Messages {
 			if contains(msg.Text, mentionPattern) {
-				permalink, _ := c.api.GetPermalink(&slack.PermalinkParameters{
+				permalink, _ := api.GetPermalink(&slack.PermalinkParameters{
 					Channel: channelID,
 					Ts:      msg.Timestamp,
 				})

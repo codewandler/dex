@@ -37,41 +37,41 @@ const (
 )
 
 // botAndUserScopes are requested for both the bot and user identity.
-// Slack grants them independently per identity — the same name in both
-// scope= and user_scope= is intentional and not a mistake.
-// All --as bot|user operations require matching scopes on both sides.
+// Slack grants them independently — the same name appearing in both scope= and
+// user_scope= is intentional. Any command that supports --as bot|user requires
+// the underlying scope to be present on both sides.
 var botAndUserScopes = []string{
-	"channels:history",
-	"channels:read",
-	"chat:write",      // send, edit, delete
-	"files:write",     // upload
-	"groups:history",
-	"groups:read",
-	"im:read",
-	"im:write",
-	"reactions:read",  // GetReactions (used by both bot and user API paths)
-	"reactions:write", // react
+	"channels:history", // GetConversationHistory — unreads, thread, mentions scan
+	"channels:read",    // GetConversationInfo, GetConversations — index, channel resolution
+	"chat:write",       // PostMessage, UpdateMessage, DeleteMessage — send, edit, delete
+	"files:write",      // UploadFileV2 — upload
+	"groups:history",   // GetConversationHistory on private channels — unreads, thread
+	"groups:read",      // GetConversations(private_channel) — index, private channel resolution
+	"im:read",          // GetConversations(im) — DM channel listing in index
+	"im:write",         // OpenConversation — open DM before sending
+	"reactions:read",   // GetReactions — thread view; userAPI tried first, bot as fallback
+	"reactions:write",  // AddReaction — react
+	"users.profile:read", // GetUsers extended profile fields — user index
+	"users:read",       // GetUsers — user index, mention resolution
 }
 
 // additionalBotScopes are requested only for the bot identity.
 var additionalBotScopes = []string{
-	"app_mentions:read", // reserved: for future Socket Mode / Events API support
-	"channels:join",
-	"chat:write.public",
-	"emoji:read",
-	"usergroups:read",
-	"users.profile:read",
-	"users:read",
+	"app_mentions:read", // reserved: receive @bot mention events via Socket Mode / Events API
+	"channels:join",     // JoinConversation — slack channel join
+	"chat:write.public", // PostMessage to channels the bot hasn't joined (complement to chat:write)
+	"emoji:read",        // GetEmoji — slack emoji (no user-equivalent scope exists in Slack)
+	"usergroups:read",   // GetUserGroups — @group mention resolution (no user-equivalent scope exists)
 }
 
 // additionalUserScopes are requested only for the user identity.
 var additionalUserScopes = []string{
-	"bookmarks:read", // dex slack bookmarks
-	"im:history",
-	"mpim:history",
-	"mpim:read",
-	"search:read",
-	"users:write",
+	"bookmarks:read", // ListBookmarks — slack bookmarks
+	"im:history",     // GetConversationHistory on DMs — unreads
+	"mpim:history",   // GetConversationHistory on group DMs — unreads
+	"mpim:read",      // GetConversations(mpim) — group DM listing in unreads
+	"search:read",    // SearchMessages — slack search, slack mentions (search path)
+	"users:write",    // SetUserPresence — slack presence set
 }
 
 func getBotScopes() []string  { return append(botAndUserScopes, additionalBotScopes...) }
