@@ -1832,7 +1832,7 @@ Examples:
 				}
 			} else if strings.Contains(input, ":") {
 				parts := strings.SplitN(input, ":", 2)
-				channelID = parts[0]
+				channelID = slack.ResolveChannel(parts[0])
 				threadTS = normalizeTimestamp(parts[1])
 			}
 		}
