@@ -41,6 +41,7 @@ var botScopes = []string{
 	"app_mentions:read",
 	"assistant:write",
 	"channels:history",
+	"channels:join",
 	"channels:read",
 	"chat:write",
 	"chat:write.public",
