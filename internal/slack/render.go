@@ -477,3 +477,43 @@ func renderAttachments(attachments []MessageAttachment) string {
 	}
 	return b.String()
 }
+
+// BookmarksResult is the output of `dex slack bookmarks`.
+type BookmarksResult struct {
+	ChannelID   string     `json:"channel_id"`
+	ChannelName string     `json:"channel_name"`
+	Bookmarks   []Bookmark `json:"bookmarks"`
+}
+
+func (r *BookmarksResult) RenderText(mode render.Mode) string {
+	if len(r.Bookmarks) == 0 {
+		return fmt.Sprintf("No bookmarks in %s.\n", r.ChannelName)
+	}
+
+	var b strings.Builder
+	ch := r.ChannelName
+	if ch == "" {
+		ch = r.ChannelID
+	}
+	fmt.Fprintf(&b, "Bookmarks in #%s (%d)\n", ch, len(r.Bookmarks))
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 60))
+
+	for _, bm := range r.Bookmarks {
+		title := bm.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		if mode == render.ModeCompact {
+			fmt.Fprintf(&b, "%-40s %s\n", title, bm.Link)
+		} else {
+			fmt.Fprintf(&b, "%s\n", title)
+			if bm.Link != "" {
+				fmt.Fprintf(&b, "  %s\n", bm.Link)
+			}
+			if bm.Type != "" && bm.Type != "link" {
+				fmt.Fprintf(&b, "  type: %s\n", bm.Type)
+			}
+		}
+	}
+	return b.String()
+}

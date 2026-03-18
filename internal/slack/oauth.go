@@ -36,45 +36,46 @@ const (
 	redirectURI   = "https://localhost:8089/callback"
 )
 
-// Bot scopes (what the bot can do)
-var botScopes = []string{
-	"app_mentions:read",
-	"assistant:write",
+// botAndUserScopes are requested for both the bot and user identity.
+// Slack grants them independently per identity — the same name in both
+// scope= and user_scope= is intentional and not a mistake.
+// All --as bot|user operations require matching scopes on both sides.
+var botAndUserScopes = []string{
 	"channels:history",
-	"channels:join",
 	"channels:read",
-	"chat:write",
-	"chat:write.public",
-	"emoji:read",
-	"files:write",
+	"chat:write",      // send, edit, delete
+	"files:write",     // upload
 	"groups:history",
 	"groups:read",
 	"im:read",
 	"im:write",
-	"reactions:read",
-	"reactions:write",
+	"reactions:read",  // GetReactions (used by both bot and user API paths)
+	"reactions:write", // react
+}
+
+// additionalBotScopes are requested only for the bot identity.
+var additionalBotScopes = []string{
+	"app_mentions:read", // reserved: for future Socket Mode / Events API support
+	"channels:join",
+	"chat:write.public",
+	"emoji:read",
 	"usergroups:read",
 	"users.profile:read",
 	"users:read",
 }
 
-// User scopes (what actions can be performed as the user)
-var userScopes = []string{
-	"bookmarks:read",
-	"channels:history",
-	"channels:read",
-	"channels:write",
-	"groups:history",
-	"groups:read",
-	"groups:write",
+// additionalUserScopes are requested only for the user identity.
+var additionalUserScopes = []string{
+	"bookmarks:read", // dex slack bookmarks
 	"im:history",
-	"im:read",
-	"im:write",
 	"mpim:history",
 	"mpim:read",
 	"search:read",
 	"users:write",
 }
+
+func getBotScopes() []string  { return append(botAndUserScopes, additionalBotScopes...) }
+func getUserScopes() []string { return append(botAndUserScopes, additionalUserScopes...) }
 
 // OAuthFlow handles Slack OAuth authentication
 type OAuthFlow struct {
@@ -90,8 +91,8 @@ func NewOAuthFlow(cfg *config.Config) *OAuthFlow {
 func (o *OAuthFlow) GetAuthURL(state string) string {
 	params := url.Values{
 		"client_id":    {o.config.Slack.ClientID},
-		"scope":        {strings.Join(botScopes, ",")},
-		"user_scope":   {strings.Join(userScopes, ",")},
+		"scope":        {strings.Join(getBotScopes(), ",")},
+		"user_scope":   {strings.Join(getUserScopes(), ",")},
 		"redirect_uri": {redirectURI},
 		"state":        {state},
 	}

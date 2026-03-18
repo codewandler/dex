@@ -533,6 +533,39 @@ func (c *Client) AddReaction(channelID, timestamp, emoji string) error {
 	return nil
 }
 
+// Bookmark represents a single bookmark in a Slack channel.
+type Bookmark struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Link      string `json:"link"`
+	Type      string `json:"type"`
+	Emoji     string `json:"emoji,omitempty"`
+	ChannelID string `json:"channel_id"`
+}
+
+// GetBookmarks returns all bookmarks for a channel. Requires user token with bookmarks:read scope.
+func (c *Client) GetBookmarks(channelID string) ([]Bookmark, error) {
+	if c.userAPI == nil {
+		return nil, fmt.Errorf("user token required for bookmarks (set SLACK_USER_TOKEN)")
+	}
+	bms, err := c.userAPI.ListBookmarks(channelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bookmarks: %w", err)
+	}
+	out := make([]Bookmark, 0, len(bms))
+	for _, b := range bms {
+		out = append(out, Bookmark{
+			ID:        b.ID,
+			Title:     b.Title,
+			Link:      b.Link,
+			Type:      b.Type,
+			Emoji:     b.Emoji,
+			ChannelID: b.ChannelID,
+		})
+	}
+	return out, nil
+}
+
 // ListEmoji returns all custom emoji for the workspace (requires emoji:read scope).
 // The returned map is name -> URL (or "alias:<other_name>" for aliases).
 func (c *Client) ListEmoji() (map[string]string, error) {

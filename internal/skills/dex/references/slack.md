@@ -320,3 +320,18 @@ Timestamps can be in Slack URL format (`p1769777574026209`) or API format (`1769
 - `status` — mention classification: `Pending`, `Acked`, or `Replied`
 - `messages[]` — array of messages with `index`, `label` (`parent`/`reply`), `timestamp`, `username`, `user_id`, `bot_id`, `is_me`, `text`, `attachments[]`
 - `my_user_ids`, `my_bot_ids` — only present when `--debug` is set
+
+## Bookmarks
+```bash
+dex slack bookmarks dev-team
+dex slack bookmarks dev-team -o compact
+dex slack bookmarks dev-team -o json
+```
+
+**Flags:**
+- `--compact/-c` — One line per bookmark (title + URL)
+
+Notes:
+- Reads the bookmarks bar at the top of a channel (pinned links, docs, dashboards).
+- Requires a **user token** with `bookmarks:read` scope. Re-run `dex slack auth` if needed.
+- `-o json` fields: `channel_id`, `channel_name`, `bookmarks[]` with `id`, `title`, `link`, `type`, `emoji`

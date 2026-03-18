@@ -2143,6 +2143,66 @@ func completeSlackChannelNames(cmd *cobra.Command, args []string, toComplete str
 
 
 
+var slackBookmarksCmd = &cobra.Command{
+	Use:   "bookmarks <channel>",
+	Short: "List bookmarks for a channel",
+	Long: `List the bookmarks pinned to a Slack channel (the links bar at the top of a channel).
+
+Requires a user token with the bookmarks:read scope. Re-run 'dex slack auth' if needed.
+
+Examples:
+  dex slack bookmarks dev-team
+  dex slack bookmarks dev-team -o compact
+  dex slack bookmarks dev-team -o json`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeSlackChannelNames,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		channelArg := args[0]
+		compact, _ := cmd.Flags().GetBool("compact")
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			return fmt.Errorf("failed to create Slack client: %w", err)
+		}
+
+		channelID := slack.ResolveChannel(channelArg)
+
+		bookmarks, err := client.GetBookmarks(channelID)
+		if err != nil {
+			return err
+		}
+
+		// Resolve channel name for display
+		channelName := channelArg
+		if idx, err := slack.LoadIndex(); err == nil {
+			if ch := idx.FindChannel(channelID); ch != nil {
+				channelName = ch.Name
+			}
+		}
+
+		result := &slack.BookmarksResult{
+			ChannelID:   channelID,
+			ChannelName: channelName,
+			Bookmarks:   bookmarks,
+		}
+
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(result, mode)
+		return nil
+	},
+}
+
 var slackUploadCmd = &cobra.Command{
 	Use:   "upload <channel|@user> <file>",
 	Short: "Upload a file or image to a channel or DM",
@@ -2255,6 +2315,7 @@ func init() {
 	slackCmd.AddCommand(slackSearchCmd)
 	slackCmd.AddCommand(slackThreadCmd)
 	slackCmd.AddCommand(slackUploadCmd)
+	slackCmd.AddCommand(slackBookmarksCmd)
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 	slackChannelCmd.AddCommand(slackChannelMembersCmd)
@@ -2301,6 +2362,7 @@ func init() {
 
 	slackThreadCmd.Flags().Bool("compact", false, "One-line-per-message condensed view")
 	slackThreadCmd.Flags().Bool("debug", false, "Show identity info and mention classification details")
+	slackBookmarksCmd.Flags().Bool("compact", false, "Compact view (one line per bookmark)")
 
 	slackUploadCmd.Flags().String("title", "", "File title shown above the preview in Slack")
 	slackUploadCmd.Flags().StringP("comment", "m", "", "Initial message text posted alongside the file")

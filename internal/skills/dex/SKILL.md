@@ -131,6 +131,7 @@ dex slack edit <ch> <ts> "msg"        # Edit a message
 dex slack delete <ch> <ts>            # Delete a message
 dex slack react <ch> <ts> <emoji>     # Add reaction (bot or --as user)
 dex slack emoji [--builtin] [--all]   # List available emoji
+dex slack bookmarks <channel>         # List bookmarks (pinned links bar) for a channel
 dex slack unreads [--since 14d]       # Browse unread messages
 dex slack mark-read <ch> <ts|latest>  # Move read cursor
 dex slack mentions [--unhandled]      # My mentions (pending/acked/replied)
