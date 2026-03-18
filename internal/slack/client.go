@@ -522,21 +522,11 @@ func (c *Client) GetBotID() (string, error) {
 	return resp.BotID, nil
 }
 
-// AddReaction adds an emoji reaction to a message.
-// Uses the bot token by default. Pass useUserToken=true to react as the authenticated user.
-func (c *Client) AddReaction(channelID, timestamp, emoji string, useUserToken bool) error {
+// AddReaction adds an emoji reaction to a message using c.api.
+// The caller selects the identity by constructing the client with the appropriate token
+// (bot or user) via slackClientFor in the CLI layer.
+func (c *Client) AddReaction(channelID, timestamp, emoji string) error {
 	item := slack.NewRefToMessage(channelID, timestamp)
-
-	if useUserToken {
-		if c.userAPI == nil {
-			return fmt.Errorf("user token not configured")
-		}
-		if err := c.userAPI.AddReaction(emoji, item); err != nil {
-			return fmt.Errorf("failed to add reaction: %w", err)
-		}
-		return nil
-	}
-
 	if err := c.api.AddReaction(emoji, item); err != nil {
 		return fmt.Errorf("failed to add reaction: %w", err)
 	}

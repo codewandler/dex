@@ -22,6 +22,23 @@ var slackCmd = &cobra.Command{
 	Long:  `Commands for interacting with Slack.`,
 }
 
+// slackClientFor returns a Slack client authenticated with the token indicated by the
+// --as flag value ("bot" or "user"). It validates the flag and checks that the
+// required token is configured. This is the single place that maps --as → token.
+func slackClientFor(cfg *config.Config, as string) (*slack.Client, error) {
+	switch as {
+	case "user":
+		if cfg.Slack.UserToken == "" {
+			return nil, fmt.Errorf("user token required for --as=user (set SLACK_USER_TOKEN)")
+		}
+		return slack.NewClient(cfg.Slack.UserToken)
+	case "bot":
+		return slack.NewClient(cfg.Slack.BotToken)
+	default:
+		return nil, fmt.Errorf("invalid --as value: %q (must be 'bot' or 'user')", as)
+	}
+}
+
 var slackAuthCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Authenticate with Slack (opens browser)",
@@ -409,25 +426,9 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Validate --as flag
-		if sendAs != "bot" && sendAs != "user" {
-			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
-			os.Exit(1)
-		}
-
-		// Create client with appropriate token
-		var client *slack.Client
-		if sendAs == "user" {
-			if cfg.Slack.UserToken == "" {
-				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
-				os.Exit(1)
-			}
-			client, err = slack.NewClient(cfg.Slack.UserToken)
-		} else {
-			client, err = slack.NewClient(cfg.Slack.BotToken)
-		}
+		client, err := slackClientFor(cfg, sendAs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
@@ -502,23 +503,9 @@ Examples:
 			os.Exit(1)
 		}
 
-		if sendAs != "bot" && sendAs != "user" {
-			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
-			os.Exit(1)
-		}
-
-		var client *slack.Client
-		if sendAs == "user" {
-			if cfg.Slack.UserToken == "" {
-				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
-				os.Exit(1)
-			}
-			client, err = slack.NewClient(cfg.Slack.UserToken)
-		} else {
-			client, err = slack.NewClient(cfg.Slack.BotToken)
-		}
+		client, err := slackClientFor(cfg, sendAs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
@@ -566,23 +553,9 @@ Examples:
 			os.Exit(1)
 		}
 
-		if sendAs != "bot" && sendAs != "user" {
-			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", sendAs)
-			os.Exit(1)
-		}
-
-		var client *slack.Client
-		if sendAs == "user" {
-			if cfg.Slack.UserToken == "" {
-				fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
-				os.Exit(1)
-			}
-			client, err = slack.NewClient(cfg.Slack.UserToken)
-		} else {
-			client, err = slack.NewClient(cfg.Slack.BotToken)
-		}
+		client, err := slackClientFor(cfg, sendAs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
@@ -744,26 +717,15 @@ Examples:
 			os.Exit(1)
 		}
 
-		if reactAs != "bot" && reactAs != "user" {
-			fmt.Fprintf(os.Stderr, "Invalid --as value: %q (must be 'bot' or 'user')\n", reactAs)
-			os.Exit(1)
-		}
-
-		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		client, err := slackClientFor(cfg, reactAs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
 		channelID := slack.ResolveChannel(targetArg)
 
-		useUserToken := reactAs == "user"
-		if useUserToken && cfg.Slack.UserToken == "" {
-			fmt.Fprintf(os.Stderr, "User token required for --as=user (set SLACK_USER_TOKEN)\n")
-			os.Exit(1)
-		}
-
-		if err := client.AddReaction(channelID, timestamp, emoji, useUserToken); err != nil {
+		if err := client.AddReaction(channelID, timestamp, emoji); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to add reaction: %v\n", err)
 			os.Exit(1)
 		}
@@ -2189,13 +2151,15 @@ var slackUploadCmd = &cobra.Command{
 The channel can be a name (resolved via index) or a raw channel ID.
 Use @username to send as a DM.
 
-Requires the bot token to have the files:write scope.
+Use --as to choose the sender identity (bot or user). Files uploaded as the user
+appear as coming from your real Slack account rather than the bot app.
 
 Examples:
   dex slack upload dev-team screenshot.png
   dex slack upload dev-team graph.png --title "Weekly metrics" --comment "Here's the chart"
   dex slack upload dev-team report.pdf --thread 1770257991.873399
-  dex slack upload @john.doe image.png --comment "Check this out"`,
+  dex slack upload @john.doe image.png --comment "Check this out"
+  dex slack upload dev-team graph.png --as user`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completeSlackTargets,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -2205,6 +2169,7 @@ Examples:
 		comment, _ := cmd.Flags().GetString("comment")
 		threadTS, _ := cmd.Flags().GetString("thread")
 		filename, _ := cmd.Flags().GetString("filename")
+		uploadAs, _ := cmd.Flags().GetString("as")
 
 		cfg, err := config.Load()
 		if err != nil {
@@ -2216,9 +2181,9 @@ Examples:
 			os.Exit(1)
 		}
 
-		client, err := slack.NewClient(cfg.Slack.BotToken)
+		client, err := slackClientFor(cfg, uploadAs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
@@ -2297,14 +2262,14 @@ func init() {
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")
-	slackSendCmd.Flags().String("as", "bot", "Send as 'bot' (default) or 'user'")
-	slackEditCmd.Flags().String("as", "bot", "Edit as 'bot' (default) or 'user'")
-	slackDeleteCmd.Flags().String("as", "bot", "Delete as 'bot' (default) or 'user'")
+	// --as flag: unified identity selector for all write operations
+	for _, cmd := range []*cobra.Command{slackSendCmd, slackEditCmd, slackDeleteCmd, slackReactCmd, slackUploadCmd} {
+		cmd.Flags().String("as", "bot", "Act as 'bot' (default) or 'user' (requires SLACK_USER_TOKEN)")
+	}
 	slackEmojiCmd.Flags().StringP("filter", "f", "", "Filter emoji by name substring")
 	slackEmojiCmd.Flags().Bool("aliases", false, "Include alias entries in output")
 	slackEmojiCmd.Flags().Bool("builtin", false, "Show built-in Unicode emoji only (no API call needed)")
 	slackEmojiCmd.Flags().Bool("all", false, "Show all emoji: built-in + custom workspace emoji")
-	slackReactCmd.Flags().String("as", "bot", "React as 'bot' (default) or 'user'")
 	slackUnreadsCmd.Flags().StringP("channel", "C", "", "Limit to a specific channel (name or ID)")
 	slackUnreadsCmd.Flags().IntP("limit", "l", 100, "Max messages to fetch per channel")
 	slackUnreadsCmd.Flags().StringP("since", "s", "14d", "How far back to look for unreads (e.g. 1d, 7d, 14d, 1h)")
