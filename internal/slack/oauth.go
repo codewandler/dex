@@ -61,12 +61,14 @@ var additionalBotScopes = []string{
 	"channels:join",     // JoinConversation — slack channel join
 	"chat:write.public", // PostMessage to channels the bot hasn't joined (complement to chat:write)
 	"emoji:read",        // GetEmoji — slack emoji (no user-equivalent scope exists in Slack)
+	"files:read",        // ListFiles, GetFileInfo — slack file list/info
 	"usergroups:read",   // GetUserGroups — @group mention resolution (no user-equivalent scope exists)
 }
 
 // additionalUserScopes are requested only for the user identity.
 var additionalUserScopes = []string{
 	"bookmarks:read", // ListBookmarks — slack bookmarks
+	"files:read",     // ListFiles, GetFileInfo — slack file list/info
 	"im:history",     // GetConversationHistory on DMs — unreads
 	"mpim:history",   // GetConversationHistory on group DMs — unreads
 	"mpim:read",      // GetConversations(mpim) — group DM listing in unreads

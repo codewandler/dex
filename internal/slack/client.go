@@ -154,7 +154,154 @@ type UploadFileParams struct {
 // UploadFile uploads a local file to a Slack channel or thread.
 // It uses the modern three-step files.getUploadURLExternal → upload → completeUpload
 // flow (UploadFileV2) which is required as of March 2025.
-// Requires the bot token to have the files:write scope.
+// Requires files:write scope on the token being used.
+
+// FileInfo holds metadata about a Slack file.
+type FileInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Mimetype    string `json:"mimetype"`
+	Filetype    string `json:"filetype"`
+	Size        int    `json:"size"`
+	Created     int64  `json:"created"`
+	Username    string `json:"username"`
+	Permalink   string `json:"permalink"`
+	URLPrivate  string `json:"url_private"`
+	Shares      int    `json:"shares"`
+}
+
+// ListFiles lists files uploaded by the token's identity, optionally filtered by channel.
+// Uses preferredReadAPI so the user token is preferred if available.
+func (c *Client) ListFiles(channelID string, count int) ([]FileInfo, error) {
+	params := slack.ListFilesParameters{
+		Limit: count,
+	}
+	if channelID != "" {
+		params.Channel = channelID
+	}
+	files, _, err := c.preferredReadAPI().ListFiles(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
+	out := make([]FileInfo, 0, len(files))
+	for _, f := range files {
+		shares := 0
+		if f.Shares.Public != nil {
+			for _, s := range f.Shares.Public {
+				shares += len(s)
+			}
+		}
+		if f.Shares.Private != nil {
+			for _, s := range f.Shares.Private {
+				shares += len(s)
+			}
+		}
+		out = append(out, FileInfo{
+			ID:         f.ID,
+			Name:       f.Name,
+			Title:      f.Title,
+			Mimetype:   f.Mimetype,
+			Filetype:   f.Filetype,
+			Size:       f.Size,
+			Created:    int64(f.Created),
+			Username:   f.User,
+			Permalink:  f.Permalink,
+			URLPrivate: f.URLPrivate,
+			Shares:     shares,
+		})
+	}
+	return out, nil
+}
+
+// GetFileInfo returns detailed metadata for a single file.
+func (c *Client) GetFileInfo(fileID string) (*FileInfo, error) {
+	f, _, _, err := c.preferredReadAPI().GetFileInfo(fileID, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+	shares := 0
+	if f.Shares.Public != nil {
+		for _, s := range f.Shares.Public {
+			shares += len(s)
+		}
+	}
+	if f.Shares.Private != nil {
+		for _, s := range f.Shares.Private {
+			shares += len(s)
+		}
+	}
+	return &FileInfo{
+		ID:         f.ID,
+		Name:       f.Name,
+		Title:      f.Title,
+		Mimetype:   f.Mimetype,
+		Filetype:   f.Filetype,
+		Size:       f.Size,
+		Created:    int64(f.Created),
+		Username:   f.User,
+		Permalink:  f.Permalink,
+		URLPrivate: f.URLPrivate,
+		Shares:     shares,
+	}, nil
+}
+
+// DeleteFile deletes a file. The caller must use the token that owns the file —
+// bot files require the bot token, user-uploaded files require the user token.
+func (c *Client) DeleteFile(fileID string) error {
+	if err := c.api.DeleteFile(fileID); err != nil {
+		return fmt.Errorf("failed to delete file: %w", err)
+	}
+	return nil
+}
+
+// DownloadFile downloads a Slack file to a local path.
+// Uses preferredReadAPI for the auth token. The output path is created if it doesn't exist.
+// If outPath is a directory, the file's original name is used as the filename.
+func (c *Client) DownloadFile(fileID, outPath string) (string, error) {
+	fi, err := c.GetFileInfo(fileID)
+	if err != nil {
+		return "", err
+	}
+	if fi.Permalink == "" {
+		return "", fmt.Errorf("file has no download URL")
+	}
+
+	// Re-fetch the raw file to get the URLPrivateDownload
+	raw, _, _, err := c.preferredReadAPI().GetFileInfo(fileID, 0, 0)
+	if err != nil {
+		return "", fmt.Errorf("failed to get file download URL: %w", err)
+	}
+	downloadURL := raw.URLPrivateDownload
+	if downloadURL == "" {
+		downloadURL = raw.URLPrivate
+	}
+	if downloadURL == "" {
+		return "", fmt.Errorf("no private download URL available for file %s", fileID)
+	}
+
+	// Resolve output path
+	dest := outPath
+	if dest == "" {
+		dest = fi.Name
+	} else if info, err := os.Stat(dest); err == nil && info.IsDir() {
+		dest = filepath.Join(dest, fi.Name)
+	}
+
+	out, err := os.Create(dest)
+	if err != nil {
+		return "", fmt.Errorf("cannot create output file %q: %w", dest, err)
+	}
+	defer out.Close()
+
+	if err := c.preferredReadAPI().GetFile(downloadURL, out); err != nil {
+		os.Remove(dest)
+		return "", fmt.Errorf("failed to download file: %w", err)
+	}
+
+	return dest, nil
+}
+
 func (c *Client) UploadFile(params UploadFileParams) (*slack.FileSummary, error) {
 	f, err := os.Open(params.FilePath)
 	if err != nil {

@@ -478,6 +478,80 @@ func renderAttachments(attachments []MessageAttachment) string {
 	return b.String()
 }
 
+// FileListResult is the output of `dex slack file list`.
+type FileListResult struct {
+	Files []FileInfo `json:"files"`
+}
+
+func (r *FileListResult) RenderText(mode render.Mode) string {
+	if len(r.Files) == 0 {
+		return "No files found.\n"
+	}
+	var b strings.Builder
+	if mode == render.ModeCompact {
+		fmt.Fprintf(&b, "%-20s  %-30s  %8s  %s\n", "ID", "NAME", "SIZE", "CREATED")
+		fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 80))
+		for _, f := range r.Files {
+			name := f.Name
+			if len(name) > 30 {
+				name = name[:27] + "..."
+			}
+			fmt.Fprintf(&b, "%-20s  %-30s  %8s  %s\n",
+				f.ID, name, formatFileSize(f.Size),
+				time.Unix(f.Created, 0).Format("2006-01-02 15:04"))
+		}
+	} else {
+		for _, f := range r.Files {
+			fmt.Fprintf(&b, "%s  %s  (%s, %s)\n",
+				f.ID, f.Name, formatFileSize(f.Size),
+				time.Unix(f.Created, 0).Format("2006-01-02 15:04"))
+			if f.Permalink != "" {
+				fmt.Fprintf(&b, "  %s\n", f.Permalink)
+			}
+		}
+	}
+	return b.String()
+}
+
+// FileInfoResult is the output of `dex slack file info`.
+type FileInfoResult struct {
+	File FileInfo `json:"file"`
+}
+
+func (r *FileInfoResult) RenderText(_ render.Mode) string {
+	f := r.File
+	var b strings.Builder
+	fmt.Fprintf(&b, "ID:        %s\n", f.ID)
+	fmt.Fprintf(&b, "Name:      %s\n", f.Name)
+	if f.Title != "" && f.Title != f.Name {
+		fmt.Fprintf(&b, "Title:     %s\n", f.Title)
+	}
+	fmt.Fprintf(&b, "Type:      %s (%s)\n", f.Filetype, f.Mimetype)
+	fmt.Fprintf(&b, "Size:      %s\n", formatFileSize(f.Size))
+	fmt.Fprintf(&b, "Uploaded:  %s\n", time.Unix(f.Created, 0).Format("2006-01-02 15:04:05"))
+	if f.Username != "" {
+		fmt.Fprintf(&b, "By:        %s\n", f.Username)
+	}
+	if f.Shares > 0 {
+		fmt.Fprintf(&b, "Shares:    %d channel(s)\n", f.Shares)
+	}
+	if f.Permalink != "" {
+		fmt.Fprintf(&b, "Link:      %s\n", f.Permalink)
+	}
+	return b.String()
+}
+
+func formatFileSize(bytes int) string {
+	switch {
+	case bytes >= 1024*1024:
+		return fmt.Sprintf("%.1fMB", float64(bytes)/1024/1024)
+	case bytes >= 1024:
+		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
+	default:
+		return fmt.Sprintf("%dB", bytes)
+	}
+}
+
 // BookmarksResult is the output of `dex slack bookmarks`.
 type BookmarksResult struct {
 	ChannelID   string     `json:"channel_id"`

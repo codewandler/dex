@@ -2316,6 +2316,11 @@ func init() {
 	slackCmd.AddCommand(slackThreadCmd)
 	slackCmd.AddCommand(slackUploadCmd)
 	slackCmd.AddCommand(slackBookmarksCmd)
+	slackCmd.AddCommand(slackFileCmd)
+	slackFileCmd.AddCommand(slackFileListCmd)
+	slackFileCmd.AddCommand(slackFileInfoCmd)
+	slackFileCmd.AddCommand(slackFileDownloadCmd)
+	slackFileCmd.AddCommand(slackFileDeleteCmd)
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 	slackChannelCmd.AddCommand(slackChannelMembersCmd)
@@ -2363,6 +2368,7 @@ func init() {
 	slackThreadCmd.Flags().Bool("compact", false, "One-line-per-message condensed view")
 	slackThreadCmd.Flags().Bool("debug", false, "Show identity info and mention classification details")
 	slackBookmarksCmd.Flags().Bool("compact", false, "Compact view (one line per bookmark)")
+	initSlackFileFlags()
 
 	slackUploadCmd.Flags().String("title", "", "File title shown above the preview in Slack")
 	slackUploadCmd.Flags().StringP("comment", "m", "", "Initial message text posted alongside the file")
