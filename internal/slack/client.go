@@ -3,6 +3,7 @@ package slack
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -115,6 +116,59 @@ func (c *Client) ReplyToThread(channelID, threadTS, text string) (string, error)
 		return "", fmt.Errorf("failed to reply to thread: %w", err)
 	}
 	return timestamp, nil
+}
+
+// UploadFileParams holds the parameters for uploading a file to Slack.
+type UploadFileParams struct {
+	// FilePath is the local path to the file to upload. Required.
+	FilePath string
+	// Filename is the display name shown in Slack. Defaults to the base name of FilePath.
+	Filename string
+	// Title is the optional file title shown above the preview in Slack.
+	Title string
+	// Comment is the initial message text posted alongside the file.
+	Comment string
+	// ChannelID is the resolved Slack channel or DM ID. Required.
+	ChannelID string
+	// ThreadTimestamp, when non-empty, posts the file as a reply to that thread.
+	ThreadTimestamp string
+}
+
+// UploadFile uploads a local file to a Slack channel or thread.
+// It uses the modern three-step files.getUploadURLExternal → upload → completeUpload
+// flow (UploadFileV2) which is required as of March 2025.
+// Requires the bot token to have the files:write scope.
+func (c *Client) UploadFile(params UploadFileParams) (*slack.FileSummary, error) {
+	f, err := os.Open(params.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open file %q: %w", params.FilePath, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("cannot stat file %q: %w", params.FilePath, err)
+	}
+
+	filename := params.Filename
+	if filename == "" {
+		filename = filepath.Base(params.FilePath)
+	}
+
+	summary, err := c.api.UploadFileV2(slack.UploadFileV2Parameters{
+		Reader:          f,
+		FileSize:        int(info.Size()),
+		Filename:        filename,
+		Title:           params.Title,
+		InitialComment:  params.Comment,
+		Channel:         params.ChannelID,
+		ThreadTimestamp: params.ThreadTimestamp,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	return summary, nil
 }
 
 // TestAuth tests the authentication and returns bot info

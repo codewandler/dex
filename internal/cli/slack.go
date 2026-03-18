@@ -2131,6 +2131,82 @@ func completeSlackChannelNames(cmd *cobra.Command, args []string, toComplete str
 
 
 
+var slackUploadCmd = &cobra.Command{
+	Use:   "upload <channel|@user> <file>",
+	Short: "Upload a file or image to a channel or DM",
+	Long: `Upload a local file or image to a Slack channel or DM.
+
+The channel can be a name (resolved via index) or a raw channel ID.
+Use @username to send as a DM.
+
+Requires the bot token to have the files:write scope.
+
+Examples:
+  dex slack upload dev-team screenshot.png
+  dex slack upload dev-team graph.png --title "Weekly metrics" --comment "Here's the chart"
+  dex slack upload dev-team report.pdf --thread 1770257991.873399
+  dex slack upload @john.doe image.png --comment "Check this out"`,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeSlackTargets,
+	Run: func(cmd *cobra.Command, args []string) {
+		targetArg := args[0]
+		filePath := args[1]
+		title, _ := cmd.Flags().GetString("title")
+		comment, _ := cmd.Flags().GetString("comment")
+		threadTS, _ := cmd.Flags().GetString("thread")
+		filename, _ := cmd.Flags().GetString("filename")
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClient(cfg.Slack.BotToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		var channelID string
+		if strings.HasPrefix(targetArg, "@") {
+			username := strings.TrimPrefix(targetArg, "@")
+			userID := slack.ResolveUser(username)
+			dmChannelID, err := client.OpenConversation(userID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to open DM with user: %v\n", err)
+				os.Exit(1)
+			}
+			channelID = dmChannelID
+		} else {
+			channelID = slack.ResolveChannel(targetArg)
+		}
+
+		if threadTS != "" {
+			threadTS = normalizeTimestamp(threadTS)
+		}
+
+		summary, err := client.UploadFile(slack.UploadFileParams{
+			FilePath:        filePath,
+			Filename:        filename,
+			Title:           title,
+			Comment:         comment,
+			ChannelID:       channelID,
+			ThreadTimestamp: threadTS,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to upload file: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("File uploaded (id: %s, name: %s)\n", summary.ID, summary.Title)
+	},
+}
+
 // normalizeTimestamp converts Slack URL timestamp format (p1769777574026209) to API format (1769777574.026209)
 func normalizeTimestamp(ts string) string {
 	// Remove 'p' prefix if present (URL format)
@@ -2163,6 +2239,7 @@ func init() {
 	slackCmd.AddCommand(slackMentionsCmd)
 	slackCmd.AddCommand(slackSearchCmd)
 	slackCmd.AddCommand(slackThreadCmd)
+	slackCmd.AddCommand(slackUploadCmd)
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 	slackChannelCmd.AddCommand(slackChannelMembersCmd)
@@ -2208,4 +2285,9 @@ func init() {
 
 	slackThreadCmd.Flags().Bool("compact", false, "One-line-per-message condensed view")
 	slackThreadCmd.Flags().Bool("debug", false, "Show identity info and mention classification details")
+
+	slackUploadCmd.Flags().String("title", "", "File title shown above the preview in Slack")
+	slackUploadCmd.Flags().StringP("comment", "m", "", "Initial message text posted alongside the file")
+	slackUploadCmd.Flags().StringP("thread", "t", "", "Thread timestamp to upload into (reply to thread)")
+	slackUploadCmd.Flags().String("filename", "", "Override the display filename (defaults to the local file's base name)")
 }

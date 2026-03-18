@@ -96,6 +96,31 @@ dex slack send dev-team "Hey @john.doe check #general"
 ```
 Partial names like `@john` or `#dev` won't resolve - use the full handle like `@john.doe` and exact channel name like `#dev-team`.
 
+## Upload File
+```bash
+# Upload a file or image to a channel
+dex slack upload dev-team screenshot.png
+dex slack upload dev-team graph.png --title "Weekly metrics" --comment "Here's the chart"
+dex slack upload dev-team report.pdf --thread 1770257991.873399
+dex slack upload @john.doe image.png --comment "Check this out"
+
+# Override the display name shown in Slack
+dex slack upload dev-team /tmp/abc123.png --filename results.png
+```
+
+**Flags:**
+- `--title <text>` — File title shown above the preview in Slack
+- `--comment/-m <text>` — Initial message text posted alongside the file
+- `--thread/-t <ts>` — Thread timestamp to upload into (reply to thread)
+- `--filename <name>` — Override the display filename (defaults to the local file's base name)
+
+Notes:
+- Requires **`files:write`** scope on the bot token. Re-run `dex slack auth` after adding the scope in your Slack app settings.
+- Uses the modern `files.getUploadURLExternal` v2 API (3-step upload). Supports any file type Slack accepts (images, PDFs, code snippets, etc.).
+- Slack auto-detects MIME type from the filename extension — no explicit content-type needed.
+- To upload into a thread, pass the thread root timestamp with `--thread`.
+- The bot token is used; `--as user` is not supported for uploads.
+
 ## List Emoji
 ```bash
 dex slack emoji                        # List custom (workspace-uploaded) emoji only
