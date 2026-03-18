@@ -115,6 +115,9 @@ dex slack upload @john.doe image.png --comment "Check this out"
 
 # Override the display name shown in Slack
 dex slack upload dev-team /tmp/abc123.png --filename results.png
+
+# Upload as user instead of bot (file appears from your real Slack account)
+dex slack upload dev-team graph.png --as user
 ```
 
 **Flags:**
@@ -122,13 +125,14 @@ dex slack upload dev-team /tmp/abc123.png --filename results.png
 - `--comment/-m <text>` — Initial message text posted alongside the file
 - `--thread/-t <ts>` — Thread timestamp to upload into (reply to thread)
 - `--filename <name>` — Override the display filename (defaults to the local file's base name)
+- `--as bot|user` — Upload as `bot` (default) or `user` (requires `SLACK_USER_TOKEN`)
 
 Notes:
-- Requires **`files:write`** scope on the bot token. Re-run `dex slack auth` after adding the scope in your Slack app settings.
+- Requires **`files:write`** scope on the bot or user token. Re-run `dex slack auth` after adding the scope in your Slack app settings.
 - Uses the modern `files.getUploadURLExternal` v2 API (3-step upload). Supports any file type Slack accepts (images, PDFs, code snippets, etc.).
 - Slack auto-detects MIME type from the filename extension — no explicit content-type needed.
 - To upload into a thread, pass the thread root timestamp with `--thread`.
-- The bot token is used; `--as user` is not supported for uploads.
+- Use `--as user` to upload as yourself — the file will appear as sent by your real account rather than the bot app.
 
 ## List Emoji
 ```bash

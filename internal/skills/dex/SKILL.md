@@ -126,7 +126,7 @@ See full reference: [references/slack.md](references/slack.md)
 ```bash
 dex slack send <channel> "msg"        # Send message (bot or --as user)
 dex slack send <ch> "msg" -t <ts>     # Reply to thread
-dex slack upload <ch> <file>          # Upload file/image (--title, --comment/-m, --thread/-t)
+dex slack upload <ch> <file>          # Upload file/image (--as bot|user, --title, --comment/-m, --thread/-t)
 dex slack edit <ch> <ts> "msg"        # Edit a message
 dex slack delete <ch> <ts>            # Delete a message
 dex slack react <ch> <ts> <emoji>     # Add reaction (bot or --as user)
