@@ -2069,6 +2069,56 @@ Examples:
 	},
 }
 
+var slackChannelJoinCmd = &cobra.Command{
+	Use:   "join <channel>",
+	Short: "Join a public Slack channel",
+	Long: `Join a public Slack channel as the bot.
+
+The channel can be specified by name (requires index) or ID.
+Only public channels are supported — joining private channels requires an invite.
+
+Requires the channels:join bot token scope. If you get a missing_scope error,
+add the scope to your Slack app and re-run 'dex slack auth'.
+
+Examples:
+  dex slack channel join dev-team
+  dex slack channel join C01234567`,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeSlackChannelNames,
+	Run: func(cmd *cobra.Command, args []string) {
+		channelArg := args[0]
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+
+		client, err := slack.NewClient(cfg.Slack.BotToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Slack client: %v\n", err)
+			os.Exit(1)
+		}
+
+		channelID := slack.ResolveChannel(channelArg)
+		if channelID == "" {
+			// Fall back to treating the argument as a raw channel ID
+			channelID = channelArg
+		}
+
+		if err := client.JoinChannel(channelID); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to join channel: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Joined #%s\n", channelArg)
+	},
+}
+
 // completeSlackEmojiNames provides shell completion for emoji names (custom + built-in)
 func completeSlackEmojiNames(toComplete string) []string {
 	toLower := strings.ToLower(toComplete)
@@ -2243,6 +2293,7 @@ func init() {
 
 	slackPresenceCmd.AddCommand(slackPresenceSetCmd)
 	slackChannelCmd.AddCommand(slackChannelMembersCmd)
+	slackChannelCmd.AddCommand(slackChannelJoinCmd)
 
 	slackIndexCmd.Flags().BoolP("force", "f", false, "Force re-index even if cache is fresh")
 	slackSendCmd.Flags().StringP("thread", "t", "", "Thread timestamp to reply to")

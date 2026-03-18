@@ -74,7 +74,7 @@ Before running `dex setup`, create the necessary OAuth apps/tokens:
 
 1. Create a Slack app at https://api.slack.com/apps
 2. Add OAuth redirect URL: **`https://localhost:8089/callback`** (HTTPS, not HTTP)
-3. Add Bot Token Scopes: `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `users:read`
+3. Add Bot Token Scopes: `channels:history`, `channels:join`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `users:read`
 4. Add User Token Scopes: `search:read`, `users:read`
 5. Run `dex setup` and enter your Client ID and Secret
 

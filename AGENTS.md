@@ -168,7 +168,7 @@ Token stored in `~/.dex/config.json` under `confluence.token`.
 
 1. Create Slack app at https://api.slack.com/apps
 2. Add OAuth redirect URL: `https://localhost:8089/callback`
-3. Add **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `chat:write.public`, `emoji:read`, `files:write`, `groups:history`, `groups:read`, `im:read`, `im:write`, `reactions:read`, `reactions:write`, `usergroups:read`, `users.profile:read`, `users:read`
+3. Add **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `channels:join`, `channels:read`, `chat:write`, `chat:write.public`, `emoji:read`, `files:write`, `groups:history`, `groups:read`, `im:read`, `im:write`, `reactions:read`, `reactions:write`, `usergroups:read`, `users.profile:read`, `users:read`
 4. Add **User Token Scopes**: `bookmarks:read`, `channels:history`, `channels:read`, `channels:write`, `groups:history`, `groups:read`, `groups:write`, `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`, `search:read`, `users:write`
 5. Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` (env or config file)
 6. Run `dex slack auth`

@@ -57,6 +57,15 @@ dex slack channel members general     # List all members of #general
 Shows member user IDs resolved to usernames from the index.
 Requires `dex slack index` to have been run (member data is fetched for public non-archived channels).
 
+## Join Channel
+```bash
+dex slack channel join dev-team       # Join a public channel (by name or ID)
+dex slack channel join C01234567      # Join by channel ID
+```
+
+Joins the channel as the bot. Only **public channels** are supported — private channels require an invite.
+Requires the `channels:join` bot token scope. If you get a `missing_scope` error, add the scope to your Slack app and re-run `dex slack auth`.
+
 ## Send Message
 ```bash
 # To channel (by name or ID)

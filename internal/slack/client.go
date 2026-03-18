@@ -105,6 +105,16 @@ func (c *Client) DeleteMessage(channelID, timestamp string) error {
 	return nil
 }
 
+// JoinChannel joins a public Slack channel by ID.
+// Requires the channels:join bot token scope.
+func (c *Client) JoinChannel(channelID string) error {
+	_, _, _, err := c.api.JoinConversation(channelID)
+	if err != nil {
+		return fmt.Errorf("failed to join channel: %w", err)
+	}
+	return nil
+}
+
 // ReplyToThread sends a reply to a thread
 func (c *Client) ReplyToThread(channelID, threadTS, text string) (string, error) {
 	_, timestamp, err := c.api.PostMessage(
