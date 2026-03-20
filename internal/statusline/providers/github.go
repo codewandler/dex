@@ -74,11 +74,11 @@ func (p *GitHubProvider) Fetch(ctx context.Context) (map[string]any, error) {
 	// If no assigned issues globally but we're in a repo, show repo issues
 	if data["Issues"] == 0 && repoName != "" {
 		repoIssues, err := client.IssueList(gh.IssueListOptions{
-			State: "open",
-			Limit: 100,
+			States: []string{"OPEN"},
+			Limit:  100,
 		})
-		if err == nil && len(repoIssues) > 0 {
-			data["Issues"] = len(repoIssues)
+		if err == nil && len(repoIssues.Issues) > 0 {
+			data["Issues"] = len(repoIssues.Issues)
 			data["RepoIssues"] = true // Flag to indicate these are repo issues, not assigned
 		}
 	}

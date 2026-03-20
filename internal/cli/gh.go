@@ -2,9 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/codewandler/dex/internal/gh"
+	"github.com/codewandler/dex/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -85,17 +85,26 @@ var ghIssueListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List issues in a repository",
-	Long: `List issues in a GitHub repository.
+	Long: `List issues in a GitHub repository using the GitHub GraphQL API.
 
-By default, lists open issues in the current repository.
+By default, lists open issues in the current repository ordered by creation date (newest first).
 
 Examples:
   dex gh issue list
   dex gh issue ls
-  dex gh issue list --state closed
-  dex gh issue list --label bug
-  dex gh issue list --no-label
-  dex gh issue list --repo owner/repo`,
+  dex gh issue list -s closed
+  dex gh issue list -s all
+  dex gh issue list -l bug
+  dex gh issue list -l bug -l enhancement
+  dex gh issue list -a @me
+  dex gh issue list --author octocat
+  dex gh issue list --milestone v2.0
+  dex gh issue list --since 2024-01-01
+  dex gh issue list --order-by UPDATED_AT --order-dir ASC
+  dex gh issue list -L 50
+  dex gh issue list -R owner/repo
+  dex gh issue list -o json
+  dex gh issue list --after <cursor>       # next page (cursor from previous -o json output)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := gh.NewClient()
 
@@ -103,41 +112,42 @@ Examples:
 			return fmt.Errorf("gh CLI is not available or not authenticated. Run 'dex gh auth' first")
 		}
 
-		state, _ := cmd.Flags().GetString("state")
-		label, _ := cmd.Flags().GetString("label")
-		noLabel, _ := cmd.Flags().GetBool("no-label")
+		states, _ := cmd.Flags().GetStringSlice("state")
+		labels, _ := cmd.Flags().GetStringSlice("label")
 		assignee, _ := cmd.Flags().GetString("assignee")
+		author, _ := cmd.Flags().GetString("author")
+		milestone, _ := cmd.Flags().GetString("milestone")
+		since, _ := cmd.Flags().GetString("since")
+		orderBy, _ := cmd.Flags().GetString("order-by")
+		orderDir, _ := cmd.Flags().GetString("order-dir")
 		limit, _ := cmd.Flags().GetInt("limit")
+		after, _ := cmd.Flags().GetString("after")
 		repo, _ := cmd.Flags().GetString("repo")
 
-		issues, err := client.IssueList(gh.IssueListOptions{
-			State:    state,
-			Label:    label,
-			NoLabel:  noLabel,
-			Assignee: assignee,
-			Limit:    limit,
-			Repo:     repo,
+		compact, _ := cmd.Flags().GetBool("compact")
+
+		result, err := client.IssueList(gh.IssueListOptions{
+			States:    states,
+			Labels:    labels,
+			Assignee:  assignee,
+			Author:    author,
+			Milestone: milestone,
+			Since:     since,
+			OrderBy:   orderBy,
+			OrderDir:  orderDir,
+			Limit:     limit,
+			After:     after,
+			Repo:      repo,
 		})
 		if err != nil {
 			return err
 		}
 
-		if len(issues) == 0 {
-			fmt.Println("No issues found")
-			return nil
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
 		}
-
-		for _, issue := range issues {
-			labels := ""
-			if len(issue.Labels) > 0 {
-				labels = fmt.Sprintf(" [%s]", issue.Labels[0])
-				if len(issue.Labels) > 1 {
-					labels = fmt.Sprintf(" [%s +%d]", issue.Labels[0], len(issue.Labels)-1)
-				}
-			}
-			fmt.Printf("#%-4d %s%s\n", issue.Number, issue.Title, labels)
-		}
-
+		RenderWithMode(result, mode)
 		return nil
 	},
 }
@@ -170,22 +180,7 @@ Examples:
 			return err
 		}
 
-		fmt.Printf("#%d %s\n", issue.Number, issue.Title)
-		fmt.Printf("State: %s | Author: @%s | Created: %s\n", issue.State, issue.Author, issue.CreatedAt[:10])
-
-		if len(issue.Labels) > 0 {
-			fmt.Printf("Labels: %s\n", joinStrings(issue.Labels))
-		}
-		if len(issue.Assignees) > 0 {
-			fmt.Printf("Assignees: %s\n", joinStrings(issue.Assignees))
-		}
-
-		fmt.Printf("URL: %s\n", issue.URL)
-
-		if issue.Body != "" {
-			fmt.Printf("\n%s\n", issue.Body)
-		}
-
+		Render(&gh.IssueResult{Issue: issue})
 		return nil
 	},
 }
@@ -361,10 +356,6 @@ Examples:
 	},
 }
 
-func joinStrings(s []string) string {
-	return strings.Join(s, ", ")
-}
-
 // Label commands
 var ghLabelCmd = &cobra.Command{
 	Use:   "label",
@@ -401,19 +392,7 @@ Examples:
 			return err
 		}
 
-		if len(labels) == 0 {
-			fmt.Println("No labels found")
-			return nil
-		}
-
-		for _, label := range labels {
-			desc := ""
-			if label.Description != "" {
-				desc = fmt.Sprintf(" - %s", label.Description)
-			}
-			fmt.Printf("%-30s #%s%s\n", label.Name, label.Color, desc)
-		}
-
+		Render(&gh.LabelListResult{Labels: labels})
 		return nil
 	},
 }
@@ -535,30 +514,7 @@ Examples:
 			return nil
 		}
 
-		for _, release := range releases {
-			flags := ""
-			if release.IsLatest {
-				flags = " (latest)"
-			}
-			if release.IsDraft {
-				flags = " (draft)"
-			}
-			if release.IsPrerelease {
-				flags = " (prerelease)"
-			}
-
-			name := release.Name
-			if name == "" {
-				name = release.TagName
-			}
-
-			date := ""
-			if release.PublishedAt != "" && len(release.PublishedAt) >= 10 {
-				date = release.PublishedAt[:10]
-			}
-
-			fmt.Printf("%-12s  %s  %s%s\n", release.TagName, date, name, flags)
-		}
+		Render(&gh.ReleaseListResult{Releases: releases})
 
 		return nil
 	},
@@ -595,31 +551,7 @@ Examples:
 			return err
 		}
 
-		name := release.Name
-		if name == "" {
-			name = release.TagName
-		}
-		fmt.Printf("%s - %s\n", release.TagName, name)
-
-		status := "published"
-		if release.IsDraft {
-			status = "draft"
-		} else if release.IsPrerelease {
-			status = "prerelease"
-		}
-
-		date := release.PublishedAt
-		if date != "" && len(date) >= 10 {
-			date = date[:10]
-		}
-
-		fmt.Printf("Status: %s | Author: @%s | Published: %s\n", status, release.Author, date)
-		fmt.Printf("URL: %s\n", release.URL)
-
-		if release.Body != "" {
-			fmt.Printf("\n%s\n", release.Body)
-		}
-
+		Render(&gh.ReleaseResult{Release: release})
 		return nil
 	},
 }
@@ -860,11 +792,17 @@ Examples:
 
 func init() {
 	// Issue list flags
-	ghIssueListCmd.Flags().StringP("state", "s", "", "Filter by state: open, closed, all (default: open)")
-	ghIssueListCmd.Flags().StringP("label", "l", "", "Filter by label")
-	ghIssueListCmd.Flags().Bool("no-label", false, "Filter issues with no labels")
-	ghIssueListCmd.Flags().StringP("assignee", "a", "", "Filter by assignee")
-	ghIssueListCmd.Flags().IntP("limit", "L", 30, "Maximum number of issues to fetch")
+	ghIssueListCmd.Flags().StringSliceP("state", "s", nil, "Filter by state: open, closed, all (default: open); repeatable or comma-separated")
+	ghIssueListCmd.Flags().StringSliceP("label", "l", nil, "Filter by label (repeatable); server-side AND filter")
+	ghIssueListCmd.Flags().StringP("assignee", "a", "", "Filter by assignee login")
+	ghIssueListCmd.Flags().String("author", "", "Filter by issue author login")
+	ghIssueListCmd.Flags().StringP("milestone", "m", "", "Filter by milestone title")
+	ghIssueListCmd.Flags().String("since", "", "Filter issues updated/created after date (YYYY-MM-DD or RFC3339)")
+	ghIssueListCmd.Flags().String("order-by", "CREATED_AT", "Order by: CREATED_AT, UPDATED_AT, COMMENTS")
+	ghIssueListCmd.Flags().String("order-dir", "DESC", "Order direction: ASC or DESC")
+	ghIssueListCmd.Flags().IntP("limit", "L", 30, "Maximum number of issues per page (1-100, default 30)")
+	ghIssueListCmd.Flags().String("after", "", "Cursor for next page (from next_cursor in JSON output)")
+	ghIssueListCmd.Flags().Bool("compact", false, "Compact output: one line per issue")
 	ghIssueListCmd.Flags().StringP("repo", "R", "", "Repository in owner/repo format")
 
 	// Issue view flags

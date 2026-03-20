@@ -169,95 +169,273 @@ type Issue struct {
 	Body      string   `json:"body"`
 }
 
-// IssueListOptions contains options for listing issues
+// IssueListOptions contains options for listing issues via GraphQL.
 type IssueListOptions struct {
-	State    string // open, closed, all
-	Label    string
-	NoLabel  bool   // filter for issues with no labels (client-side)
-	Assignee string
-	Limit    int
-	Repo     string // optional: owner/repo
+	States    []string // OPEN, CLOSED — empty defaults to [OPEN]; pass "all" for both
+	Labels    []string // server-side multi-label filter (AND semantics on GitHub)
+	Assignee  string   // filterBy.assignee
+	Author    string   // filterBy.createdBy
+	Milestone string   // filterBy.milestone (title)
+	Since     string   // filterBy.since (RFC3339 or YYYY-MM-DD)
+	OrderBy   string   // CREATED_AT | UPDATED_AT | COMMENTS (default CREATED_AT)
+	OrderDir  string   // ASC | DESC (default DESC)
+	Limit     int      // page size (default 30, max 100)
+	After     string   // opaque cursor for next page
+	Repo      string   // owner/repo; empty = auto-detect from git remote
 }
 
-// IssueList lists issues in a repository
-func (c *Client) IssueList(opts IssueListOptions) ([]Issue, error) {
-	args := []string{"issue", "list", "--json", "number,title,state,author,labels,assignees,createdAt,url"}
+// IssueListResult is returned by IssueList and implements render.Renderable.
+type IssueListResult struct {
+	Issues     []Issue `json:"issues"`
+	NextCursor string  `json:"next_cursor,omitempty"`
+	HasMore    bool    `json:"has_more"`
+	TotalCount int     `json:"total_count"`
+}
 
-	if opts.State != "" {
-		args = append(args, "--state", opts.State)
-	}
-	if opts.Label != "" {
-		args = append(args, "--label", opts.Label)
-	}
-	if opts.Assignee != "" {
-		args = append(args, "--assignee", opts.Assignee)
-	}
-	if opts.Limit > 0 {
-		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
-	}
-	if opts.Repo != "" {
-		args = append(args, "--repo", opts.Repo)
+const issueListQuery = `query($owner: String!, $repo: String!, $first: Int!, $after: String, $states: [IssueState!], $labels: [String!], $filterBy: IssueFilters, $orderBy: IssueOrder) {
+  repository(owner: $owner, name: $repo) {
+    issues(first: $first, after: $after, states: $states, labels: $labels, filterBy: $filterBy, orderBy: $orderBy) {
+      totalCount
+      pageInfo { endCursor hasNextPage }
+      nodes {
+        number title state url createdAt
+        author { login }
+        labels(first: 20) { nodes { name } }
+        assignees(first: 10) { nodes { login } }
+      }
+    }
+  }
+}`
+
+// IssueList lists issues in a repository using the GitHub GraphQL API.
+func (c *Client) IssueList(opts IssueListOptions) (*IssueListResult, error) {
+	// Resolve owner/repo
+	owner, repo, err := c.resolveRepo(opts.Repo)
+	if err != nil {
+		return nil, err
 	}
 
-	cmd := exec.Command("gh", args...)
+	// Build states
+	states := opts.States
+	if len(states) == 1 && strings.EqualFold(states[0], "all") {
+		states = []string{"OPEN", "CLOSED"}
+	} else if len(states) == 0 {
+		states = []string{"OPEN"}
+	} else {
+		for i, s := range states {
+			states[i] = strings.ToUpper(s)
+		}
+	}
+
+	// Build filterBy
+	type filterByObj struct {
+		Assignee  string `json:"assignee,omitempty"`
+		CreatedBy string `json:"createdBy,omitempty"`
+		Milestone string `json:"milestone,omitempty"`
+		Since     string `json:"since,omitempty"`
+	}
+	var filterBy *filterByObj
+	if opts.Assignee != "" || opts.Author != "" || opts.Milestone != "" || opts.Since != "" {
+		fb := &filterByObj{
+			Assignee:  opts.Assignee,
+			CreatedBy: opts.Author,
+			Milestone: opts.Milestone,
+		}
+		if opts.Since != "" {
+			since := opts.Since
+			if !strings.Contains(since, "T") {
+				since += "T00:00:00Z"
+			}
+			fb.Since = since
+		}
+		filterBy = fb
+	}
+
+	// Build orderBy
+	type orderByObj struct {
+		Field     string `json:"field"`
+		Direction string `json:"direction"`
+	}
+	orderField := "CREATED_AT"
+	if opts.OrderBy != "" {
+		orderField = strings.ToUpper(opts.OrderBy)
+	}
+	orderDir := "DESC"
+	if opts.OrderDir != "" {
+		orderDir = strings.ToUpper(opts.OrderDir)
+	}
+	orderBy := orderByObj{Field: orderField, Direction: orderDir}
+
+	// Page size
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Build variables JSON
+	type variables struct {
+		Owner    string      `json:"owner"`
+		Repo     string      `json:"repo"`
+		First    int         `json:"first"`
+		After    *string     `json:"after"`
+		States   []string    `json:"states"`
+		Labels   []string    `json:"labels,omitempty"`
+		FilterBy *filterByObj `json:"filterBy,omitempty"`
+		OrderBy  orderByObj  `json:"orderBy"`
+	}
+	vars := variables{
+		Owner:    owner,
+		Repo:     repo,
+		First:    limit,
+		States:   states,
+		FilterBy: filterBy,
+		OrderBy:  orderBy,
+	}
+	if opts.After != "" {
+		vars.After = &opts.After
+	}
+	if len(opts.Labels) > 0 {
+		vars.Labels = opts.Labels
+	}
+
+	varsJSON, err := json.Marshal(vars)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build graphql variables: %w", err)
+	}
+
+	// Run: gh api graphql -f query=... --input -
+	// We pass variables via stdin as JSON to avoid shell escaping issues.
+	type graphqlRequest struct {
+		Query     string          `json:"query"`
+		Variables json.RawMessage `json:"variables"`
+	}
+	reqBody, err := json.Marshal(graphqlRequest{
+		Query:     issueListQuery,
+		Variables: json.RawMessage(varsJSON),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build graphql request: %w", err)
+	}
+
+	cmd := exec.Command("gh", "api", "graphql", "--input", "-")
+	cmd.Stdin = strings.NewReader(string(reqBody))
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh issue list failed: %s", string(exitErr.Stderr))
+			return nil, fmt.Errorf("gh api graphql failed: %s", string(exitErr.Stderr))
 		}
-		return nil, fmt.Errorf("gh issue list failed: %w", err)
+		return nil, fmt.Errorf("gh api graphql failed: %w", err)
 	}
 
-	var rawIssues []struct {
-		Number    int    `json:"number"`
-		Title     string `json:"title"`
-		State     string `json:"state"`
-		Author    struct {
-			Login string `json:"login"`
-		} `json:"author"`
-		Labels []struct {
-			Name string `json:"name"`
-		} `json:"labels"`
-		Assignees []struct {
-			Login string `json:"login"`
-		} `json:"assignees"`
-		CreatedAt string `json:"createdAt"`
-		URL       string `json:"url"`
+	// Parse response
+	var resp struct {
+		Data struct {
+			Repository struct {
+				Issues struct {
+					TotalCount int `json:"totalCount"`
+					PageInfo   struct {
+						EndCursor   string `json:"endCursor"`
+						HasNextPage bool   `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Number    int    `json:"number"`
+						Title     string `json:"title"`
+						State     string `json:"state"`
+						URL       string `json:"url"`
+						CreatedAt string `json:"createdAt"`
+						Author    struct {
+							Login string `json:"login"`
+						} `json:"author"`
+						Labels struct {
+							Nodes []struct {
+								Name string `json:"name"`
+							} `json:"nodes"`
+						} `json:"labels"`
+						Assignees struct {
+							Nodes []struct {
+								Login string `json:"login"`
+							} `json:"nodes"`
+						} `json:"assignees"`
+					} `json:"nodes"`
+				} `json:"issues"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
 	}
 
-	if err := json.Unmarshal(output, &rawIssues); err != nil {
-		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	if err := json.Unmarshal(output, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse graphql response: %w", err)
+	}
+	if len(resp.Errors) > 0 {
+		msgs := make([]string, len(resp.Errors))
+		for i, e := range resp.Errors {
+			msgs[i] = e.Message
+		}
+		return nil, fmt.Errorf("graphql errors: %s", strings.Join(msgs, "; "))
 	}
 
-	issues := make([]Issue, 0, len(rawIssues))
-	for _, raw := range rawIssues {
-		labels := make([]string, len(raw.Labels))
-		for j, l := range raw.Labels {
-			labels[j] = l.Name
-		}
+	issues := resp.Data.Repository.Issues
+	result := &IssueListResult{
+		TotalCount: issues.TotalCount,
+		HasMore:    issues.PageInfo.HasNextPage,
+		NextCursor: issues.PageInfo.EndCursor,
+	}
+	if !result.HasMore {
+		result.NextCursor = ""
+	}
 
-		// Skip issues with labels if NoLabel filter is set
-		if opts.NoLabel && len(labels) > 0 {
-			continue
+	for _, node := range issues.Nodes {
+		labels := make([]string, len(node.Labels.Nodes))
+		for i, l := range node.Labels.Nodes {
+			labels[i] = l.Name
 		}
-
-		assignees := make([]string, len(raw.Assignees))
-		for j, a := range raw.Assignees {
-			assignees[j] = a.Login
+		assignees := make([]string, len(node.Assignees.Nodes))
+		for i, a := range node.Assignees.Nodes {
+			assignees[i] = a.Login
 		}
-		issues = append(issues, Issue{
-			Number:    raw.Number,
-			Title:     raw.Title,
-			State:     raw.State,
-			Author:    raw.Author.Login,
+		result.Issues = append(result.Issues, Issue{
+			Number:    node.Number,
+			Title:     node.Title,
+			State:     node.State,
+			Author:    node.Author.Login,
 			Labels:    labels,
 			Assignees: assignees,
-			CreatedAt: raw.CreatedAt,
-			URL:       raw.URL,
+			CreatedAt: node.CreatedAt,
+			URL:       node.URL,
 		})
 	}
+	if result.Issues == nil {
+		result.Issues = []Issue{}
+	}
 
-	return issues, nil
+	return result, nil
+}
+
+// resolveRepo splits "owner/repo" from opts.Repo or auto-detects from the git remote.
+func (c *Client) resolveRepo(repoFlag string) (owner, repo string, err error) {
+	if repoFlag != "" {
+		parts := strings.SplitN(repoFlag, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("invalid --repo format %q: expected owner/repo", repoFlag)
+		}
+		return parts[0], parts[1], nil
+	}
+	cmd := exec.Command("gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", fmt.Errorf("could not detect current repo (use --repo owner/repo): %w", err)
+	}
+	nameWithOwner := strings.TrimSpace(string(out))
+	parts := strings.SplitN(nameWithOwner, "/", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("unexpected repo name format: %q", nameWithOwner)
+	}
+	return parts[0], parts[1], nil
 }
 
 // IssueView retrieves a single issue by number

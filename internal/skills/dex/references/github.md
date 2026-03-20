@@ -54,26 +54,64 @@ dex gh repo create my-repo --public --add-readme  # Include README
 
 ### List Issues
 ```bash
-dex gh issue list                 # List open issues in current repo
-dex gh issue ls                   # Alias for list
-dex gh issue list -s closed       # List closed issues
-dex gh issue list -s all          # List all issues
-dex gh issue list -l bug          # Filter by label
-dex gh issue list --no-label      # Filter issues with no labels
-dex gh issue list -a @me          # Filter by assignee
-dex gh issue list -L 50           # Limit results (default 30)
-dex gh issue list -R owner/repo   # List issues in different repo
+dex gh issue list                              # List open issues in current repo
+dex gh issue ls                                # Alias for list
+dex gh issue list -s closed                    # List closed issues
+dex gh issue list -s all                       # List all issues (open + closed)
+dex gh issue list -l bug                       # Filter by label
+dex gh issue list -l bug -l enhancement        # Filter by multiple labels (AND)
+dex gh issue list -a @me                       # Filter by assignee
+dex gh issue list --author octocat             # Filter by author
+dex gh issue list --milestone v2.0             # Filter by milestone title
+dex gh issue list --since 2024-01-01           # Issues created/updated after date
+dex gh issue list --order-by UPDATED_AT        # Order by last updated
+dex gh issue list --order-by COMMENTS --order-dir ASC  # Least commented first
+dex gh issue list -L 50                        # Page size (max 100, default 30)
+dex gh issue list -R owner/repo                # List issues in different repo
+dex gh issue list -o json                      # JSON output (includes next_cursor)
+dex gh issue list --compact                    # One line per issue
+dex gh issue list --after <cursor>             # Next page (cursor from JSON output)
 ```
 
 **Flags:**
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--state` | `-s` | Filter by state: `open`, `closed`, `all` (default: open) |
-| `--label` | `-l` | Filter by label |
-| `--no-label` | | Filter issues with no labels (client-side) |
-| `--assignee` | `-a` | Filter by assignee |
-| `--limit` | `-L` | Maximum issues to fetch (default 30) |
+| `--state` | `-s` | Filter by state: `open`, `closed`, `all` (default: open); repeatable |
+| `--label` | `-l` | Filter by label (repeatable, server-side AND) |
+| `--assignee` | `-a` | Filter by assignee login |
+| `--author` | | Filter by issue author login |
+| `--milestone` | `-m` | Filter by milestone title |
+| `--since` | | Issues updated after date (`YYYY-MM-DD` or RFC3339) |
+| `--order-by` | | Order by: `CREATED_AT` (default), `UPDATED_AT`, `COMMENTS` |
+| `--order-dir` | | Order direction: `DESC` (default) or `ASC` |
+| `--limit` | `-L` | Page size, 1–100 (default 30) |
+| `--after` | | Cursor for next page (from `next_cursor` in JSON output) |
+| `--compact` | | Compact output: one line per issue |
 | `--repo` | `-R` | Repository in `owner/repo` format |
+
+**Note:** `--no-label` has been removed. GitHub's API does not support filtering by absence of labels server-side.
+
+**Pagination workflow:**
+```bash
+# Page through all issues in JSON mode
+dex gh issue list -o json                                     # first page
+CURSOR=$(dex gh issue list -o json | jq -r .next_cursor)
+dex gh issue list --after "$CURSOR"                          # second page
+
+# Or with --compact for readable paging
+dex gh issue list --compact
+dex gh issue list --compact --after <cursor>
+```
+
+**`-o json` output shape:**
+```json
+{
+  "issues": [...],
+  "next_cursor": "Y3Vyc29yOjMw",
+  "has_more": true,
+  "total_count": 142
+}
+```
 
 ### View Issue
 ```bash
@@ -259,6 +297,7 @@ dex gh release create v1.0.0 --generate-notes --target main  # From specific bra
 
 - Command aliases: `gh` = `github`
 - All commands support `-R owner/repo` for cross-repo operations
-- Issue list output shows issue number, title, and first label
+- Issue list supports `-o json`, `-o yaml`, `-o compact`, and `--compact`
+- Issue list uses GitHub GraphQL with server-side filtering and cursor pagination
 - Release list shows tag, date, name, and status (latest/draft/prerelease)
 - The `gh` CLI must be authenticated (`dex gh auth` or `gh auth login`)
