@@ -389,6 +389,43 @@ dex gl pipeline logs group/proj 12345 test
 
 Use `dex gl pipeline jobs <project> <pipeline-id>` to see available job names first.
 
+## Passing Multi-line or Formatted Content (descriptions, comments)
+
+**Never pass markdown content as an inline shell string.** Two things will silently corrupt it:
+
+1. **Backticks** — the shell interprets `` `foo` `` as a command substitution and replaces it with the output (or nothing). Every inline code span in the description will be eaten.
+2. **`\n` escape sequences** — shells do not expand `\n` inside double-quoted strings by default. The literal characters `\n` are sent to GitLab instead of newlines, so the description arrives as one long line.
+
+### Always write content to a temp file, then pass it with `$(cat ...)`
+
+```bash
+# Write the description to a file (use file_write tool, not echo/heredoc)
+# /tmp/mr-description.md:
+#   ## Problem
+#   
+#   When a conference member is put on hold...
+#   
+#   - Add `pauseRecording(channel)` to `CallControlService`
+
+dex gl mr create "fix: title" --description "$(cat /tmp/mr-description.md)"
+dex gl mr edit proj!123    --description "$(cat /tmp/mr-description.md)"
+dex gl mr comment proj!123              "$(cat /tmp/mr-description.md)"
+```
+
+`$(cat file)` hands the already-expanded file contents to the flag as a single argument — newlines are preserved and backticks are never evaluated because the content is not re-parsed by the shell.
+
+### Verify after posting
+
+Always confirm the description arrived correctly:
+
+```bash
+dex gl mr show proj!123 -o json | python3 -c "import json,sys; print(json.load(sys.stdin)['description'])"
+```
+
+Check that:
+- Sections are separated by blank lines (not `\n`)
+- Inline code spans like `` `FooAction` `` are present, not empty
+
 ## Tips
 
 - GitLab project names autocomplete from local index
