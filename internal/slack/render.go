@@ -67,6 +67,16 @@ type ThreadMessageAttachment struct {
 	Text string `json:"text,omitempty"`
 }
 
+// ThreadMessageFile holds metadata about a file attached to a thread message.
+type ThreadMessageFile struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Mimetype   string `json:"mimetype"`
+	Size       int    `json:"size"`
+	Permalink  string `json:"permalink"`
+	URLPrivate string `json:"url_private"`
+}
+
 // ThreadMessage is a single message in a thread.
 type ThreadMessage struct {
 	Index       int                       `json:"index"`
@@ -78,6 +88,7 @@ type ThreadMessage struct {
 	IsMe        bool                      `json:"is_me"`
 	Text        string                    `json:"text"`
 	Attachments []ThreadMessageAttachment `json:"attachments,omitempty"`
+	Files       []ThreadMessageFile       `json:"files,omitempty"`
 }
 
 // ThreadResult is the output of `dex slack thread`.
@@ -120,11 +131,16 @@ func (r *ThreadResult) RenderText(mode render.Mode) string {
 				meTag = " [me]"
 			}
 			text := strings.ReplaceAll(msg.Text, "\n", " ")
-			if len(text) > threadCompactWidth {
-				text = text[:threadCompactWidth-1] + "…"
+			filesSuffix := renderFilesCompact(msg.Files)
+			maxText := threadCompactWidth - len(filesSuffix)
+			if maxText < 20 {
+				maxText = 20
 			}
-			fmt.Fprintf(&b, "  [%d] %s @%s%s %s: %s\n",
-				msg.Index, label, msg.Username, meTag, msg.Timestamp, text)
+			if len(text) > maxText {
+				text = text[:maxText-1] + "…"
+			}
+			fmt.Fprintf(&b, "  [%d] %s @%s%s %s: %s%s\n",
+				msg.Index, label, msg.Username, meTag, msg.Timestamp, text, filesSuffix)
 		}
 		return b.String()
 	}
@@ -164,6 +180,9 @@ func (r *ThreadResult) RenderText(mode render.Mode) string {
 				}
 			}
 		}
+		if filesText := renderFiles(msg.Files); filesText != "" {
+			b.WriteString(filesText)
+		}
 	}
 
 	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("─", 80))
@@ -174,16 +193,17 @@ func (r *ThreadResult) RenderText(mode render.Mode) string {
 
 // MentionItem is a single resolved mention entry for rendering.
 type MentionItem struct {
-	ChannelID   string             `json:"channel_id"`
-	ChannelName string             `json:"channel_name"`
-	UserID      string             `json:"user_id"`
-	Username    string             `json:"username"`
-	Timestamp   string             `json:"timestamp"`
-	ThreadTS    string             `json:"thread_ts,omitempty"`
-	Text        string             `json:"text"`
+	ChannelID   string              `json:"channel_id"`
+	ChannelName string              `json:"channel_name"`
+	UserID      string              `json:"user_id"`
+	Username    string              `json:"username"`
+	Timestamp   string              `json:"timestamp"`
+	ThreadTS    string              `json:"thread_ts,omitempty"`
+	Text        string              `json:"text"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
-	Permalink   string             `json:"permalink,omitempty"`
-	Status      string             `json:"status"`
+	Files       []ThreadMessageFile `json:"files,omitempty"`
+	Permalink   string              `json:"permalink,omitempty"`
+	Status      string              `json:"status"`
 }
 
 // MentionsResult is the output of `dex slack mentions`.
@@ -212,13 +232,19 @@ func (r *MentionsResult) RenderText(mode render.Mode) string {
 		fmt.Fprintf(&b, "%-19s %-20s %-15s %-8s %s\n", "TIME", "CHANNEL", "FROM", "STATUS", "MESSAGE")
 		fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 100))
 		for _, m := range r.Mentions {
-			text := mentionTruncate(MessageDisplayText(m.Text, m.Attachments), 50)
-			fmt.Fprintf(&b, "%-19s %-20s %-15s %-8s %s\n",
+			filesSuffix := renderFilesCompact(m.Files)
+			maxText := 50 - len(filesSuffix)
+			if maxText < 20 {
+				maxText = 20
+			}
+			text := mentionTruncate(MessageDisplayText(m.Text, m.Attachments), maxText)
+			fmt.Fprintf(&b, "%-19s %-20s %-15s %-8s %s%s\n",
 				m.Timestamp,
 				mentionTruncate("#"+m.ChannelName, 20),
 				mentionTruncate("@"+m.Username, 15),
 				m.Status,
 				text,
+				filesSuffix,
 			)
 		}
 	} else {
@@ -233,6 +259,9 @@ func (r *MentionsResult) RenderText(mode render.Mode) string {
 			b.WriteString("\n")
 			if attText := renderAttachments(m.Attachments); attText != "" {
 				b.WriteString(attText)
+			}
+			if filesText := renderFiles(m.Files); filesText != "" {
+				b.WriteString(filesText)
 			}
 			b.WriteString("\n")
 		}
@@ -267,14 +296,15 @@ type TicketMention struct {
 
 // SearchItem is a single resolved search result for rendering.
 type SearchItem struct {
-	ChannelID   string             `json:"channel_id"`
-	ChannelName string             `json:"channel_name"`
-	UserID      string             `json:"user_id"`
-	Username    string             `json:"username"`
-	Timestamp   string             `json:"timestamp"`
-	Text        string             `json:"text"`
+	ChannelID   string              `json:"channel_id"`
+	ChannelName string              `json:"channel_name"`
+	UserID      string              `json:"user_id"`
+	Username    string              `json:"username"`
+	Timestamp   string              `json:"timestamp"`
+	Text        string              `json:"text"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
-	Permalink   string             `json:"permalink,omitempty"`
+	Files       []ThreadMessageFile `json:"files,omitempty"`
+	Permalink   string              `json:"permalink,omitempty"`
 }
 
 // SearchResultOutput is the output of `dex slack search`.
@@ -318,12 +348,18 @@ func (r *SearchResultOutput) RenderText(mode render.Mode) string {
 		fmt.Fprintf(&b, "%-19s %-20s %-15s %s\n", "TIME", "CHANNEL", "FROM", "MESSAGE")
 		fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 100))
 		for _, res := range r.Results {
-			text := mentionTruncate(MessageDisplayText(res.Text, res.Attachments), 60)
-			fmt.Fprintf(&b, "%-19s %-20s %-15s %s\n",
+			filesSuffix := renderFilesCompact(res.Files)
+			maxText := 60 - len(filesSuffix)
+			if maxText < 20 {
+				maxText = 20
+			}
+			text := mentionTruncate(MessageDisplayText(res.Text, res.Attachments), maxText)
+			fmt.Fprintf(&b, "%-19s %-20s %-15s %s%s\n",
 				res.Timestamp,
 				mentionTruncate("#"+res.ChannelName, 20),
 				mentionTruncate("@"+res.Username, 15),
 				text,
+				filesSuffix,
 			)
 		}
 	} else {
@@ -338,6 +374,9 @@ func (r *SearchResultOutput) RenderText(mode render.Mode) string {
 			b.WriteString("\n")
 			if attText := renderAttachments(res.Attachments); attText != "" {
 				b.WriteString(attText)
+			}
+			if filesText := renderFiles(res.Files); filesText != "" {
+				b.WriteString(filesText)
 			}
 			b.WriteString("\n")
 		}
@@ -439,6 +478,34 @@ func messageDisplayText(text string, attachments []MessageAttachment) string {
 		}
 	}
 	return ""
+}
+
+// renderFiles produces a text block for a list of file attachments.
+func renderFiles(files []ThreadMessageFile) string {
+	if len(files) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, f := range files {
+		link := f.Permalink
+		if link == "" {
+			link = f.URLPrivate
+		}
+		fmt.Fprintf(&b, "  📎 %s (%s) %s\n", f.Name, formatFileSize(f.Size), link)
+	}
+	return b.String()
+}
+
+// renderFilesCompact produces a compact one-line summary of files.
+func renderFilesCompact(files []ThreadMessageFile) string {
+	if len(files) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	return fmt.Sprintf(" [📎 %s]", strings.Join(names, ", "))
 }
 
 // renderAttachments produces a multi-line text block for a list of attachments.

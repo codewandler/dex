@@ -318,8 +318,53 @@ Timestamps can be in Slack URL format (`p1769777574026209`) or API format (`1769
 - `channel_id`, `channel_name` — channel info
 - `thread_ts` — thread root timestamp
 - `status` — mention classification: `Pending`, `Acked`, or `Replied`
-- `messages[]` — array of messages with `index`, `label` (`parent`/`reply`), `timestamp`, `username`, `user_id`, `bot_id`, `is_me`, `text`, `attachments[]`
+- `messages[]` — array of messages with `index`, `label` (`parent`/`reply`), `timestamp`, `username`, `user_id`, `bot_id`, `is_me`, `text`, `attachments[]`, `files[]`
+- `messages[].files[]` — file attachments with `id`, `name`, `mimetype`, `size`, `permalink`, `url_private`. Use the `id` with `dex slack download` to fetch the file.
 - `my_user_ids`, `my_bot_ids` — only present when `--debug` is set
+
+## Download File (shortcut)
+```bash
+# Download a file by ID (file IDs shown in thread/search/mentions output)
+dex slack download F0123456789
+dex slack download F0123456789 ./screenshots/
+dex slack download F0123456789 report.pdf
+```
+
+Shortcut for `dex slack file download`. File IDs appear in thread, search, and mentions output when messages have file attachments (📎 icon in text mode).
+
+## File Management
+```bash
+# List files
+dex slack file list
+dex slack file list --channel dev-team
+dex slack file list --count 50
+dex slack file list --compact
+dex slack file list -o json
+
+# File info
+dex slack file info F0123456789
+dex slack file info F0123456789 -o json
+
+# Download
+dex slack file download F0123456789
+dex slack file download F0123456789 --output ~/Downloads/
+dex slack file download F0123456789 --output report.pdf
+
+# Delete
+dex slack file delete F0123456789
+dex slack file delete F0123456789 --as user
+```
+
+**Flags (list):**
+- `--channel/-C <name|id>` — Filter by channel
+- `--count/-n <int>` — Number of files (default 20)
+- `--compact` — One line per file
+
+**Flags (download):**
+- `--output <path>` — Output file or directory path
+
+**Flags (delete):**
+- `--as bot|user` — Token identity that owns the file (default `bot`)
 
 ## Bookmarks
 ```bash

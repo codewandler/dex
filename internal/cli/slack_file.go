@@ -173,6 +173,53 @@ Examples:
 	},
 }
 
+// slackDownloadCmd is a top-level shortcut for `dex slack file download`.
+// It accepts `dex slack download <file-id> [output-path]` for convenience,
+// especially useful when file IDs come from thread/search output.
+var slackDownloadCmd = &cobra.Command{
+	Use:   "download <file-id> [output-path]",
+	Short: "Download a Slack file (shortcut for 'slack file download')",
+	Long: `Download a Slack file by its ID to a local path.
+
+This is a convenience shortcut for 'dex slack file download'.
+File IDs are shown in thread and search output when messages have attachments.
+
+If output-path is a directory, the file's original name is used inside it.
+If output-path is omitted, the file is saved to the current directory.
+
+Examples:
+  dex slack download F0123456789
+  dex slack download F0123456789 ./screenshots/
+  dex slack download F0123456789 report.pdf`,
+	Args: cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fileID := args[0]
+		outPath := ""
+		if len(args) > 1 {
+			outPath = args[1]
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+		if err := cfg.RequireSlack(); err != nil {
+			return fmt.Errorf("configuration error: %w", err)
+		}
+		client, err := slack.NewClientWithUserToken(cfg.Slack.BotToken, cfg.Slack.UserToken)
+		if err != nil {
+			return fmt.Errorf("failed to create Slack client: %w", err)
+		}
+
+		dest, err := client.DownloadFile(fileID, outPath)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Downloaded to %s\n", dest)
+		return nil
+	},
+}
+
 func initSlackFileFlags() {
 	slackFileListCmd.Flags().StringP("channel", "C", "", "Filter by channel name or ID")
 	slackFileListCmd.Flags().IntP("count", "n", 20, "Number of files to return")

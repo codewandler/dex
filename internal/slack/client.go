@@ -584,6 +584,7 @@ type Mention struct {
 	ThreadTS    string // Parent thread timestamp (if this is a reply)
 	Text        string
 	Attachments []MessageAttachment
+	Files       []ThreadMessageFile
 	Permalink   string
 	Status      MentionStatus
 }
@@ -637,6 +638,7 @@ func (c *Client) GetMentionsInChannels(userID string, channels []string, limit i
 					Timestamp:   msg.Timestamp,
 					Text:        extractMessageText(msg),
 					Attachments: convertAttachments(msg.Attachments),
+					Files:       convertFiles(msg.Files),
 					Permalink:   permalink,
 				})
 
@@ -1207,6 +1209,7 @@ type SearchResult struct {
 	Timestamp   string
 	Text        string
 	Attachments []MessageAttachment
+	Files       []ThreadMessageFile
 	Permalink   string
 }
 
@@ -1314,6 +1317,29 @@ func toUpper(s string) string {
 // ConvertAttachments converts slack-go Attachment structs into our lightweight MessageAttachment type.
 func ConvertAttachments(in []slack.Attachment) []MessageAttachment {
 	return convertAttachments(in)
+}
+
+// ConvertFiles converts slack-go File structs into our lightweight ThreadMessageFile type.
+func ConvertFiles(in []slack.File) []ThreadMessageFile {
+	return convertFiles(in)
+}
+
+func convertFiles(in []slack.File) []ThreadMessageFile {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ThreadMessageFile, 0, len(in))
+	for _, f := range in {
+		out = append(out, ThreadMessageFile{
+			ID:         f.ID,
+			Name:       f.Name,
+			Mimetype:   f.Mimetype,
+			Size:       f.Size,
+			Permalink:  f.Permalink,
+			URLPrivate: f.URLPrivate,
+		})
+	}
+	return out
 }
 
 // ExtractMessageText returns the best available plain-text representation of a Slack message.

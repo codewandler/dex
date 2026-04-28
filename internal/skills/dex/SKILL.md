@@ -137,6 +137,8 @@ dex slack mark-read <ch> <ts|latest>  # Move read cursor
 dex slack mentions [--unhandled]      # My mentions (pending/acked/replied)
 dex slack search "query"              # Full-text search
 dex slack thread <url|ch:ts>          # View thread (--compact, --debug, -o json/yaml)
+dex slack download <file-id> [path]   # Download file attachment (shortcut for file download)
+dex slack file list [--channel <ch>]  # List files
 dex slack users/channels              # Resolve names and IDs
 dex slack channel join <channel>      # Join a public channel (bot)
 dex slack index                       # Rebuild local channel/user index

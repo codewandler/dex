@@ -1499,6 +1499,7 @@ Examples:
 				ThreadTS:    m.ThreadTS,
 				Text:        text,
 				Attachments: m.Attachments,
+				Files:       m.Files,
 				Permalink:   m.Permalink,
 				Status:      string(m.Status),
 			})
@@ -1758,6 +1759,7 @@ Examples:
 				Timestamp:   parseSlackTimestamp(r.Timestamp),
 				Text:        text,
 				Attachments: r.Attachments,
+				Files:       r.Files,
 				Permalink:   r.Permalink,
 			})
 		}
@@ -1952,6 +1954,8 @@ Examples:
 					tm.Attachments = append(tm.Attachments, slack.ThreadMessageAttachment{Text: attText})
 				}
 			}
+
+			tm.Files = slack.ConvertFiles(msg.Files)
 
 			result.Messages = append(result.Messages, tm)
 		}
@@ -2316,6 +2320,7 @@ func init() {
 	slackCmd.AddCommand(slackThreadCmd)
 	slackCmd.AddCommand(slackUploadCmd)
 	slackCmd.AddCommand(slackBookmarksCmd)
+	slackCmd.AddCommand(slackDownloadCmd)
 	slackCmd.AddCommand(slackFileCmd)
 	slackFileCmd.AddCommand(slackFileListCmd)
 	slackFileCmd.AddCommand(slackFileInfoCmd)
