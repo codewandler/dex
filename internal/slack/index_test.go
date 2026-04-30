@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestResolveChannelRawConversationIDs(t *testing.T) {
+	tests := []string{"C0123456789", "G0123456789", "D0123456789"}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			if got := ResolveChannel(input); got != input {
+				t.Fatalf("ResolveChannel(%q) = %q, want raw ID unchanged", input, got)
+			}
+		})
+	}
+}
+
 func TestResolveChannelMentions(t *testing.T) {
 	// Create a test index with sample channels
 	idx := NewSlackIndex("T123", "Test Team")

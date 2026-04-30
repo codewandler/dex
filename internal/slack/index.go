@@ -207,8 +207,13 @@ func (c *Client) IndexAll(channelProgressFn, userProgressFn, groupProgressFn, me
 }
 
 // ResolveChannel resolves a channel name or ID to a channel ID.
-// Returns empty string if the index is empty or the channel is not found.
+// Raw Slack conversation IDs (C..., G..., D...) are returned as-is so commands
+// also work for DMs/MPIMs that may not be present in the local channel index.
+// Returns empty string if the index is empty or the channel name is not found.
 func ResolveChannel(idOrName string) string {
+	if IsConversationID(idOrName) {
+		return idOrName
+	}
 	idx, err := LoadIndex()
 	if err != nil || len(idx.Channels) == 0 {
 		return ""
@@ -218,6 +223,18 @@ func ResolveChannel(idOrName string) string {
 		return ""
 	}
 	return ch.ID
+}
+
+func IsConversationID(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	switch s[0] {
+	case 'C', 'G', 'D':
+		return true
+	default:
+		return false
+	}
 }
 
 // ResolveUser resolves a username or ID to a user ID
