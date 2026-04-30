@@ -116,15 +116,15 @@ func (c *Client) ListMergeRequests(opts ListMergeRequestsOptions) ([]MergeReques
 			}
 
 			mr := MergeRequestDetail{
-				IID:           m.IID,
-				Title:         m.Title,
-				State:         m.State,
-				WebURL:        m.WebURL,
-				SourceBranch:  m.SourceBranch,
-				TargetBranch:  m.TargetBranch,
-				Draft:         m.Draft,
-				MergeStatus:   m.MergeStatus,
-				HasConflicts:  m.HasConflicts,
+				IID:          m.IID,
+				Title:        m.Title,
+				State:        m.State,
+				WebURL:       m.WebURL,
+				SourceBranch: m.SourceBranch,
+				TargetBranch: m.TargetBranch,
+				Draft:        m.Draft,
+				MergeStatus:  m.MergeStatus,
+				HasConflicts: m.HasConflicts,
 			}
 			if m.Author != nil {
 				mr.Author = m.Author.Username
@@ -218,6 +218,18 @@ func (c *Client) GetMergeRequest(projectID interface{}, mrIID int) (*MergeReques
 	if m.Reviewers != nil {
 		for _, r := range m.Reviewers {
 			mr.Reviewers = append(mr.Reviewers, r.Username)
+		}
+	}
+
+	// Approval state
+	if approvals, _, err := c.gl.MergeRequestApprovals.GetConfiguration(pid, mrIID); err == nil && approvals != nil {
+		mr.Approved = approvals.Approved
+		mr.ApprovalsRequired = approvals.ApprovalsRequired
+		mr.ApprovalsLeft = approvals.ApprovalsLeft
+		for _, approvedBy := range approvals.ApprovedBy {
+			if approvedBy != nil && approvedBy.User != nil {
+				mr.ApprovedBy = append(mr.ApprovedBy, approvedBy.User.Username)
+			}
 		}
 	}
 

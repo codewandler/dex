@@ -245,6 +245,15 @@ func (r *MRDetailResult) RenderText(mode render.Mode) string {
 	if len(mr.Reviewers) > 0 {
 		glPrintField(&sb, "Reviewers", strings.Join(mr.Reviewers, ", "))
 	}
+	if mr.Approved {
+		approvalText := "yes"
+		if len(mr.ApprovedBy) > 0 {
+			approvalText += " by " + strings.Join(mr.ApprovedBy, ", ")
+		}
+		glPrintField(&sb, "Approved", approvalText)
+	} else if mr.ApprovalsRequired > 0 {
+		glPrintField(&sb, "Approved", fmt.Sprintf("no (%d/%d approvals left)", mr.ApprovalsLeft, mr.ApprovalsRequired))
+	}
 	if len(mr.Labels) > 0 {
 		glPrintField(&sb, "Labels", strings.Join(mr.Labels, ", "))
 	}
@@ -553,9 +562,9 @@ func (r *PipelineDetailResult) RenderText(mode render.Mode) string {
 
 // PipelineJobsResult holds a list of pipeline jobs for display.
 type PipelineJobsResult struct {
-	PipelineID int          `json:"pipeline_id,omitempty"`
+	PipelineID int           `json:"pipeline_id,omitempty"`
 	Jobs       []PipelineJob `json:"jobs"`
-	Total      int          `json:"total"`
+	Total      int           `json:"total"`
 }
 
 func (r *PipelineJobsResult) RenderText(mode render.Mode) string {

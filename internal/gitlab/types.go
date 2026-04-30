@@ -55,31 +55,35 @@ type MergeRequest struct {
 
 // MergeRequestDetail contains full MR information for detailed views
 type MergeRequestDetail struct {
-	IID          int                  `json:"iid"`
-	Title        string               `json:"title"`
-	Description  string               `json:"description"`
-	State        string               `json:"state"`
-	Author       string               `json:"author"`
-	CreatedAt    time.Time            `json:"created_at"`
-	UpdatedAt    time.Time            `json:"updated_at"`
-	MergedAt     *time.Time           `json:"merged_at,omitempty"`
-	MergedBy     string               `json:"merged_by,omitempty"`
-	WebURL       string               `json:"web_url"`
-	SourceBranch string               `json:"source_branch"`
-	TargetBranch string               `json:"target_branch"`
-	ProjectPath  string               `json:"project_path"`
-	Draft        bool                 `json:"draft"`
-	MergeStatus  string               `json:"merge_status"`
-	HasConflicts bool                 `json:"has_conflicts"`
-	Labels       []string             `json:"labels,omitempty"`
-	Assignees    []string             `json:"assignees,omitempty"`
-	Reviewers    []string             `json:"reviewers,omitempty"`
-	Approvers    []string             `json:"approvers,omitempty"`
-	Changes      MergeRequestChanges  `json:"changes"`
-	Commits      []MRCommit           `json:"commits,omitempty"`
-	Files        []MRFile             `json:"files,omitempty"`
-	Notes        []MRNote             `json:"notes,omitempty"`
-	Discussions  []MRDiscussion       `json:"discussions,omitempty"`
+	IID               int                 `json:"iid"`
+	Title             string              `json:"title"`
+	Description       string              `json:"description"`
+	State             string              `json:"state"`
+	Author            string              `json:"author"`
+	CreatedAt         time.Time           `json:"created_at"`
+	UpdatedAt         time.Time           `json:"updated_at"`
+	MergedAt          *time.Time          `json:"merged_at,omitempty"`
+	MergedBy          string              `json:"merged_by,omitempty"`
+	WebURL            string              `json:"web_url"`
+	SourceBranch      string              `json:"source_branch"`
+	TargetBranch      string              `json:"target_branch"`
+	ProjectPath       string              `json:"project_path"`
+	Draft             bool                `json:"draft"`
+	MergeStatus       string              `json:"merge_status"`
+	HasConflicts      bool                `json:"has_conflicts"`
+	Labels            []string            `json:"labels,omitempty"`
+	Assignees         []string            `json:"assignees,omitempty"`
+	Reviewers         []string            `json:"reviewers,omitempty"`
+	Approvers         []string            `json:"approvers,omitempty"`
+	Approved          bool                `json:"approved"`
+	ApprovalsRequired int                 `json:"approvals_required"`
+	ApprovalsLeft     int                 `json:"approvals_left"`
+	ApprovedBy        []string            `json:"approved_by,omitempty"`
+	Changes           MergeRequestChanges `json:"changes"`
+	Commits           []MRCommit          `json:"commits,omitempty"`
+	Files             []MRFile            `json:"files,omitempty"`
+	Notes             []MRNote            `json:"notes,omitempty"`
+	Discussions       []MRDiscussion      `json:"discussions,omitempty"`
 }
 
 // MergeRequestChanges contains diff statistics
@@ -154,13 +158,13 @@ type Tag struct {
 
 // ProjectActivity groups all activity for a single project
 type ProjectActivity struct {
-	ProjectID   int            `json:"project_id"`
-	ProjectName string         `json:"project_name"`
-	ProjectPath string         `json:"project_path"`
-	WebURL      string         `json:"web_url"`
-	Commits     []Commit       `json:"commits,omitempty"`
+	ProjectID     int            `json:"project_id"`
+	ProjectName   string         `json:"project_name"`
+	ProjectPath   string         `json:"project_path"`
+	WebURL        string         `json:"web_url"`
+	Commits       []Commit       `json:"commits,omitempty"`
 	MergeRequests []MergeRequest `json:"merge_requests,omitempty"`
-	Tags        []Tag          `json:"tags,omitempty"`
+	Tags          []Tag          `json:"tags,omitempty"`
 }
 
 func (p *ProjectActivity) HasActivity() bool {
@@ -232,25 +236,25 @@ type PipelineSummary struct {
 
 // PipelineDetail contains full pipeline information
 type PipelineDetail struct {
-	ID             int          `json:"id"`
-	IID            int          `json:"iid"`
-	ProjectID      int          `json:"project_id"`
-	Status         string       `json:"status"`
-	Source         string       `json:"source"`
-	Ref            string       `json:"ref"`
-	SHA            string       `json:"sha"`
-	BeforeSHA      string       `json:"before_sha,omitempty"`
-	Tag            bool         `json:"tag"`
-	YamlErrors     string       `json:"yaml_errors,omitempty"`
-	User           string       `json:"user,omitempty"`
-	WebURL         string       `json:"web_url"`
-	Duration       int          `json:"duration"` // seconds
-	QueuedDuration int          `json:"queued_duration"`
-	Coverage       string       `json:"coverage,omitempty"`
-	CreatedAt      time.Time    `json:"created_at"`
-	UpdatedAt      time.Time    `json:"updated_at"`
-	StartedAt      *time.Time   `json:"started_at,omitempty"`
-	FinishedAt     *time.Time   `json:"finished_at,omitempty"`
+	ID             int           `json:"id"`
+	IID            int           `json:"iid"`
+	ProjectID      int           `json:"project_id"`
+	Status         string        `json:"status"`
+	Source         string        `json:"source"`
+	Ref            string        `json:"ref"`
+	SHA            string        `json:"sha"`
+	BeforeSHA      string        `json:"before_sha,omitempty"`
+	Tag            bool          `json:"tag"`
+	YamlErrors     string        `json:"yaml_errors,omitempty"`
+	User           string        `json:"user,omitempty"`
+	WebURL         string        `json:"web_url"`
+	Duration       int           `json:"duration"` // seconds
+	QueuedDuration int           `json:"queued_duration"`
+	Coverage       string        `json:"coverage,omitempty"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	StartedAt      *time.Time    `json:"started_at,omitempty"`
+	FinishedAt     *time.Time    `json:"finished_at,omitempty"`
 	Jobs           []PipelineJob `json:"jobs,omitempty"`
 }
 
