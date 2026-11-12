@@ -429,3 +429,25 @@ func (m *MyIssueResult) RenderText(mode render.Mode) string {
 	}
 	return b.String()
 }
+
+// UserList is a list of Jira users with a RenderText implementation.
+type UserList struct {
+	Users []User `json:"users" yaml:"users"`
+}
+
+// RenderText implements render.Renderable on UserList.
+// ModeCompact prints account IDs only, one per line.
+func (ul *UserList) RenderText(mode render.Mode) string {
+	if len(ul.Users) == 0 {
+		return "No active users found.\n"
+	}
+	var b strings.Builder
+	for _, u := range ul.Users {
+		if mode == render.ModeCompact {
+			fmt.Fprintf(&b, "%s\n", u.AccountID)
+			continue
+		}
+		fmt.Fprintf(&b, "%-45s %-25s %s\n", u.AccountID, u.DisplayName, u.EmailAddress)
+	}
+	return b.String()
+}

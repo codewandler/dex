@@ -97,6 +97,7 @@ dex gl search blobs <query> --project <proj>  # Search file contents
 ```bash
 dex jira my                       # Issues assigned to me
 dex jira my -s "In Progress"      # Filter by status
+dex jira users jane               # Account ID for a person (for JQL, mentions); -a/--assignee also takes a name
 dex jira view <KEY>               # View issue details
 dex jira search "<JQL>"           # Search with JQL
 dex jira projects                 # List all projects

@@ -313,6 +313,7 @@ var jiraUpdateCmd = &cobra.Command{
 Examples:
   dex jira update DEV-123 --summary "New title"
   dex jira update DEV-123 --assignee user@example.com
+  dex jira update DEV-123 --assignee "Jane Doe"          # Name works too
   dex jira update DEV-123 --assignee ""                  # Unassign
   dex jira update DEV-123 --priority High
   dex jira update DEV-123 --add-label urgent
@@ -629,6 +630,41 @@ Examples:
 	},
 }
 
+var jiraUsersCmd = &cobra.Command{
+	Use:   "users <query>",
+	Short: "Find users by name or email (shows account IDs)",
+	Long: `Search active Jira users by display name or email and print their account IDs.
+
+Email addresses are often hidden by Atlassian privacy settings, so search by name.
+
+Examples:
+  dex jira users jane
+  dex jira users jane.doe@example.com
+  dex jira users jane --compact          # Account IDs only`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		client, err := jira.NewClient()
+		if err != nil {
+			RenderError(err)
+		}
+
+		users, err := client.FindPeople(ctx, args[0])
+		if err != nil {
+			RenderError(err)
+		}
+
+		compact, _ := cmd.Flags().GetBool("compact")
+		mode := render.ModeNormal
+		if compact {
+			mode = render.ModeCompact
+		}
+		RenderWithMode(&jira.UserList{Users: users}, mode)
+	},
+}
+
 var jiraProjectsCmd = &cobra.Command{
 	Use:   "projects",
 	Short: "List all accessible Jira projects",
@@ -693,6 +729,7 @@ func init() {
 	jiraCmd.AddCommand(jiraLookupCmd)
 	jiraCmd.AddCommand(jiraProjectCmd)
 	jiraCmd.AddCommand(jiraProjectsCmd)
+	jiraCmd.AddCommand(jiraUsersCmd)
 	jiraCmd.AddCommand(jiraCreateCmd)
 	jiraCmd.AddCommand(jiraDeleteCmd)
 	jiraCmd.AddCommand(jiraLinkCmd)
@@ -713,13 +750,14 @@ func init() {
 	jiraProjectsCmd.Flags().BoolP("keys", "k", false, "Output only project keys (one per line)")
 	jiraProjectsCmd.Flags().BoolP("archived", "a", false, "Include archived projects")
 	jiraProjectsCmd.Flags().Bool("compact", false, "Compact one-line-per-project output")
+	jiraUsersCmd.Flags().Bool("compact", false, "Print account IDs only")
 
 	jiraCreateCmd.Flags().StringP("project", "p", "", "Project key (e.g., DEV, TEL)")
 	jiraCreateCmd.Flags().StringP("type", "t", "", "Issue type (Task, Bug, Story, Sub-task)")
 	jiraCreateCmd.Flags().StringP("summary", "s", "", "Issue summary/title")
 	jiraCreateCmd.Flags().StringP("description", "d", "", "Issue description (markdown)")
 	jiraCreateCmd.Flags().StringP("labels", "l", "", "Comma-separated labels")
-	jiraCreateCmd.Flags().StringP("assignee", "a", "", "Assignee (email or account ID)")
+	jiraCreateCmd.Flags().StringP("assignee", "a", "", "Assignee (name, email or account ID)")
 	jiraCreateCmd.Flags().String("priority", "", "Priority (Lowest, Low, Medium, High, Highest)")
 	jiraCreateCmd.Flags().String("parent", "", "Parent issue key for subtasks (e.g., DEV-123)")
 	jiraCreateCmd.MarkFlagRequired("project")
@@ -733,7 +771,7 @@ func init() {
 
 	jiraUpdateCmd.Flags().StringP("summary", "s", "", "New summary/title")
 	jiraUpdateCmd.Flags().StringP("description", "d", "", "New description (markdown)")
-	jiraUpdateCmd.Flags().StringP("assignee", "a", "", "New assignee (email or account ID, empty to unassign)")
+	jiraUpdateCmd.Flags().StringP("assignee", "a", "", "New assignee (name, email or account ID, empty to unassign)")
 	jiraUpdateCmd.Flags().StringP("priority", "p", "", "New priority (Lowest, Low, Medium, High, Highest)")
 	jiraUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (can specify multiple)")
 	jiraUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (can specify multiple)")
