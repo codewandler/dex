@@ -436,9 +436,12 @@ type UserList struct {
 }
 
 // RenderText implements render.Renderable on UserList.
-// ModeCompact prints account IDs only, one per line.
+// ModeCompact prints account IDs only, one per line, and nothing when no user matches.
 func (ul *UserList) RenderText(mode render.Mode) string {
 	if len(ul.Users) == 0 {
+		if mode == render.ModeCompact {
+			return ""
+		}
 		return "No active users found.\n"
 	}
 	var b strings.Builder
