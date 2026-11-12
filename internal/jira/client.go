@@ -932,28 +932,43 @@ func (c *Client) FindPeople(ctx context.Context, query string) ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
+	return onlyPeople(users), nil
+}
+
+// onlyPeople drops deactivated accounts and non-human accounts (apps, customers).
+func onlyPeople(users []User) []User {
 	people := users[:0]
 	for _, u := range users {
 		if u.Active && (u.AccountType == "" || u.AccountType == "atlassian") {
 			people = append(people, u)
 		}
 	}
-	return people, nil
+	return people
 }
 
 // accountIDPattern matches Jira Cloud account IDs: "557058:<uuid>" or 24 hex chars.
 var accountIDPattern = regexp.MustCompile(`^([0-9a-f]{24}|\d+:[0-9a-f-]{36})$`)
 
+func isAccountID(s string) bool {
+	return accountIDPattern.MatchString(s)
+}
+
 // ResolveAccountID turns an account ID, email or (partial) name into an account ID.
 // Ambiguous names fail with the candidates listed instead of picking one.
 func (c *Client) ResolveAccountID(ctx context.Context, who string) (string, error) {
-	if accountIDPattern.MatchString(who) {
+	if isAccountID(who) {
 		return who, nil
 	}
 	users, err := c.FindPeople(ctx, who)
 	if err != nil {
 		return "", fmt.Errorf("failed to find user %q: %w", who, err)
 	}
+	return pickAccountID(who, users)
+}
+
+// pickAccountID chooses the account for who among the matching people: the only
+// match, or the only exact (case-insensitive) display name or email match.
+func pickAccountID(who string, users []User) (string, error) {
 	if len(users) == 1 {
 		return users[0].AccountID, nil
 	}
