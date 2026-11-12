@@ -512,17 +512,9 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (*Issu
 
 	// Resolve assignee (could be email or account ID)
 	if req.Assignee != "" {
-		accountID := req.Assignee
-		// If it looks like an email, look up the user
-		if strings.Contains(req.Assignee, "@") {
-			users, err := c.FindUser(ctx, req.Assignee)
-			if err != nil {
-				return nil, fmt.Errorf("failed to find user %q: %w", req.Assignee, err)
-			}
-			if len(users) == 0 {
-				return nil, fmt.Errorf("no user found with email %q", req.Assignee)
-			}
-			accountID = users[0].AccountID
+		accountID, err := c.ResolveAccountID(ctx, req.Assignee)
+		if err != nil {
+			return nil, err
 		}
 		fields["assignee"] = map[string]string{
 			"id": accountID,
@@ -708,17 +700,9 @@ func (c *Client) UpdateIssue(ctx context.Context, issueKey string, req UpdateIss
 		if *req.Assignee == "" {
 			fields["assignee"] = nil
 		} else {
-			accountID := *req.Assignee
-			// If it looks like an email, look up the user
-			if strings.Contains(*req.Assignee, "@") {
-				users, err := c.FindUser(ctx, *req.Assignee)
-				if err != nil {
-					return fmt.Errorf("failed to find user %q: %w", *req.Assignee, err)
-				}
-				if len(users) == 0 {
-					return fmt.Errorf("no user found with email %q", *req.Assignee)
-				}
-				accountID = users[0].AccountID
+			accountID, err := c.ResolveAccountID(ctx, *req.Assignee)
+			if err != nil {
+				return err
 			}
 			fields["assignee"] = map[string]string{"id": accountID}
 		}
@@ -933,11 +917,63 @@ func (c *Client) FindUser(ctx context.Context, query string) ([]User, error) {
 	return users, nil
 }
 
-// User represents the authenticated Jira user
+// User represents a Jira user
 type User struct {
 	AccountID    string `json:"accountId"`
+	AccountType  string `json:"accountType"`
 	DisplayName  string `json:"displayName"`
 	EmailAddress string `json:"emailAddress"`
+	Active       bool   `json:"active"`
+}
+
+// FindPeople is FindUser without apps and deactivated accounts.
+func (c *Client) FindPeople(ctx context.Context, query string) ([]User, error) {
+	users, err := c.FindUser(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	people := users[:0]
+	for _, u := range users {
+		if u.Active && (u.AccountType == "" || u.AccountType == "atlassian") {
+			people = append(people, u)
+		}
+	}
+	return people, nil
+}
+
+// accountIDPattern matches Jira Cloud account IDs: "557058:<uuid>" or 24 hex chars.
+var accountIDPattern = regexp.MustCompile(`^([0-9a-f]{24}|\d+:[0-9a-f-]{36})$`)
+
+// ResolveAccountID turns an account ID, email or (partial) name into an account ID.
+// Ambiguous names fail with the candidates listed instead of picking one.
+func (c *Client) ResolveAccountID(ctx context.Context, who string) (string, error) {
+	if accountIDPattern.MatchString(who) {
+		return who, nil
+	}
+	users, err := c.FindPeople(ctx, who)
+	if err != nil {
+		return "", fmt.Errorf("failed to find user %q: %w", who, err)
+	}
+	if len(users) == 1 {
+		return users[0].AccountID, nil
+	}
+	if len(users) == 0 {
+		return "", fmt.Errorf("no active user matches %q", who)
+	}
+	var exact []User
+	for _, u := range users {
+		if strings.EqualFold(u.DisplayName, who) || strings.EqualFold(u.EmailAddress, who) {
+			exact = append(exact, u)
+		}
+	}
+	if len(exact) == 1 {
+		return exact[0].AccountID, nil
+	}
+	names := make([]string, len(users))
+	for i, u := range users {
+		names[i] = fmt.Sprintf("%s (%s)", u.DisplayName, u.AccountID)
+	}
+	return "", fmt.Errorf("%q matches %d users, be more specific: %s", who, len(users), strings.Join(names, ", "))
 }
 
 // GetCurrentUser fetches the authenticated user's info

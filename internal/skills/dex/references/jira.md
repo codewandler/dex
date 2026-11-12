@@ -63,7 +63,7 @@ dex jira create -p <project> -t <type> -s "<summary>" [options]
 ### Optional Flags
 - `-d, --description` - Issue description (markdown, auto-converted to Jira format)
 - `-l, --labels` - Comma-separated labels
-- `-a, --assignee` - Assignee (email or account ID)
+- `-a, --assignee` - Assignee (name, email or account ID; ambiguous names fail and list the candidates)
 - `--priority` - Priority (Lowest, Low, Medium, High, Highest)
 - `--parent` - Parent issue key for subtasks (e.g., DEV-123)
 
@@ -169,7 +169,7 @@ Update fields on an existing issue.
 ### Flags
 - `-s, --summary` - New summary/title
 - `-d, --description` - New description (markdown, auto-converted to Jira format)
-- `-a, --assignee` - New assignee (email or account ID, empty string to unassign)
+- `-a, --assignee` - New assignee (name, email or account ID, empty string to unassign)
 - `-p, --priority` - New priority (Lowest, Low, Medium, High, Highest)
 - `--add-label` - Labels to add (can specify multiple)
 - `--remove-label` - Labels to remove (can specify multiple)
@@ -275,6 +275,7 @@ dex jira my -s "In Progress"      # Filter by status
 dex jira my -s "Review"           # Filter by status
 dex jira search "<JQL>"           # Search with JQL query
 dex jira lookup KEY1 KEY2 KEY3    # Quick lookup of multiple issues
+dex jira users jane               # Find users by name/email: account ID, name, email (email often hidden)
 ```
 
 ## JQL Search Examples
